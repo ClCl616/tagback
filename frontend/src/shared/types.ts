@@ -1,0 +1,69 @@
+export type ItemStatus = 'available' | 'rented' | 'inspection';
+export type Station = { id: string; name: string; location: string };
+export type Kind = {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  art: 'calculator' | 'umbrella' | 'battery' | 'cable';
+};
+export type Item = {
+  id: string;
+  label: string;
+  kindId: string;
+  stationId: string;
+  tag: string;
+  active: boolean;
+  status: ItemStatus;
+};
+export type Rental = {
+  id: string;
+  userId: string;
+  itemId: string;
+  stationId: string;
+  rentedAt: number;
+  dueAt: number;
+  returnedAt?: number;
+  condition?: 'normal' | 'damaged';
+};
+export type User = { id: string; phone: string; passwordHash: string };
+export type Code = { value: string; userId: string; expiresAt: number; used: boolean };
+export type Grant = {
+  token: string;
+  userId: string;
+  code: string;
+  expiresAt: number;
+  maskedPhone: string;
+};
+export type Catalog = { kinds: Kind[]; items: Item[]; stations: Station[] };
+export type Receipt = { operationId: string; item: Item; rental: Rental; type: 'rent' | 'return' };
+export type Fault = '' | 'network' | 'timeout' | 'save' | 'unknown' | 'conflict';
+export type DemoControls = {
+  reader: boolean;
+  service: boolean;
+  nextFault: Fault;
+  nextTarget: 'any' | 'read' | 'verify' | 'scan' | 'save';
+  sessionSeconds: number;
+};
+export interface ServiceApi {
+  catalog(): Promise<Catalog>;
+  login(phone: string, password: string): Promise<string>;
+  signup(phone: string, password: string): Promise<string>;
+  logout(token: string): Promise<void>;
+  me(token: string): Promise<{ phone: string }>;
+  code(token: string, renew?: boolean): Promise<Code>;
+  rentals(token: string): Promise<Rental[]>;
+  verifyCode(value: string): Promise<Grant>;
+  scan(
+    tag: string,
+    mode: 'rent' | 'return',
+    kindId?: string,
+  ): Promise<{ item: Item; rental?: Rental }>;
+  rent(operationId: string, grant: Grant, itemId: string, kindId: string): Promise<Receipt>;
+  returnItem(
+    operationId: string,
+    itemId: string,
+    condition: 'normal' | 'damaged',
+  ): Promise<Receipt>;
+  operation(operationId: string): Promise<Receipt | null>;
+}
