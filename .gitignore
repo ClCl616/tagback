@@ -1,0 +1,39 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+application-local.yml
+application-local.yaml
+application-local.properties
+
+# Frontend
+node_modules/
+dist/
+coverage/
+.vite/
+
+# Java / Gradle / Maven
+.gradle/
+build/
+target/
+*.class
+*.log
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Local analysis / NFC captures
+.analysis-tools/
+.venv/
+__pycache__/
+*.pyc
+*.db
+*.sqlite
+*.sqlite3
+nfc/local-captures/
