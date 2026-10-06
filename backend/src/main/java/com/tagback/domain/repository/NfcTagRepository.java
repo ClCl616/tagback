@@ -8,4 +8,8 @@ import java.util.Optional;
 public interface NfcTagRepository extends JpaRepository<NfcTag, Long> {
 
     Optional<NfcTag> findByUid(String uid);
+
+    boolean existsByUid(String uid);
+
+    boolean existsByItem_Id(Long itemId);
 }
