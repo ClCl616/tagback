@@ -50,4 +50,19 @@ public class Item {
     public ItemType getItemType() {
         return itemType;
     }
+
+    public OffsetDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    /** The service checks permissions and history before changing the item type. */
+    public void updateDetails(String itemName, ItemType itemType) {
+        String normalizedName = java.util.Objects.requireNonNull(itemName, "itemName").strip();
+        if (normalizedName.isBlank() || normalizedName.length() > 100) {
+            throw new IllegalArgumentException("itemName must contain 1 to 100 characters");
+        }
+        ItemType validatedType = java.util.Objects.requireNonNull(itemType, "itemType");
+        this.itemName = normalizedName;
+        this.itemType = validatedType;
+    }
 }
