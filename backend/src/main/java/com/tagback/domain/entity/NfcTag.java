@@ -41,4 +41,8 @@ public class NfcTag {
     public Item getItem() {
         return item;
     }
+
+    public OffsetDateTime getCreatedAt() {
+        return createdAt;
+    }
 }
