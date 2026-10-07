@@ -8,9 +8,11 @@ import java.util.Set;
 
 /** Command-line options override environment variables. */
 public record BridgeConfig(int port, String origin, String readerName, String mockUid,
-                           long pollMillis, long mockHoldMillis, long mockGapMillis) {
+                           long pollMillis, long mockHoldMillis, long mockGapMillis,
+                           int emptyPollsToRemove, long pingMillis) {
     private static final Set<String> OPTIONS = Set.of(
-            "port", "origin", "reader", "mock-uid", "poll-ms", "mock-hold-ms", "mock-gap-ms");
+            "port", "origin", "reader", "mock-uid", "poll-ms", "mock-hold-ms", "mock-gap-ms",
+            "remove-after", "ping-ms");
 
     public static BridgeConfig parse(String[] args, Map<String, String> environment) {
         Map<String, String> options = new HashMap<>();
@@ -40,7 +42,10 @@ public record BridgeConfig(int port, String origin, String readerName, String mo
         long poll = number(value(options, environment, "poll-ms", "NFC_BRIDGE_POLL_MS", "250"), 50, 60_000);
         long hold = number(value(options, environment, "mock-hold-ms", "NFC_BRIDGE_MOCK_HOLD_MS", "2000"), 1, 3_600_000);
         long gap = number(value(options, environment, "mock-gap-ms", "NFC_BRIDGE_MOCK_GAP_MS", "1000"), 1, 3_600_000);
-        return new BridgeConfig(port, origin, reader, mock, poll, hold, gap);
+        int removeAfter = Math.toIntExact(number(value(options, environment, "remove-after",
+                "NFC_BRIDGE_REMOVE_AFTER", "2"), 1, 100));
+        long ping = number(value(options, environment, "ping-ms", "NFC_BRIDGE_PING_MS", "15000"), 10, 3_600_000);
+        return new BridgeConfig(port, origin, reader, mock, poll, hold, gap, removeAfter, ping);
     }
 
     private static String value(Map<String, String> options, Map<String, String> environment,

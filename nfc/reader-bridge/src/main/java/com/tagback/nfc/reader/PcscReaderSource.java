@@ -3,6 +3,7 @@ package com.tagback.nfc.reader;
 import java.util.HexFormat;
 import java.util.Locale;
 import javax.smartcardio.Card;
+import javax.smartcardio.CardException;
 import javax.smartcardio.CardTerminal;
 import javax.smartcardio.CommandAPDU;
 import javax.smartcardio.ResponseAPDU;
@@ -21,27 +22,30 @@ public final class PcscReaderSource implements ReaderSource {
 
     @Override
     public ReaderSnapshot poll() {
+        CardTerminal terminal;
         try {
-            CardTerminal terminal = TerminalFactory.getDefault().terminals().list().stream()
+            terminal = TerminalFactory.getDefault().terminals().list().stream()
                     .filter(candidate -> candidate.getName().toLowerCase(Locale.ROOT).contains(readerName))
                     .findFirst().orElse(null);
-            if (terminal == null) return ReaderSnapshot.disconnected();
+        } catch (CardException exception) {
+            // PC/SC service is unavailable; rescan on the next poll.
+            return ReaderSnapshot.disconnected();
+        }
+        if (terminal == null) return ReaderSnapshot.disconnected();
+        try {
             if (!terminal.isCardPresent()) return ReaderSnapshot.empty();
 
             Card card = terminal.connect("*");
             try {
                 ResponseAPDU response = card.getBasicChannel().transmit(READ_UID);
-                if (response.getSW() != 0x9000 || response.getData().length == 0) {
-                    throw new IllegalStateException("Reader did not return a UID (SW="
-                            + Integer.toHexString(response.getSW()) + ")");
-                }
+                if (response.getSW() != 0x9000 || response.getData().length == 0) return ReaderSnapshot.empty();
                 return ReaderSnapshot.tag(HexFormat.of().withUpperCase().formatHex(response.getData()));
             } finally {
                 card.disconnect(false);
             }
-        } catch (Exception exception) {
-            // The next poll discovers a reconnected reader without restarting the bridge.
-            return ReaderSnapshot.disconnected();
+        } catch (CardException exception) {
+            // The terminal was found, but this particular card read failed.
+            return ReaderSnapshot.empty();
         }
     }
 }

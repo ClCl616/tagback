@@ -12,24 +12,37 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /** Loopback-only SSE endpoint with one explicitly allowed browser origin. */
 public final class SseServer implements AutoCloseable {
     private final HttpServer server;
     private final ExecutorService executor = Executors.newCachedThreadPool();
+    private final ScheduledExecutorService heartbeat = Executors.newSingleThreadScheduledExecutor();
     private final String allowedOrigin;
+    private final long pingMillis;
     private final Set<Client> clients = new HashSet<>();
     private BridgeEvent readerState;
     private BridgeEvent tagState;
 
     public SseServer(int port, String allowedOrigin) throws IOException {
+        this(port, allowedOrigin, 15_000);
+    }
+
+    public SseServer(int port, String allowedOrigin, long pingMillis) throws IOException {
+        if (pingMillis < 1) throw new IllegalArgumentException("pingMillis must be positive");
         this.allowedOrigin = allowedOrigin;
+        this.pingMillis = pingMillis;
         server = HttpServer.create(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), port), 0);
         server.createContext("/events", this::handle);
         server.setExecutor(executor);
     }
 
-    public void start() { server.start(); }
+    public void start() {
+        server.start();
+        heartbeat.scheduleAtFixedRate(this::pingClients, pingMillis, pingMillis, TimeUnit.MILLISECONDS);
+    }
 
     public int port() { return server.getAddress().getPort(); }
 
@@ -42,9 +55,19 @@ public final class SseServer implements AutoCloseable {
             case TAG_READ -> tagState = event;
             case TAG_REMOVED -> tagState = null;
         }
+        sendToClients(event.sse());
+    }
+
+    private synchronized void pingClients() {
+        sendToClients(": ping\n\n");
+    }
+
+    synchronized int clientCount() { return clients.size(); }
+
+    private void sendToClients(String message) {
         for (Client client : Set.copyOf(clients)) {
             try {
-                client.send(event.sse());
+                client.send(message);
             } catch (IOException exception) {
                 clients.remove(client);
                 client.close();
@@ -97,6 +120,7 @@ public final class SseServer implements AutoCloseable {
 
     @Override
     public void close() {
+        heartbeat.shutdownNow();
         synchronized (this) {
             for (Client client : Set.copyOf(clients)) client.close();
             clients.clear();

@@ -15,6 +15,18 @@ class BridgeConfigTest {
         assertEquals(8766, config.port());
         assertEquals("http://127.0.0.1:5174", config.origin());
         assertEquals("04C8AB82492490", config.mockUid());
+        assertEquals(2, config.emptyPollsToRemove());
+        assertEquals(15_000, config.pingMillis());
+    }
+
+    @Test
+    void configuresRemovalThresholdAndHeartbeat() {
+        BridgeConfig config = BridgeConfig.parse(new String[] {"--remove-after=3", "--ping-ms=250"},
+                Map.of("NFC_BRIDGE_REMOVE_AFTER", "4", "NFC_BRIDGE_PING_MS", "500"));
+        assertEquals(3, config.emptyPollsToRemove());
+        assertEquals(250, config.pingMillis());
+        assertThrows(IllegalArgumentException.class,
+                () -> BridgeConfig.parse(new String[] {"--remove-after=0"}, Map.of()));
     }
 
     @Test
