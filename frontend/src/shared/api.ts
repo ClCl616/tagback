@@ -90,6 +90,15 @@ export async function transaction<T>(fn: (db: Database) => T | Promise<T>): Prom
       });
       db.schemaVersion = 5;
     }
+    if ((db.schemaVersion || 0) < 6) {
+      db.items.forEach((item) => {
+        if (!item.tag) {
+          item.active = false;
+          if (item.status === 'available') item.status = 'inspection';
+        }
+      });
+      db.schemaVersion = 6;
+    }
     const result = await fn(db);
     const serialized = JSON.stringify(db);
     if (serialized !== raw) localStorage.setItem(DB_KEY, serialized);
@@ -152,7 +161,12 @@ async function save(id: string, fn: (db: Database) => Receipt) {
 export const api: ServiceApi = {
   async catalog() {
     await before();
-    return transaction((db) => ({ kinds: db.kinds, items: db.items, stations: db.stations }));
+    return transaction((db) => ({
+      kinds: db.kinds,
+      items: db.items.filter((i) => !i.deleted),
+      stations: db.stations,
+      categories: [...new Set([...(db.categories || []), ...db.kinds.map((k) => k.category)])],
+    }));
   },
   logout: (token) => authApi.logout(token),
   async me(token) {
