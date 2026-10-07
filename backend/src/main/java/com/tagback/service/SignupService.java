@@ -41,6 +41,8 @@ public class SignupService {
     @Transactional
     public Result signup(AuthRequests.Signup input, UUID key) {
         pins.validate(input.pin());
+        String name = profileValue(input.profile() == null ? null : input.profile().name());
+        String occupation = profileValue(input.profile() == null ? null : input.profile().occupation());
         String hash = secrets.tokenHash(input.verificationToken());
         String phone = grants.findPhoneNumberByTokenHash(hash)
                 .orElseThrow(() -> new AuthException(AuthErrorCode.VERIFICATION_INVALID));
@@ -52,7 +54,8 @@ public class SignupService {
         if (grant.getPurpose() != SmsPurpose.SIGNUP) throw new AuthException(AuthErrorCode.VERIFICATION_PURPOSE_MISMATCH);
 
         String scope = secrets.tokenHash("signup:" + grant.getId());
-        String fingerprint = secrets.keyedHash("signup:" + grant.getId() + ":" + input.pin());
+        String fingerprint = secrets.keyedHash("signup:" + grant.getId() + ":"
+                + json.writeValueAsString(input));
         // Derived secret tokens permit response-loss retries without storing raw cookies.
         String browserToken = secrets.keyedHash("signup-browser:" + grant.getId() + ":" + key);
         String sessionToken = secrets.keyedHash("signup-session:" + grant.getId() + ":" + key);
@@ -76,17 +79,24 @@ public class SignupService {
         if (grants.consumeIfAvailable(grant.getId(), phone, SmsPurpose.SIGNUP, now) != 1)
             throw new AuthException(AuthErrorCode.VERIFICATION_EXPIRED);
         var user = users.saveAndFlush(new User(phone, pinHash, now));
+        user.setProfile(name, occupation);
         Instant browserExpiry = now.plus(policy.browserRegistrationTtl());
         Instant idleExpiry = now.plus(policy.sessionIdleTimeout());
         Instant absoluteExpiry = now.plus(policy.sessionAbsoluteTimeout());
         var browser = browsers.saveAndFlush(new BrowserRegistration(user, secrets.tokenHash(browserToken), browserExpiry, now));
         sessions.saveAndFlush(new LoginSession(browser, secrets.tokenHash(sessionToken), idleExpiry, absoluteExpiry, now));
-        var summary = new AuthResponses.UserSummary(user.getId().toString(), "010-****-" + phone.substring(phone.length() - 4), user.getRole().name());
+        var summary = new AuthResponses.UserSummary(user.getId().toString(), "010-****-" + phone.substring(phone.length() - 4), user.getRole().name(), user.getName(), user.getOccupation());
         var response = new AuthResponses.LoginResult(summary, idleExpiry, browserExpiry);
         var operation = new AuthOperation(scope, "SIGNUP", key.toString(), fingerprint, grant.getExpiresAt(), now);
         operation.completeSuccessfully(json.writeValueAsString(response), now);
         operations.save(operation);
         return new Result(response, browserToken, sessionToken, absoluteExpiry);
+    }
+
+    private String profileValue(String value) {
+        if (value == null || value.trim().isEmpty() || value.trim().length() > 40)
+            throw new AuthException(AuthErrorCode.INVALID_INPUT);
+        return value.trim();
     }
 
     public record Result(AuthResponses.LoginResult response, String browserToken, String sessionToken,

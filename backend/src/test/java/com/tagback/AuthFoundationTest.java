@@ -41,7 +41,9 @@ class AuthFoundationTest {
             for (String value : invalid) {
                 assertFalse(validator.validate(new AuthRequests.RegisteredLogin(value)).isEmpty());
             }
-            assertFalse(validator.validate(new AuthRequests.Signup("", "041527")).isEmpty());
+            assertFalse(validator.validate(new AuthRequests.Signup("", "041527", new AuthRequests.Profile("테스트", "학생"))).isEmpty());
+            assertFalse(validator.validate(new AuthRequests.Signup("token", "041527", new AuthRequests.Profile(" ", "학생"))).isEmpty());
+            assertFalse(validator.validate(new AuthRequests.Signup("token", "041527", null)).isEmpty());
             assertFalse(validator.validate(new AuthRequests.SmsRequest("", null)).isEmpty());
         }
     }

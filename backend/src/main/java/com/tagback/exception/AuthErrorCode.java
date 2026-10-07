@@ -26,7 +26,6 @@ public enum AuthErrorCode {
     SESSION_REQUIRED(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다."),
     SESSION_EXPIRED(HttpStatus.UNAUTHORIZED, "로그인이 만료되었습니다."),
     SESSION_REPLACED(HttpStatus.UNAUTHORIZED, "다른 브라우저에서 로그인하여 종료되었습니다."),
-    RECOVERY_ADDITIONAL_CHECK_REQUIRED(HttpStatus.FORBIDDEN, "추가 복구 확인이 필요합니다."),
     REAUTHENTICATION_REQUIRED(HttpStatus.UNAUTHORIZED, "재인증이 필요합니다."),
     FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
     IDEMPOTENCY_KEY_CONFLICT(HttpStatus.CONFLICT, "요청 식별자가 다른 요청에 사용되었습니다.");

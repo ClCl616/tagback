@@ -20,6 +20,12 @@ public class User {
     @Column(name = "pin_hash", length = 255)
     private String pinHash;
 
+    @Column(name = "name", length = 40)
+    private String name;
+
+    @Column(name = "occupation", length = 40)
+    private String occupation;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private UserRole role = UserRole.USER;
@@ -44,10 +50,22 @@ public class User {
     public Long getId() { return id; }
     public String getPhoneNumber() { return phoneNumber; }
     public String getPinHash() { return pinHash; }
+    public String getName() { return name; }
+    public String getOccupation() { return occupation; }
     public UserRole getRole() { return role; }
     public int getPinFailedCount() { return pinFailedCount; }
     public Instant getPinLockedUntil() { return pinLockedUntil; }
     public Instant getCreatedAt() { return createdAt; }
+
+    public void resetPin(String pinHash) {
+        this.pinHash = Objects.requireNonNull(pinHash, "pinHash");
+        setPinFailureState(0, null);
+    }
+
+    public void setProfile(String name, String occupation) {
+        this.name = Objects.requireNonNull(name, "name");
+        this.occupation = Objects.requireNonNull(occupation, "occupation");
+    }
 
     public void setPinFailureState(int count, Instant lockedUntil) {
         if (count < 0 || count > 20) throw new IllegalArgumentException("Invalid PIN failure count");
@@ -55,4 +73,3 @@ public class User {
         this.pinLockedUntil = lockedUntil;
     }
 }
-

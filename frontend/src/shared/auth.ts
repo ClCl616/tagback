@@ -253,13 +253,11 @@ export const authApi: AuthAdapter = {
       c.proof = crypto.randomUUID();
       c.proofExpiresAt = Date.now() + D.proofMs;
       const user = db.users.find((u) => u.phone === c.phone);
-      const canReset = !!user && localStorage.getItem('tagback.mock.recovery-approved') === c.phone;
       return {
         proof: c.proof,
         expiresAt: c.proofExpiresAt,
         maskedPhone: masked(c.phone),
         existing: !!user,
-        canReset,
         needsPin: !!user && !user.pinHash,
       };
     });
@@ -342,11 +340,7 @@ export const authApi: AuthAdapter = {
     return operation(id, JSON.stringify(['reset', value, pin, source]), async (db) => {
       const c = proof(db, value, 'reset', source);
       const user = db.users.find((u) => u.phone === c.phone);
-      if (!user || localStorage.getItem('tagback.mock.recovery-approved') !== c.phone)
-        return fail(
-          'RECOVERY',
-          '추가 확인이 필요합니다. 실제 계정 복구 수단은 준비 중이며 현재 자동 복구할 수 없습니다.',
-        );
+      if (!user) return fail('RECOVERY', '등록된 계정을 찾을 수 없습니다.');
       const problem = pinError(pin);
       if (problem) return fail('PIN_POLICY', problem);
       user.pinHash = await pinHash(pin);

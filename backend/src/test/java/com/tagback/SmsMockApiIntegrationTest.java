@@ -2,7 +2,9 @@ package com.tagback;
 
 import com.tagback.controller.MockSmsController;
 import com.tagback.controller.SmsAuthController;
+import com.tagback.domain.entity.User;
 import com.tagback.domain.repository.SmsVerificationRepository;
+import com.tagback.domain.repository.UserRepository;
 import com.tagback.domain.repository.VerificationGrantRepository;
 import com.tagback.dto.auth.AuthRequests;
 import com.tagback.dto.auth.SmsPurpose;
@@ -43,6 +45,7 @@ class SmsMockApiIntegrationTest {
     @Autowired SmsAuthController controller;
     @Autowired MockSmsController mockController;
     @Autowired SmsVerificationRepository requests;
+    @Autowired UserRepository users;
     @Autowired VerificationGrantRepository grants;
     @Autowired SmsSecrets secrets;
     @Autowired MutableClock clock;
@@ -60,6 +63,7 @@ class SmsMockApiIntegrationTest {
 
     @AfterEach void cleanup() {
         for (String phone : phones) {
+            jdbc.update("delete from users where phone_number = ?", phone);
             jdbc.update("delete from verification_grants where phone_number = ?", phone);
             jdbc.update("delete from sms_verifications where phone_number = ?", phone);
             jdbc.update("delete from sms_request_gates where phone_number = ?", phone);
@@ -117,6 +121,9 @@ class SmsMockApiIntegrationTest {
         assertEquals(1, requests.countSentSince(phone, initial.minusSeconds(1)));
         expectError(AuthErrorCode.IDEMPOTENCY_KEY_CONFLICT,
                 () -> service.request(new AuthRequests.SmsRequest(phone, SmsPurpose.LOGIN), key));
+        UUID id = UUID.fromString(first.requestId());
+        assertEquals(SmsPurpose.SIGNUP,
+                service.verify(new AuthRequests.SmsVerification(id.toString(), service.getMockCode(id).code())).purpose());
     }
 
     @Test void resendIsSharedAcrossPurposesAndInvalidatesOldCodeAtBoundary() {
@@ -126,11 +133,38 @@ class SmsMockApiIntegrationTest {
         var wait = assertThrows(AuthException.class, () -> request(phone, SmsPurpose.SIGNUP));
         assertEquals(AuthErrorCode.SMS_RESEND_WAIT, wait.code());
         assertEquals(initial.plusSeconds(60), wait.retryAt());
+        assertNull(requests.findById(old).orElseThrow().getInvalidatedAt());
         clock.advance(Duration.ofSeconds(60));
-        UUID replacement = request(phone, SmsPurpose.LOGIN);
+        UUID replacement = request(phone, SmsPurpose.SIGNUP);
         expectError(AuthErrorCode.SMS_REQUEST_INVALIDATED,
                 () -> service.verify(new AuthRequests.SmsVerification(old.toString(), code)));
+        assertEquals(initial.plusSeconds(60), requests.findById(old).orElseThrow().getInvalidatedAt());
         assertNotEquals(old, replacement);
+
+        String replacementCode = service.getMockCode(replacement).code();
+        clock.advance(Duration.ofSeconds(60));
+        UUID newest = request(phone, SmsPurpose.SIGNUP);
+        expectError(AuthErrorCode.SMS_REQUEST_INVALIDATED,
+                () -> service.verify(new AuthRequests.SmsVerification(replacement.toString(), replacementCode)));
+        assertNotEquals(replacement, newest);
+        assertEquals(SmsPurpose.SIGNUP,
+                service.verify(new AuthRequests.SmsVerification(newest.toString(), service.getMockCode(newest).code())).purpose());
+    }
+
+    @Test void newSmsAlsoInvalidatesUnusedProofFromAnotherPurpose() {
+        String phone = phone();
+        UUID old = request(phone, SmsPurpose.LOGIN);
+        String token = service.verify(new AuthRequests.SmsVerification(old.toString(), service.getMockCode(old).code()))
+                .verificationToken();
+        assertNull(grants.findByTokenHash(secrets.tokenHash(token)).orElseThrow().getConsumedAt());
+
+        clock.advance(Duration.ofSeconds(60));
+        UUID replacement = request(phone, SmsPurpose.SIGNUP);
+        assertEquals(initial.plusSeconds(60),
+                grants.findByTokenHash(secrets.tokenHash(token)).orElseThrow().getConsumedAt());
+        assertNull(requests.findById(old).orElseThrow().getInvalidatedAt());
+        assertEquals(SmsPurpose.SIGNUP,
+                service.verify(new AuthRequests.SmsVerification(replacement.toString(), service.getMockCode(replacement).code())).purpose());
     }
 
     @Test void fifthWrongCodeCommitsCounterAndBlocksCorrectCode() {
@@ -227,11 +261,22 @@ class SmsMockApiIntegrationTest {
         assertEquals(0, requests.findById(id).orElseThrow().getFailedCount());
     }
 
-    @Test void recoveryAndPhoneChangeCannotBypassUnimplementedChecks() {
-        String phone = phone();
-        expectError(AuthErrorCode.RECOVERY_ADDITIONAL_CHECK_REQUIRED, () -> request(phone, SmsPurpose.PIN_RESET));
-        expectError(AuthErrorCode.REAUTHENTICATION_REQUIRED, () -> request(phone, SmsPurpose.PHONE_CHANGE));
-        assertEquals(0, requests.countSentSince(phone, initial.minusSeconds(1)));
+    @Test void pinRecoverySmsIsIssuedOnlyForRegisteredPhone() {
+        String registered = phone();
+        String unknown = phone();
+        users.saveAndFlush(new User(registered, "unused-pin-hash", initial));
+
+        expectError(AuthErrorCode.ACCOUNT_NOT_FOUND, () -> request(unknown, SmsPurpose.PIN_RESET));
+        assertEquals(0, requests.countSentSince(unknown, initial.minusSeconds(1)));
+
+        UUID id = request(registered, SmsPurpose.PIN_RESET);
+        assertEquals(registered, requests.findById(id).orElseThrow().getPhoneNumber());
+        var verified = service.verify(new AuthRequests.SmsVerification(id.toString(), service.getMockCode(id).code()));
+        assertEquals(SmsPurpose.PIN_RESET, verified.purpose());
+        assertEquals(1, requests.countSentSince(registered, initial.minusSeconds(1)));
+
+        expectError(AuthErrorCode.REAUTHENTICATION_REQUIRED, () -> request(registered, SmsPurpose.PHONE_CHANGE));
+        assertEquals(1, requests.countSentSince(registered, initial.minusSeconds(1)));
     }
 
     @TestConfiguration

@@ -90,7 +90,7 @@ class SignupApiIntegrationTest {
         String phone = phone();
         String token = grant(phone, SmsPurpose.SIGNUP);
         UUID key = UUID.randomUUID();
-        String body = json.writeValueAsString(new AuthRequests.Signup(token, "041527"));
+        String body = json.writeValueAsString(new AuthRequests.Signup(token, "041527", new AuthRequests.Profile("테스트", "학생")));
         // Cross-origin login CSRF must be rejected before consuming the proof.
         mvc.perform(post("/api/v1/auth/signup").header("Origin", "https://untrusted.example")
                         .header("Idempotency-Key", key).contentType(MediaType.APPLICATION_JSON).content(body))
@@ -108,6 +108,8 @@ class SignupApiIntegrationTest {
             assertTrue(cookie.contains("SameSite=Lax")); assertTrue(cookie.contains("Path=/"));
         }
         var user = users.findByPhoneNumber(phone).orElseThrow();
+        assertEquals("테스트", user.getName());
+        assertEquals("학생", user.getOccupation());
         assertTrue(pins.matches("041527", user.getPinHash()));
         assertNotNull(grants.findByTokenHash(secrets.tokenHash(token)).orElseThrow().getConsumedAt());
         var retry = mvc.perform(post("/api/v1/auth/signup").header("Idempotency-Key", key)
@@ -116,30 +118,30 @@ class SignupApiIntegrationTest {
         assertEquals(cookies.stream().map(value -> value.split(";", 2)[0]).toList(),
                 retry.getHeaders("Set-Cookie").stream().map(value -> value.split(";", 2)[0]).toList());
         assertEquals(1, jdbc.queryForObject("select count(*) from login_sessions where user_id = ?", Long.class, user.getId()));
-        error(AuthErrorCode.IDEMPOTENCY_KEY_CONFLICT, () -> signup.signup(new AuthRequests.Signup(token, "920314"), key));
-        error(AuthErrorCode.VERIFICATION_CONSUMED, () -> signup.signup(new AuthRequests.Signup(token, "041527"), UUID.randomUUID()));
+        error(AuthErrorCode.IDEMPOTENCY_KEY_CONFLICT, () -> signup.signup(new AuthRequests.Signup(token, "920314", new AuthRequests.Profile("테스트", "학생")), key));
+        error(AuthErrorCode.VERIFICATION_CONSUMED, () -> signup.signup(new AuthRequests.Signup(token, "041527", new AuthRequests.Profile("테스트", "학생")), UUID.randomUUID()));
     }
 
     @Test void invalidPinWrongPurposeExpiryAndDuplicateDoNotConsumeProof() {
         String firstPhone = phone();
         String first = grant(firstPhone, SmsPurpose.SIGNUP);
-        error(AuthErrorCode.PIN_POLICY_VIOLATION, () -> signup.signup(new AuthRequests.Signup(first, "789012"), UUID.randomUUID()));
+        error(AuthErrorCode.PIN_POLICY_VIOLATION, () -> signup.signup(new AuthRequests.Signup(first, "789012", new AuthRequests.Profile("테스트", "학생")), UUID.randomUUID()));
         assertNull(grants.findByTokenHash(secrets.tokenHash(first)).orElseThrow().getConsumedAt());
         String login = grant(phone(), SmsPurpose.LOGIN);
-        error(AuthErrorCode.VERIFICATION_PURPOSE_MISMATCH, () -> signup.signup(new AuthRequests.Signup(login, "041527"), UUID.randomUUID()));
+        error(AuthErrorCode.VERIFICATION_PURPOSE_MISMATCH, () -> signup.signup(new AuthRequests.Signup(login, "041527", new AuthRequests.Profile("테스트", "학생")), UUID.randomUUID()));
         users.saveAndFlush(new User(firstPhone, pins.hash("920314"), initial));
-        error(AuthErrorCode.PHONE_NUMBER_ALREADY_REGISTERED, () -> signup.signup(new AuthRequests.Signup(first, "041527"), UUID.randomUUID()));
+        error(AuthErrorCode.PHONE_NUMBER_ALREADY_REGISTERED, () -> signup.signup(new AuthRequests.Signup(first, "041527", new AuthRequests.Profile("테스트", "학생")), UUID.randomUUID()));
         assertNull(grants.findByTokenHash(secrets.tokenHash(first)).orElseThrow().getConsumedAt());
         clock.advance(Duration.ofMinutes(10));
-        error(AuthErrorCode.VERIFICATION_EXPIRED, () -> signup.signup(new AuthRequests.Signup(first, "041527"), UUID.randomUUID()));
-        error(AuthErrorCode.VERIFICATION_INVALID, () -> signup.signup(new AuthRequests.Signup("unknown-token", "041527"), UUID.randomUUID()));
+        error(AuthErrorCode.VERIFICATION_EXPIRED, () -> signup.signup(new AuthRequests.Signup(first, "041527", new AuthRequests.Profile("테스트", "학생")), UUID.randomUUID()));
+        error(AuthErrorCode.VERIFICATION_INVALID, () -> signup.signup(new AuthRequests.Signup("unknown-token", "041527", new AuthRequests.Profile("테스트", "학생")), UUID.randomUUID()));
     }
 
     @Test void sessionSaveFailureRollsBackAccountRegistrationAndProofConsumption() {
         String phone = phone();
         String token = grant(phone, SmsPurpose.SIGNUP);
         doThrow(new IllegalStateException("test persistence failure")).when(sessions).saveAndFlush(any(LoginSession.class));
-        assertThrows(IllegalStateException.class, () -> signup.signup(new AuthRequests.Signup(token, "041527"), UUID.randomUUID()));
+        assertThrows(IllegalStateException.class, () -> signup.signup(new AuthRequests.Signup(token, "041527", new AuthRequests.Profile("테스트", "학생")), UUID.randomUUID()));
         assertFalse(users.existsByPhoneNumber(phone));
         assertNull(grants.findByTokenHash(secrets.tokenHash(token)).orElseThrow().getConsumedAt());
         assertEquals(0, jdbc.queryForObject("select count(*) from browser_registrations", Long.class));

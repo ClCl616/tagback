@@ -1,7 +1,6 @@
 package com.tagback.domain.repository;
 
 import com.tagback.domain.entity.*;
-import com.tagback.dto.auth.SmsPurpose;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.*;
 import org.springframework.data.repository.query.Param;
@@ -31,8 +30,8 @@ public interface SmsVerificationRepository extends JpaRepository<SmsVerification
 
     @Modifying
     @Transactional(propagation = Propagation.MANDATORY)
-    @Query("update SmsVerification s set s.invalidatedAt = :now where s.phoneNumber = :phone and s.purpose = :purpose and s.verifiedAt is null and s.invalidatedAt is null")
-    int invalidateUnfinished(@Param("phone") String phone, @Param("purpose") SmsPurpose purpose, @Param("now") Instant now);
+    @Query("update SmsVerification s set s.invalidatedAt = :now where s.phoneNumber = :phone and s.verifiedAt is null and s.invalidatedAt is null")
+    int invalidateUnfinished(@Param("phone") String phone, @Param("now") Instant now);
 
     @Modifying
     @Transactional(propagation = Propagation.MANDATORY)
@@ -44,4 +43,3 @@ public interface SmsVerificationRepository extends JpaRepository<SmsVerification
     @Query("update SmsVerification s set s.verifiedAt = :now where s.id = :id and s.verifiedAt is null and s.invalidatedAt is null and s.expiresAt > :now and s.failedCount < 5 and s.deliveryStatus = com.tagback.domain.entity.SmsDeliveryStatus.SENT")
     int markVerified(@Param("id") UUID id, @Param("now") Instant now);
 }
-

@@ -65,7 +65,7 @@ class SessionApiIntegrationTest {
     }
     private Fixture account() {
         String phone = "+8210" + sequence.incrementAndGet(); phones.add(phone);
-        var result = signup.signup(new AuthRequests.Signup(grant(phone, SmsPurpose.SIGNUP), "041527"), UUID.randomUUID());
+        var result = signup.signup(new AuthRequests.Signup(grant(phone, SmsPurpose.SIGNUP), "041527", new AuthRequests.Profile("테스트", "학생")), UUID.randomUUID());
         return new Fixture(phone, result.browserToken(), result.sessionToken());
     }
     private String grant(String phone, SmsPurpose purpose) {

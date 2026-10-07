@@ -18,7 +18,6 @@ export default function Simulator() {
       window.removeEventListener('tagback-controls', refresh);
     };
   }, []);
-  const [recoveryPhone, setRecoveryPhone] = useState(MOCK.demoPhone as string);
   const [authBusy, setAuthBusy] = useState(false);
   async function authDemo(action: () => Promise<unknown>) {
     if (authBusy) return;
@@ -77,30 +76,7 @@ export default function Simulator() {
       </section>
       <section>
         <h2>인증 상태 시뮬레이터</h2>
-        <p>실제 신원 확인이나 다른 기기 연결이 아닙니다. 복구 승인은 이 시연에만 적용됩니다.</p>
-        <label>
-          복구 승인 시연 전화번호
-          <input value={recoveryPhone} onChange={(e) => setRecoveryPhone(e.target.value)} />
-        </label>
-        <button
-          onClick={() => {
-            localStorage.setItem(
-              'tagback.mock.recovery-approved',
-              recoveryPhone.replace(/[^0-9]/g, ''),
-            );
-            setMessage('시연 복구 승인 설정');
-          }}
-        >
-          이 번호 복구 승인 시연
-        </button>
-        <button
-          onClick={() => {
-            localStorage.removeItem('tagback.mock.recovery-approved');
-            setMessage('복구 보류 설정');
-          }}
-        >
-          복구 보류로 설정
-        </button>
+        <p>실제 신원 확인이나 다른 기기 연결이 아닙니다. PIN 복구는 등록 번호의 문자 인증으로 진행합니다.</p>
         <button disabled={authBusy} onClick={() => authDemo(simulateOtherBrowser)}>
           다른 브라우저 로그인 시연 (기본 계정)
         </button>

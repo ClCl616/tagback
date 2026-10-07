@@ -24,6 +24,7 @@ public class SmsAuthService {
     private final SmsVerificationRepository requests;
     private final VerificationGrantRepository grants;
     private final AuthOperationRepository operations;
+    private final UserRepository users;
     private final PhoneNumberNormalizer phones;
     private final AuthProperties policy;
     private final Clock clock;
@@ -33,12 +34,13 @@ public class SmsAuthService {
 
     public SmsAuthService(SmsRequestGateRepository gates, SmsVerificationRepository requests,
                           VerificationGrantRepository grants, AuthOperationRepository operations,
-                          PhoneNumberNormalizer phones, AuthProperties policy, Clock clock,
+                          UserRepository users, PhoneNumberNormalizer phones, AuthProperties policy, Clock clock,
                           SmsSecrets secrets, MockSmsDelivery delivery, ObjectMapper json) {
         this.gates = gates;
         this.requests = requests;
         this.grants = grants;
         this.operations = operations;
+        this.users = users;
         this.phones = phones;
         this.policy = policy;
         this.clock = clock;
@@ -50,8 +52,8 @@ public class SmsAuthService {
     @Transactional
     public AuthResponses.SmsRequested request(AuthRequests.SmsRequest input, UUID idempotencyKey) {
         String phone = phones.normalize(input.phoneNumber());
-        if (input.purpose() == SmsPurpose.PIN_RESET)
-            throw new AuthException(AuthErrorCode.RECOVERY_ADDITIONAL_CHECK_REQUIRED);
+        if (input.purpose() == SmsPurpose.PIN_RESET && !users.existsByPhoneNumber(phone))
+            throw new AuthException(AuthErrorCode.ACCOUNT_NOT_FOUND);
         if (input.purpose() == SmsPurpose.PHONE_CHANGE)
             throw new AuthException(AuthErrorCode.REAUTHENTICATION_REQUIRED);
 
@@ -82,7 +84,10 @@ public class SmsAuthService {
             throw new AuthException(AuthErrorCode.SMS_REQUEST_LIMIT_EXCEEDED, retryAt);
         }
 
-        requests.invalidateUnfinished(phone, input.purpose(), now);
+        // A new code supersedes every earlier code and unused proof for this number,
+        // regardless of purpose. Rejected requests and idempotent replays do not reach here.
+        requests.invalidateUnfinished(phone, now);
+        grants.consumeAllForPhone(phone, now);
         UUID requestId = UUID.randomUUID();
         String code = secrets.generateCode();
         Instant expiresAt = now.plus(policy.smsCodeTtl());

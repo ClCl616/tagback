@@ -220,11 +220,11 @@ export default function AuthFlow({
       setMask(v.maskedPhone);
       setPin('');
       setNotice('');
-      if (mode === 'reset') setStep(v.canReset ? 'setup' : 'blocked');
+      if (mode === 'reset') setStep(v.existing ? 'setup' : 'blocked');
       else if (mode === 'change') setStep('change-confirm');
       else if (v.needsPin) {
         setStep('blocked');
-        setNotice('PIN 설정이 필요합니다. PIN 찾기에서 추가 확인 후 설정해 주세요.');
+        setNotice('PIN 설정이 필요합니다. PIN 찾기에서 문자 인증 후 설정해 주세요.');
       } else {
         setStep(v.existing ? 'pin' : 'setup');
         setNotice(v.existing ? '기존 계정을 확인했습니다. 기존 PIN으로 로그인해 주세요.' : '');
@@ -446,13 +446,11 @@ export default function AuthFlow({
       ) : step === 'blocked' ? (
         <>
           <ShieldCheck className="auth-symbol" />
-          <h1>추가 확인이 필요해요.</h1>
+          <h1>{verification?.needsPin ? 'PIN 설정이 필요해요.' : 'PIN 복구 안내'}</h1>
           <p>
-            전화번호 소유 확인만으로 기존 계정을 복구할 수 없습니다. 번호 분실·변경·재할당 시 실제
-            복구 수단은 준비 중입니다.
-          </p>
-          <p className="muted">
-            현재 자동 복구를 진행할 수 없습니다. 다른 번호를 인증해도 기존 기록과 연결되지 않습니다.
+            {verification?.needsPin
+              ? 'PIN 찾기에서 등록된 전화번호로 문자를 인증한 뒤 새 PIN을 설정해 주세요.'
+              : '등록된 전화번호로 다시 확인해 주세요. 기존 전화번호를 사용할 수 없다면 현재 자동 복구를 진행할 수 없습니다.'}
           </p>
           <Link className="primary full" to="/mobile/login">
             로그인으로 돌아가기
