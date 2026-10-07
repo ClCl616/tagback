@@ -1,6 +1,7 @@
 package com.tagback.controller;
 
 import com.tagback.config.AuthCookies;
+import com.tagback.config.PublicApi;
 import com.tagback.config.AuthOriginGuard;
 import com.tagback.dto.auth.AuthResponses;
 import com.tagback.service.SessionService;
@@ -21,6 +22,7 @@ public class SessionController {
     }
 
     @GetMapping("/browser-registration")
+    @PublicApi
     public ResponseEntity<AuthResponses.BrowserStatus> registration(
             @CookieValue(name = AuthCookies.BROWSER_COOKIE, required = false) String token) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.registration(token));
@@ -40,6 +42,7 @@ public class SessionController {
     }
 
     @PostMapping("/logout")
+    @PublicApi
     public ResponseEntity<Void> logout(
             @CookieValue(name = AuthCookies.SESSION_COOKIE, required = false) String token, HttpServletRequest request) {
         origins.check(request);
@@ -49,6 +52,7 @@ public class SessionController {
     }
 
     @DeleteMapping("/browser-registration")
+    @PublicApi
     public ResponseEntity<Void> unregister(
             @CookieValue(name = AuthCookies.BROWSER_COOKIE, required = false) String browserToken,
             @CookieValue(name = AuthCookies.SESSION_COOKIE, required = false) String sessionToken, HttpServletRequest request) {

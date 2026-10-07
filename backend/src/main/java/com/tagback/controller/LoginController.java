@@ -1,6 +1,7 @@
 package com.tagback.controller;
 
 import com.tagback.config.AuthCookies;
+import com.tagback.config.PublicApi;
 import com.tagback.config.AuthOriginGuard;
 import com.tagback.dto.auth.*;
 import com.tagback.service.LoginService;
@@ -23,6 +24,7 @@ public class LoginController {
     }
 
     @PostMapping("/registered")
+    @PublicApi
     public ResponseEntity<AuthResponses.LoginResult> registered(@Valid @RequestBody AuthRequests.RegisteredLogin input,
             @CookieValue(name = AuthCookies.BROWSER_COOKIE, required = false) String browserToken,
             @RequestHeader("Idempotency-Key") UUID key, HttpServletRequest request) {
@@ -34,6 +36,7 @@ public class LoginController {
     }
 
     @PostMapping("/new-browser")
+    @PublicApi
     public ResponseEntity<AuthResponses.NewBrowserLoginResult> newBrowser(@Valid @RequestBody AuthRequests.NewBrowserLogin input,
             @RequestHeader("Idempotency-Key") UUID key, HttpServletRequest request) {
         origins.check(request);

@@ -1,6 +1,7 @@
 package com.tagback.controller;
 
 import com.tagback.config.AuthOriginGuard;
+import com.tagback.config.PublicApi;
 import com.tagback.config.AuthCookies;
 import com.tagback.dto.auth.AuthRequests;
 import com.tagback.dto.auth.AuthResponses;
@@ -26,6 +27,7 @@ public class SignupController {
     }
 
     @PostMapping("/signup")
+    @PublicApi
     public ResponseEntity<AuthResponses.LoginResult> signup(@Valid @RequestBody AuthRequests.Signup input,
             @RequestHeader("Idempotency-Key") UUID key, HttpServletRequest request) {
         originGuard.check(request);

@@ -1,5 +1,7 @@
 package com.tagback.controller;
 
+import com.tagback.config.PublicApi;
+
 import com.tagback.service.sms.SmsAuthService;
 import java.util.UUID;
 import org.springframework.context.annotation.Profile;
@@ -15,6 +17,7 @@ public class MockSmsController {
     public MockSmsController(SmsAuthService service) { this.service = service; }
 
     @GetMapping("/{requestId}")
+    @PublicApi
     public ResponseEntity<SmsAuthService.MockCode> code(@PathVariable UUID requestId) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.getMockCode(requestId));
     }

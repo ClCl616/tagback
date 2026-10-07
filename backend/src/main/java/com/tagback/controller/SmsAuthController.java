@@ -1,5 +1,7 @@
 package com.tagback.controller;
 
+import com.tagback.config.PublicApi;
+
 import com.tagback.dto.auth.AuthRequests;
 import com.tagback.dto.auth.AuthResponses;
 import com.tagback.service.sms.SmsAuthService;
@@ -18,6 +20,7 @@ public class SmsAuthController {
     public SmsAuthController(SmsAuthService service) { this.service = service; }
 
     @PostMapping("/requests")
+    @PublicApi
     public ResponseEntity<AuthResponses.SmsRequested> request(
             @Valid @RequestBody AuthRequests.SmsRequest input,
             @RequestHeader("Idempotency-Key") UUID idempotencyKey) {
@@ -25,6 +28,7 @@ public class SmsAuthController {
     }
 
     @PostMapping("/verifications")
+    @PublicApi
     public ResponseEntity<AuthResponses.SmsVerified> verify(@Valid @RequestBody AuthRequests.SmsVerification input) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.verify(input));
     }
