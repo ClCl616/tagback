@@ -8,6 +8,7 @@ import { emitTag } from '../shared/nfc';
 import { normalizeUid } from '../shared/nfcUid';
 import { ErrorBox, useResource } from '../shared/ui';
 import type { DemoControls, Fault } from '../shared/types';
+import { MockItemTools } from './MockItemTools';
 export default function Simulator() {
   const [state, setState] = useState(controls);
   useEffect(() => {
@@ -131,6 +132,7 @@ export default function Simulator() {
           새 UID로 신규 연결을, 이미 연결한 UID를 다시 보내 중복 태그 오류를 테스트할 수 있습니다.
         </p>
       </section>
+      <MockItemTools count={r.data?.items.length} reload={r.reload} />
       <section>
         <h2>시연 계정</h2>
         <p>

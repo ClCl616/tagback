@@ -2699,3 +2699,17 @@ dd {
 @media (max-width: 600px) {
   .sim-links { flex-wrap: wrap; gap: 12px; }
 }
+
+.sim-item-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.sim-item-fields label {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+}
+@media (max-width: 600px) {
+  .sim-item-fields label { grid-template-columns: 1fr; }
+}
