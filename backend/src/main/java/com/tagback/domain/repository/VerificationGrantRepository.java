@@ -27,5 +27,9 @@ public interface VerificationGrantRepository extends JpaRepository<VerificationG
     @Query("update VerificationGrant g set g.consumedAt = :now where g.id = :id and g.phoneNumber = :phone and g.purpose = :purpose and g.consumedAt is null and g.expiresAt > :now")
     int consumeIfAvailable(@Param("id") UUID id, @Param("phone") String phone,
                            @Param("purpose") SmsPurpose purpose, @Param("now") Instant now);
-}
 
+    @Modifying
+    @Transactional(propagation = Propagation.MANDATORY)
+    @Query("update VerificationGrant g set g.consumedAt = :now where g.phoneNumber = :phone and g.consumedAt is null")
+    int consumeAllForPhone(@Param("phone") String phone, @Param("now") Instant now);
+}

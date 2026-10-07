@@ -1,6 +1,7 @@
 package com.tagback.dto.auth;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -21,8 +22,20 @@ public final class AuthRequests {
     }
     public record Signup(
             @NotBlank @Size(max = 512) String verificationToken,
-            @NotNull @Pattern(regexp = "[0-9]{6}") String pin) {
+            @NotNull @Pattern(regexp = "[0-9]{6}") String pin,
+            @NotNull @Valid Profile profile) {
         @Override public String toString() { return "Signup[redacted]"; }
+    }
+    public record Profile(@NotBlank @Size(max = 40) String name,
+                          @NotBlank @Size(max = 40) String occupation) {}
+    public record PhoneLogin(@NotBlank @Size(max = 32) String phoneNumber,
+                             @NotNull @Pattern(regexp = "[0-9]{6}") String pin) {
+        @Override public String toString() { return "PhoneLogin[redacted]"; }
+    }
+    public record PinReset(
+            @NotBlank @Size(max = 512) String verificationToken,
+            @NotNull @Pattern(regexp = "[0-9]{6}") String pin) {
+        @Override public String toString() { return "PinReset[redacted]"; }
     }
     public record RegisteredLogin(@NotNull @Pattern(regexp = "[0-9]{6}") String pin) {
         @Override public String toString() { return "RegisteredLogin[redacted]"; }

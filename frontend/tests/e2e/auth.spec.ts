@@ -99,26 +99,22 @@ test('다른 브라우저 로그인 시뮬레이션으로 세션·등록 폐기'
   await expect(page.getByLabel('전화번호', { exact: true })).toBeVisible();
 });
 
-test('PIN 복구 보류와 승인된 복구, 자동 로그인 없음', async ({ page, context }) => {
+test('문자 인증 후 PIN 복구, 자동 로그인 없음', async ({ page }) => {
   await page.goto('/mobile/recover');
   await smsVerify(page);
-  await expect(page.getByRole('heading', { name: '추가 확인이 필요해요.' })).toBeVisible();
-  const sim = await context.newPage();
-  await sim.goto('/dev/simulator');
-  await sim.getByRole('button', { name: '이 번호 복구 승인 시연' }).click();
-  await page.evaluate(() => {
-    const db = JSON.parse(localStorage.getItem('tagback.mock.v1')!);
-    db.auth.sms.forEach((s: any) => (s.resendAt = 0));
-    localStorage.setItem('tagback.mock.v1', JSON.stringify(db));
-  });
-  await page.reload();
-  await smsVerify(page);
+  await expect(page.getByRole('heading', { name: '사용할 PIN 번호를 설정해 주세요.' })).toBeVisible();
   await page.getByLabel('PIN 번호').fill('246802');
   await page.getByRole('button', { name: '계속', exact: true }).click();
   await page.getByLabel('PIN 번호').fill('246802');
   await page.getByRole('button', { name: 'PIN 재설정', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'PIN이 재설정되었습니다.' })).toBeVisible();
   expect(await page.evaluate(() => localStorage.getItem('tagback.mobile.token'))).toBeNull();
+  await page.getByRole('link', { name: '로그인으로' }).click();
+  await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
+  await page.getByRole('button', { name: '다음', exact: true }).click();
+  await page.getByLabel('PIN 번호', { exact: true }).fill('246802');
+  await page.getByRole('button', { name: '로그인', exact: true }).click();
+  await expect(page).toHaveURL(/\/mobile$/);
 });
 
 test('전화번호 변경 후 기록 보존·인증 해제', async ({ page }) => {

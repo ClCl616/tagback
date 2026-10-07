@@ -11,8 +11,10 @@ public final class AuthResponses {
                               Instant expiresAt, String maskedPhoneNumber) {
         @Override public String toString() { return "SmsVerified[redacted]"; }
     }
+    public record PinResetResult(boolean completed) {}
     // String IDs keep the API independent of the BIGINT database representation.
-    public record UserSummary(String userId, String maskedPhoneNumber, String role) {}
+    public record UserSummary(String userId, String maskedPhoneNumber, String role,
+                              String name, String occupation) {}
     public record LoginResult(UserSummary user, Instant sessionExpiresAt,
                               Instant browserRegistrationExpiresAt) {}
     public record NewBrowserLoginResult(UserSummary user, Instant sessionExpiresAt,

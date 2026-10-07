@@ -133,7 +133,7 @@ public class SessionService {
 
     private AuthResponses.SessionStatus status(LoginSession session) {
         var user = session.getUser();
-        var summary = new AuthResponses.UserSummary(user.getId().toString(), mask(user.getPhoneNumber()), user.getRole().name());
+        var summary = new AuthResponses.UserSummary(user.getId().toString(), mask(user.getPhoneNumber()), user.getRole().name(), user.getName(), user.getOccupation());
         return new AuthResponses.SessionStatus(true, summary, session.getIdleExpiresAt());
     }
     private AuthResponses.BrowserStatus unregistered() { return new AuthResponses.BrowserStatus(false, null, null); }

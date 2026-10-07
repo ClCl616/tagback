@@ -105,10 +105,13 @@ class AuthSchemaIntegrationTest {
         assertEquals(0, sms.countSentSince("+821044444444", now));
         var pending = sms.saveAndFlush(new SmsVerification("+821044444444", SmsPurpose.SIGNUP,
                 token(), now.plusSeconds(300), now.plusSeconds(60), now));
-        assertEquals(1, sms.countByPhoneNumberAndDeliveryStatus(pending.getPhoneNumber(), SmsDeliveryStatus.PENDING));
-        assertEquals(1, sms.invalidateUnfinished(pending.getPhoneNumber(), SmsPurpose.SIGNUP, now));
+        var otherPurpose = sms.saveAndFlush(new SmsVerification("+821044444444", SmsPurpose.LOGIN,
+                token(), now.plusSeconds(300), now.plusSeconds(60), now));
+        assertEquals(2, sms.countByPhoneNumberAndDeliveryStatus(pending.getPhoneNumber(), SmsDeliveryStatus.PENDING));
+        assertEquals(2, sms.invalidateUnfinished(pending.getPhoneNumber(), now));
         em.clear();
         assertEquals(now, sms.findById(pending.getId()).orElseThrow().getInvalidatedAt());
+        assertEquals(now, sms.findById(otherPurpose.getId()).orElseThrow().getInvalidatedAt());
     }
 
     @Test

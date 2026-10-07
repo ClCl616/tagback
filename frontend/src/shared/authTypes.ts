@@ -1,3 +1,5 @@
+// Browser mock contract. HTTP field names, ISO timestamps, cookies, and error codes
+// are specified separately in docs/auth-api-contract.md.
 export type Purpose = 'access' | 'reset' | 'change';
 export type Challenge = { id: string; expiresAt: number; resendAt: number };
 export type Verification = {
@@ -5,7 +7,6 @@ export type Verification = {
   expiresAt: number;
   maskedPhone: string;
   existing: boolean;
-  canReset: boolean;
   needsPin: boolean;
 };
 export type LoginResult = { token: string; registration: string };

@@ -35,6 +35,17 @@ public class LoginController {
                 .body(result.response());
     }
 
+    @PostMapping("/phone")
+    @PublicApi
+    public ResponseEntity<AuthResponses.LoginResult> phone(@Valid @RequestBody AuthRequests.PhoneLogin input,
+            @RequestHeader("Idempotency-Key") UUID key, HttpServletRequest request) {
+        origins.check(request);
+        var result = service.phone(input, key);
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).header(HttpHeaders.SET_COOKIE,
+                cookies.issue(result.browserToken(), result.sessionToken(), result.response().browserRegistrationExpiresAt(), result.sessionAbsoluteExpiry()))
+                .body(result.response());
+    }
+
     @PostMapping("/new-browser")
     @PublicApi
     public ResponseEntity<AuthResponses.NewBrowserLoginResult> newBrowser(@Valid @RequestBody AuthRequests.NewBrowserLogin input,

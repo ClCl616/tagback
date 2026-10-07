@@ -89,7 +89,12 @@ describe('Mock service contract — not real server verification', () => {
     expect(db.rentals).toHaveLength(3);
     const v = await verified('01044445555');
     expect(v.needsPin).toBe(true);
-    expect(v.canReset).toBe(false);
+    mutate((db) => db.auth.sms.forEach((s: any) => (s.resendAt = 0)));
+    const recovery = await verified('01044445555', 'reset');
+    await authApi.resetPin('legacy-reset', recovery.proof, '246802', 'test');
+    const updated = JSON.parse(localStorage.getItem(DB_KEY)!).users.find((u: any) => u.id === 'legacy');
+    expect(updated.pinHash).toBeTruthy();
+    expect(updated.passwordHash).toBeUndefined();
   });
   it('PIN 정책: 순환/내림차순/3자리 반복 금지, 나머지 허용', () => {
     for (const pin of [
@@ -222,17 +227,15 @@ describe('Mock service contract — not real server verification', () => {
     await authApi.unregister(other.registration);
     expect(await authApi.registration(other.registration)).toBeNull();
   });
-  it('복구 보류, 승인된 PIN 재설정은 전체 인증 초기화·기록 유지', async () => {
+  it('SMS 인증 후 PIN 재설정은 전체 인증 초기화·기록 유지', async () => {
     const r = await login(),
       rows = await api.rentals(r.token);
     mutate((db) => db.auth.sms.forEach((s: any) => (s.resendAt = 0)));
     const v = await verified(MOCK.demoPhone, 'reset');
-    expect(v.canReset).toBe(false);
-    await expect(authApi.resetPin('reset', v.proof, '246802', 'test')).rejects.toMatchObject({
-      code: 'RECOVERY',
-    });
-    localStorage.setItem('tagback.mock.recovery-approved', MOCK.demoPhone);
     await authApi.resetPin('reset', v.proof, '246802', 'test');
+    await expect(authApi.resetPin('another-reset', v.proof, '246802', 'test')).rejects.toMatchObject({
+      code: 'SMS_REQUIRED',
+    });
     await expect(api.me(r.token)).rejects.toMatchObject({ code: 'AUTH' });
     expect(await authApi.registration(r.registration)).toBeNull();
     expect(JSON.parse(localStorage.getItem(DB_KEY)!).rentals).toHaveLength(rows.length);

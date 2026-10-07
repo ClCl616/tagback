@@ -2,11 +2,14 @@ package com.tagback;
 
 import com.tagback.config.AuthCookies;
 import com.tagback.controller.LoginController;
+import com.tagback.controller.PinResetController;
 import com.tagback.domain.entity.*;
 import com.tagback.domain.repository.*;
 import com.tagback.dto.auth.*;
 import com.tagback.exception.*;
 import com.tagback.service.LoginService;
+import com.tagback.service.PinResetService;
+import com.tagback.service.PinService;
 import com.tagback.service.SignupService;
 import com.tagback.service.sms.SmsAuthService;
 import com.tagback.service.sms.SmsSecrets;
@@ -40,6 +43,9 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 @Import(SmsMockApiIntegrationTest.TimeConfiguration.class)
 class LoginApiIntegrationTest {
     @Autowired LoginService login;
+    @Autowired PinResetService pinReset;
+    @Autowired PinResetController pinResetController;
+    @Autowired PinService pins;
     @Autowired LoginController controller;
     @Autowired SignupService signup;
     @Autowired SmsAuthService sms;
@@ -62,9 +68,12 @@ class LoginApiIntegrationTest {
     }
     @AfterEach void cleanup() {
         for (String phone : phones) {
+            for (Long id : jdbc.query("select user_id from users where phone_number = ?", (row, n) -> row.getLong(1), phone))
+                jdbc.update("delete from auth_operations where caller_scope_hash = ?", secrets.tokenHash("phone-login:" + id));
             for (UUID id : jdbc.query("select verification_grant_id from verification_grants where phone_number = ?", (row, n) -> row.getObject(1, UUID.class), phone)) {
                 jdbc.update("delete from auth_operations where caller_scope_hash in (?, ?)",
                         secrets.tokenHash("signup:" + id), secrets.tokenHash("new-browser-login:" + id));
+                jdbc.update("delete from auth_operations where caller_scope_hash = ?", secrets.tokenHash("pin-reset:" + id));
             }
             for (UUID id : jdbc.query("select browser_registration_id from browser_registrations where user_id in (select user_id from users where phone_number = ?)", (row, n) -> row.getObject(1, UUID.class), phone))
                 jdbc.update("delete from auth_operations where caller_scope_hash = ?", secrets.tokenHash("registered-login:" + id));
@@ -80,7 +89,7 @@ class LoginApiIntegrationTest {
     private Fixture account() {
         String phone = "+8210" + sequence.incrementAndGet();
         phones.add(phone);
-        var result = signup.signup(new AuthRequests.Signup(grant(phone, SmsPurpose.SIGNUP), "041527"), UUID.randomUUID());
+        var result = signup.signup(new AuthRequests.Signup(grant(phone, SmsPurpose.SIGNUP), "041527", new AuthRequests.Profile("테스트", "학생")), UUID.randomUUID());
         return new Fixture(phone, Long.parseLong(result.response().user().userId()), result.browserToken(), result.sessionToken());
     }
     private String grant(String phone, SmsPurpose purpose) {
@@ -94,6 +103,73 @@ class LoginApiIntegrationTest {
         var error = assertThrows(AuthException.class, action::run);
         assertEquals(code, error.code());
         return error;
+    }
+
+    @Test void phonePinLoginWorksWithoutSmsAndReplacesPreviousBrowser() throws Exception {
+        var account = account();
+        error(AuthErrorCode.PIN_MISMATCH, () -> login.phone(new AuthRequests.PhoneLogin(account.phone(), "041528"), UUID.randomUUID()));
+        assertEquals(1, users.findById(account.userId()).orElseThrow().getPinFailedCount());
+        UUID key = UUID.randomUUID();
+        mvc.perform(post("/api/v1/auth/login/phone").header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(new AuthRequests.PhoneLogin(account.phone(), "041527"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.user.name").value("테스트"))
+                .andExpect(jsonPath("$.user.occupation").value("학생"))
+                .andExpect(header().exists("Set-Cookie"));
+        assertEquals(SessionRevokedReason.SESSION_REPLACED,
+                sessions.findBySessionTokenHash(secrets.tokenHash(account.sessionToken())).orElseThrow().getRevokedReason());
+        assertTrue(login.phone(new AuthRequests.PhoneLogin(account.phone(), "041527"), key).previousBrowserRevoked());
+        assertEquals(1, jdbc.queryForObject("select count(*) from browser_registrations where user_id = ? and revoked_at is null", Long.class, account.userId()));
+    }
+
+    @Test void verifiedRecoverySmsResetsPinWithoutApprovalAndRevokesAuthentication() throws Exception {
+        var account = account();
+        failures(account, 20);
+        clock.advance(Duration.ofMinutes(1));
+        UUID requestId = UUID.fromString(sms.request(new AuthRequests.SmsRequest(account.phone(), SmsPurpose.PIN_RESET),
+                UUID.randomUUID()).requestId());
+        error(AuthErrorCode.VERIFICATION_INVALID,
+                () -> pinReset.reset(new AuthRequests.PinReset(requestId.toString(), "246802"), UUID.randomUUID()));
+        String token = sms.verify(new AuthRequests.SmsVerification(requestId.toString(), sms.getMockCode(requestId).code()))
+                .verificationToken();
+        UUID key = UUID.randomUUID();
+        var input = new AuthRequests.PinReset(token, "246802");
+        assertEquals(new AuthResponses.PinResetResult(true), pinReset.reset(input, key));
+        assertEquals(new AuthResponses.PinResetResult(true), pinReset.reset(input, key));
+        assertTrue(pins.matches("246802", users.findById(account.userId()).orElseThrow().getPinHash()));
+        assertFalse(pins.matches("041527", users.findById(account.userId()).orElseThrow().getPinHash()));
+        assertEquals(0, users.findById(account.userId()).orElseThrow().getPinFailedCount());
+        assertTrue(sessions.findValidByTokenHash(secrets.tokenHash(account.sessionToken()), clock.instant()).isEmpty());
+        error(AuthErrorCode.VERIFICATION_CONSUMED, () -> pinReset.reset(input, UUID.randomUUID()));
+        error(AuthErrorCode.IDEMPOTENCY_KEY_CONFLICT,
+                () -> pinReset.reset(new AuthRequests.PinReset(token, "246803"), key));
+
+        var response = mvc.perform(post("/api/v1/auth/login/registered")
+                        .cookie(new Cookie(AuthCookies.BROWSER_COOKIE, account.browserToken()))
+                        .header("Idempotency-Key", UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(new AuthRequests.RegisteredLogin("041527"))))
+                .andExpect(status().isUnauthorized()).andReturn().getResponse();
+        assertTrue(response.getContentAsString().contains("BROWSER_REGISTRATION_INVALID"));
+    }
+
+    @Test void pinResetRejectsOtherSmsPurposeAndClearsCookiesOnSuccess() throws Exception {
+        var account = account();
+        clock.advance(Duration.ofMinutes(1));
+        String loginToken = grant(account.phone(), SmsPurpose.LOGIN);
+        error(AuthErrorCode.VERIFICATION_PURPOSE_MISMATCH,
+                () -> pinReset.reset(new AuthRequests.PinReset(loginToken, "246802"), UUID.randomUUID()));
+        clock.advance(Duration.ofMinutes(1));
+        String resetToken = grant(account.phone(), SmsPurpose.PIN_RESET);
+        var resetMvc = standaloneSetup(pinResetController).setControllerAdvice(new ApiExceptionHandler()).build();
+        resetMvc.perform(post("/api/v1/auth/pin/reset")
+                        .header("Idempotency-Key", UUID.randomUUID())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(new AuthRequests.PinReset(resetToken, "246802"))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.completed").value(true))
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().exists("Set-Cookie"));
     }
 
     @Test void registeredLoginPersistsWaitDeduplicatesFailureAndResetsOnSuccess() throws Exception {

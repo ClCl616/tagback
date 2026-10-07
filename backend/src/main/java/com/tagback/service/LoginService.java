@@ -25,6 +25,7 @@ public class LoginService {
     private final SmsRequestGateRepository gates;
     private final AuthOperationRepository operations;
     private final PinService pins;
+    private final PhoneNumberNormalizer phones;
     private final SmsSecrets secrets;
     private final AuthProperties policy;
     private final Clock clock;
@@ -32,10 +33,36 @@ public class LoginService {
 
     public LoginService(UserRepository users, BrowserRegistrationRepository browsers, LoginSessionRepository sessions,
                         VerificationGrantRepository grants, SmsRequestGateRepository gates, AuthOperationRepository operations,
-                        PinService pins, SmsSecrets secrets, AuthProperties policy, Clock clock, ObjectMapper json) {
+                        PinService pins, PhoneNumberNormalizer phones, SmsSecrets secrets, AuthProperties policy, Clock clock, ObjectMapper json) {
         this.users = users; this.browsers = browsers; this.sessions = sessions; this.grants = grants;
-        this.gates = gates; this.operations = operations; this.pins = pins; this.secrets = secrets;
+        this.gates = gates; this.operations = operations; this.pins = pins; this.phones = phones; this.secrets = secrets;
         this.policy = policy; this.clock = clock; this.json = json;
+    }
+
+    @Transactional(noRollbackFor = PinLoginFailure.class)
+    public Result phone(AuthRequests.PhoneLogin input, UUID key) {
+        requirePinFormat(input.pin());
+        String phone = phones.normalize(input.phoneNumber());
+        var user = users.findByPhoneNumberForUpdate(phone)
+                .orElseThrow(() -> new AuthException(AuthErrorCode.PIN_MISMATCH));
+        Instant now = clock.instant();
+        String scope = secrets.tokenHash("phone-login:" + user.getId());
+        String fingerprint = secrets.keyedHash(scope + ":" + input.pin());
+        String browserToken = secrets.keyedHash("phone-login-browser:" + user.getId() + ":" + key);
+        String sessionToken = secrets.keyedHash("phone-login-session:" + user.getId() + ":" + key);
+        var replay = replay(scope, "PHONE_LOGIN", key, fingerprint, browserToken, sessionToken, now);
+        if (replay != null) return replay;
+        Instant operationExpiry = now.plus(policy.smsRequestWindow());
+        verifyPin(user, input.pin(), scope, "PHONE_LOGIN", key, fingerprint, operationExpiry);
+        now = clock.instant();
+        boolean replaced = browsers.existsByUserIdAndRevokedAtIsNull(user.getId());
+        sessions.revokeAllForUser(user.getId(), now, SessionRevokedReason.SESSION_REPLACED);
+        browsers.revokeAllForUser(user.getId(), now);
+        user.setPinFailureState(0, null);
+        var browser = browsers.saveAndFlush(new BrowserRegistration(user, secrets.tokenHash(browserToken),
+                now.plus(policy.browserRegistrationTtl()), now));
+        return finish(user, browser, browserToken, sessionToken, replaced, scope, "PHONE_LOGIN", key,
+                fingerprint, operationExpiry, now);
     }
 
     // Only explicit PIN failures commit. All failures during successful-login storage roll back.
@@ -109,7 +136,7 @@ public class LoginService {
         if (user.getPinFailedCount() >= 20) fail(AuthErrorCode.PIN_LOGIN_BLOCKED, null, scope, type, key, fingerprint, expiry, now);
         if (user.getPinLockedUntil() != null && user.getPinLockedUntil().isAfter(now))
             fail(AuthErrorCode.PIN_RETRY_WAIT, user.getPinLockedUntil(), scope, type, key, fingerprint, expiry, now);
-        if (user.getPinHash() == null) throw new AuthException(AuthErrorCode.RECOVERY_ADDITIONAL_CHECK_REQUIRED);
+        if (user.getPinHash() == null) throw new AuthException(AuthErrorCode.PIN_LOGIN_BLOCKED);
         if (pins.matches(pin, user.getPinHash())) return;
         now = clock.instant();
         int count = user.getPinFailedCount() + 1;
@@ -160,7 +187,7 @@ public class LoginService {
         Instant idleExpiry = now.plus(policy.sessionIdleTimeout());
         Instant absoluteExpiry = now.plus(policy.sessionAbsoluteTimeout());
         sessions.saveAndFlush(new LoginSession(browser, secrets.tokenHash(sessionToken), idleExpiry, absoluteExpiry, now));
-        var summary = new AuthResponses.UserSummary(user.getId().toString(), "010-****-" + user.getPhoneNumber().substring(user.getPhoneNumber().length() - 4), user.getRole().name());
+        var summary = new AuthResponses.UserSummary(user.getId().toString(), "010-****-" + user.getPhoneNumber().substring(user.getPhoneNumber().length() - 4), user.getRole().name(), user.getName(), user.getOccupation());
         var response = new AuthResponses.LoginResult(summary, idleExpiry, browser.getExpiresAt());
         var operation = new AuthOperation(scope, type, key.toString(), fingerprint, operationExpiry, now);
         operation.completeSuccessfully(json.writeValueAsString(new StoredResult(response, replaced)), now);
