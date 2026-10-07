@@ -1,5 +1,17 @@
+import type { AuthDatabase } from './authTypes';
 import type { Catalog, Code, Grant, Rental, User, Receipt } from './types';
 export type Database = Catalog & {
+  schemaVersion?: number;
+  auth?: AuthDatabase;
+  sms?: Array<{
+    id: string;
+    phone: string;
+    expiresAt: number;
+    resendAt: number;
+    attempts: number;
+    proof?: string;
+    used?: boolean;
+  }>;
   users: User[];
   sessions: Record<string, string>;
   codes: Code[];
@@ -37,14 +49,12 @@ export const kinds: Catalog['kinds'] = [
     art: 'cable',
   },
 ];
-export function seed(passwordHash: string): Database {
+export function seed(pinHash: string): Database {
   const now = Date.now();
   return {
+    schemaVersion: 2,
     kinds,
-    stations: [
-      { id: 'engineering', name: '공학관 대여소', location: '공학관 1층 · 학생 라운지' },
-      { id: 'library', name: '중앙도서관 대여소', location: '중앙도서관 1층 · 안내 데스크 옆' },
-    ],
+    stations: [{ id: 'engineering', name: '대전대 융합과학관', location: '융합과학관 2층 학생 라운지' }],
     items: [
       ...Array.from({ length: 8 }, (_, i) => ({
         id: `calc-${i + 1}`,
@@ -83,17 +93,8 @@ export function seed(passwordHash: string): Database {
         active: true,
         status: 'available',
       },
-      {
-        id: 'calc-9',
-        label: '계산기 009',
-        kindId: 'calc',
-        stationId: 'library',
-        tag: 'CALC-9',
-        active: true,
-        status: 'available',
-      },
     ],
-    users: [{ id: 'demo', phone: '01012345678', passwordHash }],
+    users: [{ id: 'demo', name: '김태백', occupation: '학생', phone: '01012345678', pinHash }],
     sessions: {},
     codes: [],
     grants: [],

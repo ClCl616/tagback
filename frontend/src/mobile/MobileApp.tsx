@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import {
   Link,
   NavLink,
@@ -16,27 +16,26 @@ import {
   ArrowRight,
   ChevronRight,
   Clock3,
-  Eye,
-  EyeOff,
   History,
   MapPin,
   Package,
   Search,
   Ticket,
   UserRound,
-  Check,
   ShieldCheck,
-  LogOut,
-  SlidersHorizontal,
+  RefreshCw,
 } from 'lucide-react';
-import { api, normalizePhone, passwordValid, phoneValid } from '../shared/api';
+import { api, ServiceError } from '../shared/api';
 import { MOBILE_TOKEN_KEY } from '../shared/config';
+import AuthFlow from './AuthFlow';
+import { authApi } from '../shared/auth';
 import { Badge, Brand, date, ErrorBox, Loading, ProductArt, useResource } from '../shared/ui';
 const Auth = createContext({ token: '', setToken: (_: string) => {} });
 function useAuth() {
   return useContext(Auth);
 }
 function MobileLayout() {
+  const location = useLocation();
   return (
     <div className="mobile-shell">
       <header className="mobile-header">
@@ -50,24 +49,26 @@ function MobileLayout() {
       <main className="mobile-main">
         <Outlet />
       </main>
-      <nav className="bottom-nav" aria-label="모바일 메뉴">
-        <NavLink to="/mobile" end>
-          <Search />
-          <span>물품 찾기</span>
-        </NavLink>
-        <NavLink to="/mobile/code">
-          <Ticket />
-          <span>대여 코드</span>
-        </NavLink>
-        <NavLink to="/mobile/rentals">
-          <Package />
-          <span>내 대여</span>
-        </NavLink>
-        <NavLink to="/mobile/history">
-          <History />
-          <span>이용 기록</span>
-        </NavLink>
-      </nav>
+      {!/^\/mobile\/(login|signup|recover|change-phone)/.test(location.pathname) && (
+        <nav className="bottom-nav" aria-label="모바일 메뉴">
+          <NavLink to="/mobile" end>
+            <Search />
+            <span>물품 찾기</span>
+          </NavLink>
+          <NavLink to="/mobile/code">
+            <Ticket />
+            <span>대여 코드</span>
+          </NavLink>
+          <NavLink to="/mobile/rentals">
+            <Package />
+            <span>내 대여</span>
+          </NavLink>
+          <NavLink to="/mobile/history">
+            <History />
+            <span>이용 기록</span>
+          </NavLink>
+        </nav>
+      )}
     </div>
   );
 }
@@ -83,10 +84,14 @@ function Back({ title }: { title: string }) {
 }
 function Explore() {
   const [params, setParams] = useSearchParams();
-  const station = params.get('station') || 'engineering';
+  const requestedStation = params.get('station');
   const search = params.get('q') || '';
   const category = params.get('category') || '전체';
   const r = useResource(() => api.catalog(), [], true);
+  const station =
+    r.data?.stations.find((s) => s.id === requestedStation)?.id ||
+    r.data?.stations[0]?.id ||
+    'engineering';
   const update = (key: string, value: string) => {
     const next = new URLSearchParams(params);
     next.set(key, value);
@@ -104,27 +109,30 @@ function Explore() {
     <>
       <section className="explore-intro">
         <div className="eyebrow">
-          <span /> OUR CAMPUS, SHARED.
+          <span /> 우리 캠퍼스의 공유 물품
         </div>
         <h1>
           필요한 순간,
           <br />
-          가까이 있는 <em>TagBack.</em>
+          <em>가볍게 빌려 쓰세요.</em>
         </h1>
-        <p>잠깐 필요한 물건, 함께 쓰면 되니까.</p>
+        <p>가까운 대여소에서 물품을 찾아보세요.</p>
       </section>
       <section className="explore-controls">
         <label className="station-select">
           <MapPin size={18} />
           <select
             aria-label="대여소 선택"
+            disabled={r.loading || !r.data}
             value={station}
             onChange={(e) => update('station', e.target.value)}
           >
-            <option value="engineering">공학관 대여소</option>
-            <option value="library">중앙도서관 대여소</option>
+            {r.data?.stations.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
           </select>
-          <span className="station-open">물품 조회</span>
         </label>
         <label className="search-field">
           <Search size={20} />
@@ -155,9 +163,16 @@ function Explore() {
       <section className="inventory">
         <div className="section-heading">
           <h2>
-            대여할 수 있는 물품 <span>{kinds.length}</span>
+            대여소 물품 <span>{kinds.length}</span>
           </h2>
-          <SlidersHorizontal size={17} />
+          <button
+            className="text-button"
+            disabled={r.loading}
+            onClick={r.reload}
+            aria-label="물품 목록 새로고침"
+          >
+            <RefreshCw size={17} /> 새로고침
+          </button>
         </div>
         <p className="section-caption">
           {r.data?.stations.find((s) => s.id === station)?.location ||
@@ -209,7 +224,7 @@ function Explore() {
           </div>
         )}
       </section>
-      <div className="how-banner">
+      <Link to="/mobile/code" className="how-banner">
         <div className="how-icon">
           <Ticket size={25} />
         </div>
@@ -218,7 +233,7 @@ function Explore() {
           <p>코드 확인 → 현장 키오스크 → NFC 인식</p>
         </div>
         <ChevronRight size={18} />
-      </div>
+      </Link>
       <footer className="mobile-footer">
         함께 쓰고, 다시 연결하다.<span>TagBack · 캠퍼스 공유 서비스</span>
       </footer>
@@ -228,8 +243,12 @@ function Explore() {
 function Detail() {
   const { id } = useParams();
   const [params] = useSearchParams();
-  const station = params.get('station') || 'engineering';
+  const requestedStation = params.get('station');
   const r = useResource(() => api.catalog(), [], true);
+  const station =
+    r.data?.stations.find((s) => s.id === requestedStation)?.id ||
+    r.data?.stations[0]?.id ||
+    'engineering';
   const { token } = useAuth();
   const kind = r.data?.kinds.find((k) => k.id === id);
   const location = r.data?.stations.find((s) => s.id === station);
@@ -255,6 +274,11 @@ function Detail() {
             <Badge tone={count ? 'green' : 'gray'}>{count ? '대여 가능' : '현재 대여 불가'}</Badge>
             <h1>{kind.name}</h1>
             <p className="muted">{kind.description}</p>
+            <div className="stock-toolbar">
+              <button className="text-button" onClick={r.reload} disabled={r.loading}>
+                <RefreshCw size={15} /> 재고 새로고침
+              </button>
+            </div>
             <div className="stock-panel">
               <div>
                 <span>대여 가능</span>
@@ -310,146 +334,9 @@ function Detail() {
     </>
   );
 }
-function AuthPage({ signup = false }: { signup?: boolean }) {
-  const [phone, setPhone] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirm, setConfirm] = useState('');
-  const [show, setShow] = useState(false);
-  const [error, setError] = useState<unknown>();
-  const [busy, setBusy] = useState(false);
-  const { setToken } = useAuth();
-  const nav = useNavigate();
-  const [params] = useSearchParams();
-  const next = params.get('next');
-  const destination =
-    next && /^\/mobile(?:\/|$)/.test(next) && !/^\/mobile\/(login|signup)/.test(next)
-      ? next
-      : '/mobile/code';
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (busy) return;
-    setError(undefined);
-    if (!phoneValid(phone))
-      return setError(new Error('010으로 시작하는 11자리 전화번호를 입력해 주세요.'));
-    if (signup && !passwordValid(password))
-      return setError(new Error('비밀번호는 영문·숫자·특수문자를 포함해 8자 이상 입력해 주세요.'));
-    if (signup && password !== confirm)
-      return setError(new Error('비밀번호 확인이 일치하지 않습니다. 다시 입력해 주세요.'));
-    setBusy(true);
-    try {
-      const token = signup ? await api.signup(phone, password) : await api.login(phone, password);
-      setToken(token);
-      nav(destination, { replace: true });
-    } catch (e) {
-      setError(e);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <>
-      <Back title={signup ? '회원가입' : '로그인'} />
-      <div className="page-content auth-content">
-        <div className="round-icon">
-          <UserRound />
-        </div>
-        <h1>
-          {signup ? (
-            <>
-              반가워요,
-              <br />
-              함께 쓰는 일상의 시작.
-            </>
-          ) : (
-            <>
-              다시 만나 반가워요.
-              <br />
-              필요한 순간을 함께해요.
-            </>
-          )}
-        </h1>
-        <p className="muted">전화번호로 간편하게 계정을 이용하세요.</p>
-        <form onSubmit={submit} noValidate>
-          <label>
-            전화번호
-            <input
-              type="tel"
-              autoComplete="tel"
-              placeholder="010-0000-0000"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              required
-            />
-          </label>
-          <label>
-            비밀번호
-            <div className="password-input">
-              <input
-                type={show ? 'text' : 'password'}
-                autoComplete={signup ? 'new-password' : 'current-password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="비밀번호를 입력해 주세요"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShow(!show)}
-                aria-label={show ? '비밀번호 숨기기' : '비밀번호 표시'}
-              >
-                {show ? <EyeOff size={20} /> : <Eye size={20} />}
-              </button>
-            </div>
-          </label>
-          {signup && (
-            <>
-              <div className="password-rules">
-                {[
-                  [password.length >= 8, '8자 이상'],
-                  [/[a-zA-Z]/.test(password), '영문'],
-                  [/[0-9]/.test(password), '숫자'],
-                  [/[\p{P}\p{S}]/u.test(password), '특수문자'],
-                ].map(([valid, label]) => (
-                  <span className={valid ? 'met' : ''} key={String(label)}>
-                    <Check size={13} />
-                    {label}
-                  </span>
-                ))}
-              </div>
-              <label>
-                비밀번호 확인
-                <input
-                  type={show ? 'text' : 'password'}
-                  autoComplete="new-password"
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                  placeholder="비밀번호를 한 번 더 입력해 주세요"
-                  required
-                />
-              </label>
-              <p className="note-text">
-                1인 1계정이 원칙입니다. 본인 확인 방식은 준비 중이며, 이 시연의 전화번호 입력은 본인
-                인증을 의미하지 않습니다.
-              </p>
-            </>
-          )}
-          <ErrorBox error={error} />
-          <button className="primary full" disabled={busy} type="submit">
-            {busy ? '처리 중…' : signup ? '가입하고 시작하기' : '로그인'}
-            <ArrowRight size={19} />
-          </button>
-        </form>
-        <p className="auth-switch">
-          {signup ? '이미 계정이 있으신가요?' : '아직 계정이 없으신가요?'}{' '}
-          <Link
-            to={`/mobile/${signup ? 'login' : 'signup'}?next=${encodeURIComponent(destination)}`}
-          >
-            {signup ? '로그인' : '회원가입'}
-          </Link>
-        </p>
-      </div>
-    </>
-  );
+function AuthPage({ mode = 'access' }: { mode?: 'access' | 'signup' | 'reset' | 'change' }) {
+  const { token, setToken } = useAuth();
+  return <AuthFlow mode={mode} token={token} onLogin={setToken} onClear={() => setToken('')} />;
 }
 function Protected({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
@@ -477,17 +364,7 @@ function AuthError({ next }: { next: string }) {
 }
 function CodePage() {
   const { token } = useAuth();
-  const [renew, setRenew] = useState(0);
-  const lastRenew = useRef(0);
-  const r = useResource(
-    () => {
-      const requested = renew !== lastRenew.current;
-      lastRenew.current = renew;
-      return api.code(token, requested);
-    },
-    [token, renew],
-    true,
-  );
+  const r = useResource(() => api.code(token, true), [token], true);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -495,6 +372,9 @@ function CodePage() {
   }, []);
   const expired = !!r.data && r.data.expiresAt <= now;
   const used = r.data?.used;
+  useEffect(() => {
+    if ((expired || used) && !r.loading && !r.error) r.reload();
+  }, [expired, used, r.loading, r.error]);
   const seconds = Math.max(0, Math.ceil(((r.data?.expiresAt || 0) - now) / 1000));
   return (
     <div className="page-content">
@@ -525,11 +405,6 @@ function CodePage() {
                 ? '유효시간이 지났어요'
                 : `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')} 남음`}
           </p>
-          {(used || expired) && (
-            <button className="primary" onClick={() => setRenew((n) => n + 1)}>
-              새 코드 확인하기
-            </button>
-          )}
         </div>
       )}
       <div className="instructions">
@@ -556,7 +431,6 @@ function CodePage() {
           대여 완료 여부는 내 대여에서 확인할 수 있어요.
         </p>
       </div>
-      <p className="demo-footnote">시연 코드 · 형식과 유효시간은 임시 설정입니다.</p>
     </div>
   );
 }
@@ -639,21 +513,36 @@ function Rentals({ history = false }: { history?: boolean }) {
           })}
         </div>
       )}
-      {!history && (
-        <Link to="/mobile/history" className="list-link">
-          과거 대여 기록 보기
-          <ChevronRight size={18} />
-        </Link>
-      )}
     </div>
   );
 }
 function Account() {
   const { token, setToken } = useAuth();
-  const r = useResource(() => api.me(token), [token]);
+  const r = useResource(
+    async () => ({ ...(await api.me(token)), rentals: await api.rentals(token) }),
+    [token],
+    true,
+  );
+  const [error, setError] = useState<unknown>();
+  const [busy, setBusy] = useState(false);
+  const nav = useNavigate();
+  async function leave() {
+    if (busy) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      await authApi.logout(token);
+      setToken('');
+      nav('/mobile/login');
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <div className="page-content">
-      <h1>내 계정</h1>
+      <h1>마이페이지</h1>
       {r.authError ? (
         <AuthError next="/mobile/account" />
       ) : r.loading ? (
@@ -662,43 +551,127 @@ function Account() {
         <ErrorBox error={r.error} retry={r.reload} />
       ) : (
         <>
-          <p className="account-phone">
-            {normalizePhone(r.data?.phone || '').replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3')}
-          </p>
-          <button
-            className="secondary"
-            onClick={async () => {
-              await api.logout(token);
-              setToken('');
-            }}
-          >
-            <LogOut size={18} />
+          <section className="account-profile">
+            <div className="profile-avatar">
+              <UserRound size={30} />
+            </div>
+            <div>
+              <h2>{r.data?.name}님</h2>
+              <p>{r.data?.occupation || 'TagBack 회원'}</p>
+            </div>
+          </section>
+          <section className="account-summary" aria-label="대여 현황">
+            <Link to="/mobile/rentals">
+              <strong>{r.data?.rentals.filter((x) => !x.returnedAt).length ?? 0}</strong>
+              <span>대여 중</span>
+            </Link>
+            <Link to="/mobile/history">
+              <strong>{r.data?.rentals.filter((x) => !!x.returnedAt).length ?? 0}</strong>
+              <span>이용 기록</span>
+            </Link>
+          </section>
+          <Link className="account-code" to="/mobile/code">
+            <Ticket size={24} />
+            <div>
+              <strong>내 대여 코드</strong>
+              <span>키오스크에서 대여할 때 확인하세요</span>
+            </div>
+            <ChevronRight size={20} />
+          </Link>
+          <section className="account-settings">
+            <h2>계정 관리</h2>
+            <Link to="/mobile/change-phone">
+              <span>전화번호 변경</span>
+              <ChevronRight size={18} />
+            </Link>
+            <Link to="/mobile/recover">
+              <span>PIN 재설정</span>
+              <ChevronRight size={18} />
+            </Link>
+          </section>
+          <button className="text-button account-logout" disabled={busy} onClick={leave}>
             로그아웃
           </button>
+          <ErrorBox error={error} />
         </>
       )}
     </div>
   );
 }
 export default function MobileApp() {
-  const [token, setTokenState] = useState(() => sessionStorage.getItem(MOBILE_TOKEN_KEY) || '');
+  const [token, setTokenState] = useState(() => localStorage.getItem(MOBILE_TOKEN_KEY) || '');
   const setToken = (v: string) => {
     setTokenState(v);
-    if (v) sessionStorage.setItem(MOBILE_TOKEN_KEY, v);
-    else sessionStorage.removeItem(MOBILE_TOKEN_KEY);
+    if (v) localStorage.setItem(MOBILE_TOKEN_KEY, v);
+    else localStorage.removeItem(MOBILE_TOKEN_KEY);
+    window.dispatchEvent(new Event('tagback-session'));
   };
+  const [sessionNotice, setSessionNotice] = useState('');
+  useEffect(() => {
+    let active = true;
+    let checking = false;
+    const sync = async () => {
+      const current = localStorage.getItem(MOBILE_TOKEN_KEY) || '';
+      if (active) setTokenState(current);
+      if (!current || checking) return;
+      checking = true;
+      try {
+        await api.me(current);
+      } catch (e) {
+        if (
+          active &&
+          e instanceof ServiceError &&
+          e.code === 'AUTH' &&
+          localStorage.getItem(MOBILE_TOKEN_KEY) === current
+        ) {
+          localStorage.removeItem(MOBILE_TOKEN_KEY);
+          setTokenState('');
+          setSessionNotice(e.message);
+        }
+      } finally {
+        checking = false;
+      }
+    };
+    const storage = (e: StorageEvent) => {
+      if (e.key === MOBILE_TOKEN_KEY || e.key === 'tagback.mock.v1') void sync();
+    };
+    void sync();
+    window.addEventListener('storage', storage);
+    window.addEventListener('tagback-session', sync);
+    window.addEventListener('tagback-change', sync);
+    window.addEventListener('focus', sync);
+    const timer = setInterval(sync, 30_000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      window.removeEventListener('storage', storage);
+      window.removeEventListener('tagback-session', sync);
+      window.removeEventListener('tagback-change', sync);
+      window.removeEventListener('focus', sync);
+    };
+  }, []);
   const location = useLocation();
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [location.pathname]);
   return (
     <Auth.Provider value={{ token, setToken }}>
+      {sessionNotice && (
+        <div className="session-notice" role="alert">
+          {sessionNotice}
+          <button className="text-button" onClick={() => setSessionNotice('')}>
+            닫기
+          </button>
+        </div>
+      )}
       <Routes>
         <Route element={<MobileLayout />}>
           <Route index element={<Explore />} />
           <Route path="items/:id" element={<Detail />} />
-          <Route path="login" element={<AuthPage />} />
-          <Route path="signup" element={<AuthPage signup />} />
+          <Route path="login" element={<AuthPage key="login" />} />
+          <Route path="recover" element={<AuthPage key="reset" mode="reset" />} />
+          <Route path="change-phone" element={<AuthPage key="change" mode="change" />} />
+          <Route path="signup" element={<AuthPage key="signup" mode="signup" />} />
           <Route
             path="code"
             element={
