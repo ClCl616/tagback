@@ -26,7 +26,15 @@ export type Rental = {
   returnedAt?: number;
   condition?: 'normal' | 'damaged';
 };
-export type User = { id: string; phone: string; passwordHash: string };
+export type User = {
+  id: string;
+  phone: string;
+  name?: string;
+  occupation?: string;
+  pinHash?: string;
+  passwordHash?: string;
+};
+export type SmsChallenge = { id: string; expiresAt: number; resendAt: number };
 export type Code = { value: string; userId: string; expiresAt: number; used: boolean };
 export type Grant = {
   token: string;
@@ -42,15 +50,13 @@ export type DemoControls = {
   reader: boolean;
   service: boolean;
   nextFault: Fault;
-  nextTarget: 'any' | 'read' | 'verify' | 'scan' | 'save';
+  nextTarget: 'any' | 'read' | 'auth' | 'verify' | 'scan' | 'save';
   sessionSeconds: number;
 };
 export interface ServiceApi {
   catalog(): Promise<Catalog>;
-  login(phone: string, password: string): Promise<string>;
-  signup(phone: string, password: string): Promise<string>;
   logout(token: string): Promise<void>;
-  me(token: string): Promise<{ phone: string }>;
+  me(token: string): Promise<{ phone: string; name: string; occupation: string }>;
   code(token: string, renew?: boolean): Promise<Code>;
   rentals(token: string): Promise<Rental[]>;
   verifyCode(value: string): Promise<Grant>;

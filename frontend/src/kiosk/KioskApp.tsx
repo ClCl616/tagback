@@ -267,8 +267,8 @@ export default function KioskApp() {
         <div className="kiosk-station">
           <MapPin size={20} />
           <div>
-            <strong>공학관 대여소</strong>
-            <span>공학관 1층 · 학생 라운지</span>
+            <strong>대전대 융합과학관</strong>
+            <span>융합과학관 2층 학생 라운지</span>
           </div>
         </div>
         <div className={`reader-health ${health.reader && health.service ? '' : 'offline'}`}>
@@ -566,7 +566,7 @@ export default function KioskApp() {
                 <p className="muted">
                   {mode === 'rent'
                     ? '인식만으로 대여되지 않습니다. 다음 화면에서 대여를 확정해 주세요.'
-                    : 'NFC 인식은 물품 식별 단계이며, 실제 회수를 확인하는 기능은 아닙니다.'}
+                    : '인식 후 물품 상태를 확인하고 반납을 확정해 주세요.'}
                 </p>
                 {!!error && (
                   <button
@@ -591,7 +591,7 @@ export default function KioskApp() {
                   <ProductArt kind={kind?.art || 'calculator'} />
                   <div>
                     <h2>{kind?.name}</h2>
-                    <p>{item?.label} · 공학관 대여소</p>
+                    <p>{item?.label} · 대전대 융합과학관</p>
                   </div>
                 </div>
                 <div className="condition-options">
@@ -650,7 +650,7 @@ export default function KioskApp() {
                   <dl>
                     <div>
                       <dt>대여소</dt>
-                      <dd>공학관 대여소</dd>
+                      <dd>대전대 융합과학관</dd>
                     </div>
                     <div>
                       <dt>개별 물품</dt>
@@ -666,7 +666,6 @@ export default function KioskApp() {
                           <dt>반납 예정</dt>
                           <dd>
                             {date(Date.now() + MOCK.rentalMs)}
-                            <small>확정 시점 기준 · 시연 대여 기간</small>
                           </dd>
                         </div>
                       </>
@@ -737,7 +736,6 @@ export default function KioskApp() {
         ) : (
           <>
             <span>TagBack · 함께 쓰고, 다시 연결하다.</span>
-            <span className="demo-label">서비스 체험 · 모의 연동</span>
           </>
         )}
       </footer>

@@ -17,11 +17,11 @@ NFC 태그로 공용물품을 식별하고 반출·반납, 이용 이력, 연체
 | 디렉터리 | 용도 | 기술/상태 |
 |---|---|---|
 | `frontend/` | 모바일 사용자·공용 키오스크 화면 | React + TypeScript + Vite, mock 서비스 체험 구현 |
-| `backend/` | 인증·물품·대여·태그 API | Spring Boot, 초기화 예정 |
-| `nfc/` | 리더기·스마트폰 인식 검증 | 연동 방식 검증 예정 |
+| `backend/` | 인증·물품·대여·태그 API | Spring Boot·PostgreSQL·Flyway 초기 환경, 서비스 API 후속 구현 |
+| `nfc/` | 리더기·키오스크 연동 | Java 브리지 폴더 구조·검증 계획, 실제 통신 미구현 |
 | `docs/` | 설계·결정·개발 기록 | 팀 합의 사항 기록 |
 
-프론트엔드 실행과 테스트는 [frontend/README.md](frontend/README.md)를 참고하세요. `/mobile`과 `/kiosk`는 독립된 UI입니다. API·NFC는 교체 가능한 mock adapter로 구성했으며 실제 서버·장비 연동은 아직 없습니다. 백엔드·DB와 실제 운영 런타임은 미확정입니다. 관리자 기능은 별도 후속 범위입니다.
+프론트엔드 실행과 테스트는 [frontend/README.md](frontend/README.md)를 참고하세요. `/mobile`과 `/kiosk`는 독립된 UI입니다. API·NFC·회원가입 문자 인증은 mock이며 실제 서버·SMS·장비 연결은 추후 진행합니다. 현재 대여소는 공학관 1곳이고, 확장을 위해 선택 UI와 대여소 타입은 유지합니다. 백엔드 DB 환경은 [설정 안내](docs/database-setup.md)를 참고하세요. 관리자 기능은 별도 후속 범위입니다.
 
 신청서는 스마트폰 NFC·모바일 웹 방식을 명시합니다. 외장 리더기·키오스크 방식과의 차이는 검증 결과와 변경 결정으로 기록합니다.
 
@@ -48,6 +48,10 @@ NFC 태그로 공용물품을 식별하고 반출·반납, 이용 이력, 연체
 자동 빌드·테스트와 필수 검사 설정은 [CI 안내](docs/ci.md)를 참고하세요.
 
 ## 문서
+
+- [현재 전화번호·PIN 인증 및 브라우저 등록](docs/pin-auth.md)
+
+- [모바일 인증·단일 대여소 및 연동 계약](docs/mobile-auth-catalog.md)
 
 - [결정 기록](docs/decisions.md)
 - [5·6주차 계획](docs/weeks-05-06.md)

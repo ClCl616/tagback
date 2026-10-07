@@ -1,3 +1,4 @@
+import { loginMobile, smsVerify, enterProfile } from './auth-helpers';
 import { test, expect, type Page } from '@playwright/test';
 
 test('조회 실패·네트워크 오류 재시도 및 개발 시뮬레이터 연결', async ({ page, context }) => {
@@ -10,9 +11,9 @@ test('조회 실패·네트워크 오류 재시도 및 개발 시뮬레이터 �
   await expect(mobile.getByRole('alert')).toContainText('네트워크 연결이 끊겼습니다');
   await mobile.getByRole('button', { name: '다시 시도', exact: true }).click();
   await expect(mobile.getByRole('heading', { name: '공학용 계산기', exact: true })).toBeVisible();
-  await mobile.getByLabel('대여소 선택').selectOption('library');
-  await expect(mobile.locator('.product-card')).toHaveCount(1);
-  await expect(mobile.locator('.product-card')).toContainText('1개');
+  await expect(mobile.getByLabel('대여소 선택').locator('option')).toHaveCount(1);
+  await mobile.getByLabel('대여소 선택').selectOption('engineering');
+  await expect(mobile.locator('.product-card')).toHaveCount(4);
   const kiosk = await context.newPage();
   await kiosk.goto('/kiosk');
   await page.getByLabel('서비스 연결', { exact: true }).uncheck();
@@ -80,10 +81,7 @@ test('저장 중 종료한 뒤 늦은 응답은 다음 이용자 화면에 표�
   await expect(kiosk.getByRole('heading', { name: '대여가 완료되었습니다' })).not.toBeVisible();
 });
 async function login(page: Page) {
-  await page.goto('/mobile/login');
-  await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
-  await page.getByLabel('비밀번호', { exact: true }).fill('Tagback1!');
-  await page.getByRole('button', { name: '로그인', exact: true }).click();
+  await loginMobile(page);
   await expect(page.locator('.code-number')).toHaveText(/\d{6}/);
   return (await page.locator('.code-number').textContent())!;
 }
@@ -134,26 +132,18 @@ test('비회원 탐색, 재고 없음, 320px 넘침 없음', async ({ page }) =>
     page.getByRole('button', { name: '지금은 대여 가능한 물품이 없어요' }),
   ).toBeDisabled();
   await page.goto('/mobile/rentals');
-  await expect(page.getByRole('button', { name: '로그인', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '다음', exact: true })).toBeVisible();
 });
-test('가입 검증, 중복 계정, 로그인 복귀, 개인 기록', async ({ page }) => {
+test('가입 후 원래 목적지 복귀와 개인 기록', async ({ page }) => {
   await page.goto('/mobile/signup?next=%2Fmobile%2Fhistory');
-  await page.getByLabel('전화번호', { exact: true }).fill('01099998888');
-  await page.getByLabel('비밀번호', { exact: true }).fill('short');
-  await page.getByLabel('비밀번호 확인', { exact: true }).fill('short');
-  await page.getByRole('button', { name: '가입하고 시작하기' }).click();
-  await expect(page.getByRole('alert')).toContainText('8자 이상');
-  await page.getByLabel('비밀번호', { exact: true }).fill('Goodpass1!');
-  await page.getByLabel('비밀번호 확인', { exact: true }).fill('Goodpass1!');
-  await page.getByRole('button', { name: '가입하고 시작하기' }).click();
+  await enterProfile(page);
+  await smsVerify(page, '01099998888');
+  await page.getByLabel('PIN 번호').fill('048259');
+  await page.getByRole('button', { name: '계속', exact: true }).click();
+  await page.getByLabel('PIN 번호').fill('048259');
+  await page.getByRole('button', { name: '가입 완료', exact: true }).click();
   await expect(page).toHaveURL(/history/);
   await expect(page.getByText('아직 이용 기록이 없어요')).toBeVisible();
-  await page.goto('/mobile/signup');
-  await page.getByLabel('전화번호', { exact: true }).fill('01099998888');
-  await page.getByLabel('비밀번호', { exact: true }).fill('Goodpass1!');
-  await page.getByLabel('비밀번호 확인', { exact: true }).fill('Goodpass1!');
-  await page.getByRole('button', { name: '가입하고 시작하기' }).click();
-  await expect(page.getByRole('alert')).toContainText('이미 가입된');
 });
 test('전체 대여 → 정상 반납 → 손상 반납, 모바일 동기화', async ({ page, context }) => {
   const code = await login(page);
@@ -163,7 +153,8 @@ test('전체 대여 → 정상 반납 → 손상 반납, 모바일 동기화', a
   await expect(kiosk.getByRole('heading', { name: '대여 정보를 확인해 주세요' })).toBeVisible();
   await kiosk.getByRole('button', { name: '대여 확정', exact: true }).click();
   await expect(kiosk.getByRole('heading', { name: '대여가 완료되었습니다' })).toBeVisible();
-  await expect(page.getByText('이미 사용한 코드예요')).toBeVisible();
+  await expect(page.locator('.code-number')).not.toHaveText(code);
+  await expect(page.locator('.code-number')).toHaveText(/\d{6}/);
   await page.goto('/mobile');
   await expect(page.locator('.product-card').first()).toContainText('4개');
   await page.goto('/mobile/rentals');
@@ -285,7 +276,7 @@ test('만료 코드, 재고 충돌, 연결 끊김, 요청 시간 초과 복구',
   await kiosk.getByRole('button', { name: '코드 확인', exact: true }).click();
   await expect(kiosk.getByRole('alert')).toContainText('만료된 코드');
   await page.reload();
-  await page.getByRole('button', { name: '새 코드 확인하기' }).click();
+  await expect(page.locator('.code-number')).toHaveText(/\d{6}/);
   await expect(page.locator('.code-number')).toHaveText(/\d{6}/);
   code = (await page.locator('.code-number').textContent())!;
   await kiosk.getByLabel('일회성 대여 코드').fill(code);

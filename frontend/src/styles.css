@@ -2197,3 +2197,494 @@ dd {
     font-size: 12px;
   }
 }
+.sms-panel {
+  padding: 18px;
+  border: 1px solid var(--line, #dce5de);
+  border-radius: 18px;
+  background: #f4f8f3;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.sms-heading {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.sms-panel p {
+  margin: 0;
+}
+.sms-panel .sms-notice {
+  color: #205b45;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.auth-success {
+  margin: 16px 20px 0;
+  padding: 12px 16px;
+  background: #e8f3e8;
+  color: #205b45;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.auth-flow {
+  max-width: 460px;
+  margin: auto;
+}
+.auth-topline {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 36px;
+}
+.auth-symbol {
+  width: 28px;
+  height: 28px;
+  padding: 16px;
+  box-sizing: content-box;
+  border-radius: 20px;
+  background: #edf2e7;
+  color: #205b45;
+  margin-bottom: 18px;
+}
+.auth-flow h1 {
+  font-size: 26px;
+  line-height: 1.45;
+  word-break: keep-all;
+}
+.auth-mask {
+  color: #66756e;
+  letter-spacing: 2px;
+  margin: 16px 0 26px;
+}
+.auth-flow form {
+  display: grid;
+  gap: 16px;
+}
+.auth-flow label {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+}
+.pin-field {
+  position: relative;
+  min-height: 64px;
+  border-radius: 12px;
+}
+.pin-field:focus-within {
+  outline: 2px solid #205b45;
+  outline-offset: 4px;
+}
+.pin-dots {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 17px;
+  min-height: 64px;
+}
+.pin-dots i {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #e0e5df;
+}
+.pin-dots i.filled {
+  background: #205b45;
+}
+.pin-field input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: text;
+}
+.pin-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 18px 0;
+}
+.pin-keypad button {
+  min-height: 60px;
+  border: 0;
+  border-radius: 16px;
+  background: #f2f5ef;
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pin-keypad button:nth-child(10) {
+  font-size: 12px;
+}
+.pin-keypad button:hover {
+  background: #e3eddf;
+}
+.auth-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px;
+  margin: 24px 0;
+  font-size: 13px;
+  color: #205b45;
+}
+.auth-notice {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #205b45;
+}
+.account-actions {
+  display: grid;
+  gap: 12px;
+}
+.session-notice {
+  max-width: 580px;
+  margin: 0 auto;
+  padding: 14px;
+  background: #fff1d8;
+  font-size: 14px;
+}
+
+.auth-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.auth-label-row label {
+  margin: 0;
+}
+.auth-label-row .note-text {
+  white-space: nowrap;
+}
+.auth-sms-field input {
+  width: 100%;
+}
+
+.signup-progress {
+  color: var(--muted);
+  font-size: 13px;
+}
+.account-profile {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 28px 0;
+}
+.profile-avatar {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #e9efdf;
+  flex-shrink: 0;
+}
+.account-profile h2 {
+  margin: 0 0 6px;
+  font-size: 24px;
+  overflow-wrap: anywhere;
+}
+.account-profile p {
+  margin: 0;
+  color: #788580;
+  overflow-wrap: anywhere;
+}
+.account-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: #f0f3ec;
+  border-radius: 20px;
+  padding: 22px 0;
+}
+.account-summary a {
+  display: grid;
+  text-align: center;
+  gap: 6px;
+}
+.account-summary a + a {
+  border-left: 1px solid #d9e0d6;
+}
+.account-summary strong {
+  font-size: 28px;
+}
+.account-summary span {
+  font-size: 13px;
+}
+.account-code {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 16px;
+  margin: 18px 0 30px;
+  border: 1px solid #dce3d8;
+  border-radius: 16px;
+}
+.account-code div {
+  flex: 1;
+  min-width: 0;
+}
+.account-code span {
+  display: block;
+  font-size: 12px;
+  color: #788580;
+  margin-top: 5px;
+}
+.account-settings h2 {
+  font-size: 14px;
+  color: #788580;
+  margin-bottom: 6px;
+}
+.account-settings a {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 58px;
+  border-bottom: 1px solid #e6eae1;
+}
+.account-logout {
+  margin-top: 24px;
+  color: #788580;
+}
+
+/* Authentication card and quiet footer navigation. */
+.auth-login-card {
+  border: 1px solid #dce3d8;
+  border-radius: 22px;
+  padding: 28px 24px 24px;
+  background: #fff;
+}
+.auth-login-card > .auth-symbol {
+  display: block;
+  margin: 0 auto 18px;
+}
+.auth-login-card h1 {
+  text-align: center;
+  font-size: 23px;
+  margin: 0 0 16px;
+}
+.auth-login-card .auth-mask {
+  text-align: center;
+  font-size: 14px;
+  margin: 0 0 20px;
+}
+.auth-login-card .pin-keypad {
+  margin: 8px 0;
+}
+.auth-login-card .pin-keypad button {
+  border-radius: 10px;
+  min-height: 52px;
+  font-size: 22px;
+}
+.auth-login-card .pin-keypad button:nth-child(10) {
+  font-size: 11px;
+}
+.auth-flow .auth-links {
+  gap: 0;
+  align-items: center;
+  margin: 22px 0;
+}
+.auth-flow .auth-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 16px;
+  position: relative;
+  text-decoration: none;
+  color: #6b7871;
+}
+.auth-flow .auth-links a + a::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  height: 12px;
+  width: 1px;
+  background: #d4dcd4;
+}
+.auth-flow .auth-links a:last-child {
+  color: #205b45;
+  font-weight: 600;
+}
+.auth-flow .auth-links a:hover {
+  text-decoration: underline;
+}
+@media (max-width: 360px) {
+  .auth-login-card {
+    padding: 24px 16px 20px;
+    border-radius: 18px;
+  }
+  .auth-login-card h1 {
+    font-size: 21px;
+  }
+}
+
+.auth-flow .occupation-select {
+  width: 100%;
+  min-height: 54px;
+  padding: 14px 42px 14px 16px;
+  border: 1px solid #dce3d8;
+  border-radius: 12px;
+  background-color: #fff;
+  color: #174c40;
+  font-size: 15px;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' fill='none' stroke='%23174c40' stroke-width='1.8'%3E%3Cpath d='m5 8 5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 15px center;
+}
+.pin-guidance {
+  list-style: none;
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #f2f5ef;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #4b6056;
+}
+.pin-guidance li + li {
+  margin-top: 6px;
+}
+.pin-guidance span {
+  display: block;
+  color: #748278;
+  font-size: 12px;
+}
+.explore-intro {
+  margin: 8px 20px 20px;
+  padding: 24px;
+  background: #eaf0e3;
+  border-radius: 24px;
+}
+.explore-intro h1 {
+  font-size: 28px;
+  line-height: 1.4;
+  margin: 12px 0;
+}
+.explore-intro .eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+.explore-intro p {
+  font-size: 13px;
+  line-height: 1.6;
+  margin-bottom: 0;
+}
+.explore-controls,
+.inventory {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+.station-select {
+  padding: 4px 0 14px;
+}
+.station-select select {
+  min-height: 40px;
+  font-size: 14px;
+}
+.search-field {
+  background: #fff;
+  border-color: #ccd9cb;
+  border-radius: 14px;
+}
+.search-field input {
+  font-size: 14px;
+  min-width: 0;
+}
+.filter-chips {
+  margin: 16px 0 24px;
+  padding-bottom: 2px;
+}
+.filter-chips button {
+  min-height: 40px;
+  font-size: 12px;
+  padding: 9px 13px;
+}
+.inventory .section-heading h2 {
+  font-size: 18px;
+}
+.inventory .section-heading .text-button {
+  font-size: 12px;
+  text-decoration: none;
+  min-height: 40px;
+}
+.section-caption {
+  font-size: 12px;
+  margin: 4px 0 16px;
+}
+.product-grid {
+  gap: 16px 12px;
+}
+.product-card {
+  background: #fff;
+  border: 1px solid #e1e7dc;
+  border-radius: 18px;
+  overflow: hidden;
+}
+.product-card .product-image {
+  border-radius: 0;
+  height: 164px;
+}
+.product-card .product-info {
+  padding: 14px 12px 16px;
+}
+.product-card .product-info h3 {
+  font-size: 15px;
+  line-height: 1.5;
+  margin: 6px 0;
+}
+.product-card .product-info p {
+  font-size: 11px;
+  line-height: 1.8;
+}
+.product-card .product-info > span {
+  font-size: 11px;
+}
+.product-card:hover {
+  border-color: #a8bea8;
+}
+.how-banner {
+  margin: 24px 20px;
+}
+@media (max-width: 360px) {
+  .explore-intro {
+    margin-left: 16px;
+    margin-right: 16px;
+    padding: 20px;
+  }
+  .explore-intro h1 {
+    font-size: 25px;
+  }
+  .explore-controls,
+  .inventory {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .product-card .product-image {
+    height: 140px;
+  }
+  .product-card .product-info {
+    padding: 12px 9px;
+  }
+  .product-card .product-info h3 {
+    font-size: 14px;
+  }
+}
+
+.station-select select {
+  flex: 0 1 auto; max-width: calc(100% - 26px); width: auto;
+  appearance: none; padding: 8px 24px 8px 4px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' fill='none' stroke='%23174c40' stroke-width='1.8'%3E%3Cpath d='m4 6 5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right center;
+}
+.inventory .section-heading .text-button { display: inline-flex; align-items: center; gap: 5px; line-height: 1; }
+.inventory .section-heading .text-button svg { display: block; flex-shrink: 0; transform: translateY(1px); }
+
+.stock-toolbar { display: flex; justify-content: flex-end; margin-top: 18px; }
+.stock-toolbar .text-button { display: inline-flex; align-items: center; gap: 5px; min-height: 40px; font-size: 12px; text-decoration: none; }
+.stock-toolbar + .stock-panel { margin-top: 4px; }

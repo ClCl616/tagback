@@ -1,11 +1,9 @@
+import { loginMobile } from './auth-helpers';
 import { test, expect } from '@playwright/test';
 
 test('모바일 전체 화면 320px 레이아웃과 키오스크 확인 화면', async ({ page, context }) => {
   await page.setViewportSize({ width: 320, height: 850 });
-  await page.goto('/mobile/login');
-  await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
-  await page.getByLabel('비밀번호', { exact: true }).fill('Tagback1!');
-  await page.getByRole('button', { name: '로그인', exact: true }).click();
+  await loginMobile(page);
   await expect(page.locator('.code-number')).toHaveText(/\d{6}/);
   const code = (await page.locator('.code-number').textContent())!;
   for (const path of ['code', 'items/calc', 'rentals', 'history', 'signup', 'account']) {
