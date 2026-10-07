@@ -48,7 +48,7 @@ export class ItemRegistration {
         if (stage === 'tag' && result?.tag) return this.confirm(result);
       }
       const uid = original?.tag || (draft.tag ? normalizeUid(draft.tag) : '');
-      if (!original && !uid) throw new ServiceError('TAG_REQUIRED', 'NFC 태그를 인식해 주세요.');
+
       if (!this.item) {
         try {
           // Tag attachment is a separate operation; never include a new UID in creation.

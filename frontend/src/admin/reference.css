@@ -1061,3 +1061,8 @@ th[aria-sort='descending'] .admin-sort {
     min-height: 160px;
   }
 }
+
+.admin-status-options input:disabled + span {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

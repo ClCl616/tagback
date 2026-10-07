@@ -90,6 +90,15 @@ export async function transaction<T>(fn: (db: Database) => T | Promise<T>): Prom
       });
       db.schemaVersion = 5;
     }
+    if ((db.schemaVersion || 0) < 6) {
+      db.items.forEach((item) => {
+        if (!item.tag) {
+          item.active = false;
+          if (item.status === 'available') item.status = 'inspection';
+        }
+      });
+      db.schemaVersion = 6;
+    }
     const result = await fn(db);
     const serialized = JSON.stringify(db);
     if (serialized !== raw) localStorage.setItem(DB_KEY, serialized);

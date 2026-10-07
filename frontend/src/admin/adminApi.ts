@@ -150,6 +150,8 @@ export const adminApi = {
         );
       if (existing && (tag !== existing.tag || draft.stationId !== existing.stationId))
         return fail('FIXED', '등록된 태그와 대여소는 이 화면에서 변경할 수 없습니다.');
+      if (draft.status === 'available' && !existing?.tag)
+        return fail('TAG_REQUIRED', '태그 연결 후 대여 가능으로 변경할 수 있습니다.');
       const rented = existing && db.rentals.some((r) => r.itemId === existing.id && !r.returnedAt);
       if (rented && (draft.status !== existing!.status || kind.id !== existing!.kindId))
         return fail(

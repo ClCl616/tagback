@@ -13,7 +13,7 @@ const draft: ItemDraft = {
   kindId: 'calc',
   stationId: 'engineering',
   tag: '04A23B1C',
-  status: 'available',
+  status: 'inspection',
   inventoryNumber: '009',
 };
 const item: Item = {
@@ -23,7 +23,7 @@ const item: Item = {
   stationId: 'engineering',
   tag: '',
   active: false,
-  status: 'available',
+  status: 'inspection',
 };
 function setup() {
   let stored: Item | undefined;
@@ -47,6 +47,14 @@ function setup() {
 const error = (code: string) => new ServiceError(code, code);
 afterEach(() => vi.unstubAllGlobals());
 describe('두 단계 물품 등록', () => {
+  it('태그 없이 물품만 등록하고 연결 요청은 하지 않는다', async () => {
+    const { flow, gateway, change } = setup();
+    const result = await flow.submit({ ...draft, tag: '' }, undefined, change);
+    expect(result?.id).toBe(item.id);
+    expect(gateway.save).toHaveBeenCalledTimes(1);
+    expect(gateway.attachTag).not.toHaveBeenCalled();
+  });
+
   it('생성 응답 ID로 태그를 연결하고 두 단계 후 완료한다', async () => {
     const { flow, gateway, change } = setup();
     const result = await flow.submit(draft, undefined, change);

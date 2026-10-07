@@ -681,6 +681,7 @@ function ItemEditor({
     original
       ? {
           ...original,
+          status: !original.tag && original.status === 'available' ? 'inspection' : original.status,
           label: itemName(original),
           inventoryNumber: itemNumber(original),
           category: catalog.kinds.find((k) => k.id === original.kindId)?.category,
@@ -692,7 +693,7 @@ function ItemEditor({
           kindId: '',
           stationId: catalog.stations[0]?.id || '',
           tag: '',
-          status: 'available',
+          status: 'inspection',
         },
   );
   const [busy, setBusy] = useState(false);
@@ -894,6 +895,7 @@ function ItemEditor({
                       type="radio"
                       name="item-status"
                       value={key}
+                      disabled={key === 'available' && !original?.tag}
                       checked={draft.status === key}
                       onChange={() => update({ status: key as ItemStatus })}
                     />
@@ -902,6 +904,9 @@ function ItemEditor({
                 ))}
             </div>
           </fieldset>
+          {!original?.tag && (
+            <p className="admin-help">태그 연결 후 대여 가능으로 변경할 수 있습니다.</p>
+          )}
           {original?.status === 'rented' && (
             <p className="admin-help">
               대여 중인 물품은 반납 후 카테고리와 상태를 변경할 수 있습니다.
@@ -928,7 +933,7 @@ function ItemEditor({
             <p className="admin-help">
               {draft.tag
                 ? '다른 태그를 접촉하면 입력된 UID가 변경됩니다.'
-                : '태그 미등록 · NFC 태그 인식 대기 중'}
+                : '태그 없이 등록한 뒤 나중에 연결할 수 있습니다.'}
             </p>
           )}
         </fieldset>

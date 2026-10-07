@@ -80,7 +80,7 @@ describe('Mock service contract — not real server verification', () => {
     });
     await api.catalog();
     const db = JSON.parse(localStorage.getItem(DB_KEY)!);
-    expect(db.schemaVersion).toBe(5);
+    expect(db.schemaVersion).toBe(6);
     expect(db.users.find((u: any) => u.id === 'legacy')).toEqual({
       id: 'legacy',
       phone: '01044445555',
@@ -416,4 +416,17 @@ it('SMS 없는 전화번호 로그인: 오인증 방지, PIN 제한 유지, 새 
   await expect(api.me(first.token)).rejects.toThrow();
   await expect(api.me(second.token)).resolves.toMatchObject({ phone: MOCK.demoPhone });
   expect(JSON.parse(localStorage.getItem(DB_KEY)!).auth.sms).toHaveLength(0);
+});
+
+it('이전 태그 미등록 물품은 점검 중으로 이관하고 연결된 물품은 유지한다', async () => {
+  mutate((db) => {
+    db.schemaVersion = 5;
+    db.items[0].tag = '';
+    db.items[0].status = 'available';
+    db.items[0].active = true;
+  });
+  const before = JSON.parse(localStorage.getItem(DB_KEY)!);
+  const catalog = await api.catalog();
+  expect(catalog.items[0]).toMatchObject({ tag: '', status: 'inspection', active: false });
+  expect(catalog.items[1]).toEqual(before.items[1]);
 });

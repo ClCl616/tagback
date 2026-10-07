@@ -553,3 +553,50 @@ test('신규 물품 부분 성공 후 창을 닫아도 생성 ID로 연결 재�
   expect(matches).toHaveLength(1);
   expect(matches[0]).toMatchObject({ id: createdId, tag: '04000011' });
 });
+
+test('태그 없이 등록·대여 가능 차단·후속 연결 후 상태 변경', async ({ page }) => {
+  await page.goto('/admin/items');
+  await page.getByRole('button', { name: '물품 등록', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('radio', { name: '대여 가능', exact: true })).toBeDisabled();
+  await expect(dialog.getByRole('radio', { name: '점검 중', exact: true })).toBeChecked();
+  await dialog.getByLabel('카테고리', { exact: true }).fill('학습 용품');
+  await dialog.getByRole('button', { name: '학습 용품', exact: true }).click();
+  await dialog.getByLabel('물품명', { exact: true }).fill('후속 등록 테스트');
+  await dialog.getByLabel('관리번호', { exact: true }).fill('012');
+  await dialog.locator('input[type=file]').setInputFiles('public/images/admin-reference.png');
+  await dialog.getByRole('button', { name: '등록하기', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  const detail = page.getByRole('complementary', { name: '물품 상세' });
+  await expect(detail).toContainText('태그 미등록');
+  await expect(detail).toContainText('점검 중');
+  // Adapter must also reject bypassing the disabled radio.
+  const code = await page.evaluate(async () => {
+    const modulePath = '/src/admin/adminApi.ts';
+    const { adminApi } = await import(modulePath);
+    const db = JSON.parse(localStorage.getItem('tagback.mock.v1')!);
+    const item = db.items.find((i: { label: string }) => i.label === '후속 등록 테스트 012');
+    try {
+      await adminApi.save(
+        'bypass',
+        { ...item, label: item.name, category: '학습 용품', status: 'available' },
+        item,
+      );
+    } catch (e) {
+      return (e as { code: string }).code;
+    }
+  });
+  expect(code).toBe('TAG_REQUIRED');
+  await detail.getByRole('button', { name: 'NFC 태그 연결 / 물품 수정' }).click();
+  await scan(page, '04000012');
+  await expect(dialog.getByRole('radio', { name: '대여 가능', exact: true })).toBeDisabled();
+  await dialog.getByRole('button', { name: '태그 연결', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(detail).toContainText('04000012');
+  await expect(detail).toContainText('점검 중');
+  await detail.getByRole('button', { name: '상태 변경', exact: true }).click();
+  await dialog.getByRole('radio', { name: '대여 가능', exact: true }).check();
+  await dialog.getByRole('button', { name: '변경사항 저장', exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(detail).toContainText('대여 가능');
+});
