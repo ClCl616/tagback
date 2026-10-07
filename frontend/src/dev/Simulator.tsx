@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api, controls, expireCodes, resetDemo, setControls } from '../shared/api';
+import { authApi, simulateOtherBrowser } from '../shared/auth';
+import { AUTH_DEMO, REGISTRATION_KEY } from '../shared/authPolicy';
+import { transaction, notify } from '../shared/api';
 import { MOCK } from '../shared/config';
 import { emitTag } from '../shared/nfc';
 import { ErrorBox, useResource } from '../shared/ui';
@@ -15,6 +18,21 @@ export default function Simulator() {
       window.removeEventListener('tagback-controls', refresh);
     };
   }, []);
+  const [recoveryPhone, setRecoveryPhone] = useState(MOCK.demoPhone as string);
+  const [authBusy, setAuthBusy] = useState(false);
+  async function authDemo(action: () => Promise<unknown>) {
+    if (authBusy) return;
+    setAuthBusy(true);
+    setError(undefined);
+    try {
+      await action();
+      setMessage('모의 인증 상태를 변경했습니다.');
+    } catch (e) {
+      setError(e);
+    } finally {
+      setAuthBusy(false);
+    }
+  }
   const [message, setMessage] = useState('');
   const [error, setError] = useState<unknown>();
   const r = useResource(() => api.catalog(), [], true);
@@ -40,12 +58,81 @@ export default function Simulator() {
       <section>
         <h2>시연 계정</h2>
         <p>
-          전화번호 <code>{MOCK.demoPhone}</code> / 비밀번호 <code>{MOCK.demoPassword}</code>
+          전화번호 <code>{MOCK.demoPhone}</code> / PIN <code>{AUTH_DEMO.pin}</code>
         </p>
         <p>
           모바일에서 로그인해 생성된 코드를 키오스크에 입력합니다. NFC 대기 화면에서 아래 태그를
           전송합니다.
         </p>
+      </section>
+      <section>
+        <h2>회원가입 문자 인증 · mock</h2>
+        <p>
+          실제 문자를 발송하지 않습니다. 모바일에서 인증번호를 요청한 뒤 아래 시연 번호를
+          입력하세요.
+        </p>
+        <p>
+          시연 인증번호 <code>{AUTH_DEMO.smsCode}</code> · 5분 유효 · 재요청 대기 1분
+        </p>
+      </section>
+      <section>
+        <h2>인증 상태 시뮬레이터</h2>
+        <p>실제 신원 확인이나 다른 기기 연결이 아닙니다. 복구 승인은 이 시연에만 적용됩니다.</p>
+        <label>
+          복구 승인 시연 전화번호
+          <input value={recoveryPhone} onChange={(e) => setRecoveryPhone(e.target.value)} />
+        </label>
+        <button
+          onClick={() => {
+            localStorage.setItem(
+              'tagback.mock.recovery-approved',
+              recoveryPhone.replace(/[^0-9]/g, ''),
+            );
+            setMessage('시연 복구 승인 설정');
+          }}
+        >
+          이 번호 복구 승인 시연
+        </button>
+        <button
+          onClick={() => {
+            localStorage.removeItem('tagback.mock.recovery-approved');
+            setMessage('복구 보류 설정');
+          }}
+        >
+          복구 보류로 설정
+        </button>
+        <button disabled={authBusy} onClick={() => authDemo(simulateOtherBrowser)}>
+          다른 브라우저 로그인 시연 (기본 계정)
+        </button>
+        <button
+          disabled={authBusy}
+          onClick={() =>
+            authDemo(async () => {
+              await transaction((db) => {
+                const reg = db.auth?.registrations[localStorage.getItem(REGISTRATION_KEY) || ''];
+                if (reg) reg.expiresAt = 0;
+              });
+              notify();
+            })
+          }
+        >
+          현재 브라우저 등록 만료
+        </button>
+        <button
+          disabled={authBusy}
+          onClick={() =>
+            authDemo(async () => {
+              await transaction((db) => {
+                db.auth?.sms.forEach((s) => {
+                  s.expiresAt = 0;
+                  s.proofExpiresAt = 0;
+                });
+              });
+            })
+          }
+        >
+          SMS·인증 결과 만료
+        </button>
       </section>
       <section>
         <h2>NFC 태그 이벤트</h2>
@@ -100,6 +187,7 @@ export default function Simulator() {
           >
             <option value="any">다음 요청 (모든 화면)</option>
             <option value="read">모바일/재고 조회</option>
+            <option value="auth">로그인·회원가입·문자 인증</option>
             <option value="verify">키오스크 코드 검증</option>
             <option value="scan">키오스크 NFC 조회</option>
             <option value="save">키오스크 저장</option>
@@ -113,7 +201,10 @@ export default function Simulator() {
               change({
                 nextFault: e.target.value as Fault,
                 ...(['save', 'unknown', 'conflict'].includes(e.target.value)
-                  ? { nextTarget: 'save' as const }
+                  ? {
+                      nextTarget:
+                        state.nextTarget === 'auth' ? ('auth' as const) : ('save' as const),
+                    }
                   : {}),
               })
             }

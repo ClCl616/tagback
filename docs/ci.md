@@ -36,4 +36,4 @@ GitHub의 브랜치 보호 설정은 저장소 파일과 별개입니다. 지원
 
 ## 백엔드 후속 범위
 
-현재 `develop`에는 실행 가능한 백엔드가 없습니다. DB 작업 브랜치를 임의로 병합하지 않습니다. 백엔드 통합 시 Java 21, Gradle Wrapper, 테스트 전용 PostgreSQL 17 service container를 이용한 빌드·테스트와 Flyway 검증을 별도 job으로 추가합니다. 운영 DB나 개인 DB 비밀번호는 CI에서 사용하지 않습니다. NFC 하드웨어 검증은 별도의 현장 테스트가 필요합니다.
+2026-10-05 DB 환경과 NFC 기본 구조가 `develop`에 통합되었습니다. 현재 CI는 여전히 프론트엔드만 검증합니다. Java 21, Gradle Wrapper, 테스트 전용 PostgreSQL 17 service container를 이용한 백엔드 빌드·테스트와 Flyway 검증은 별도 job으로 추가해야 합니다. 운영 DB나 개인 DB 비밀번호는 CI에서 사용하지 않습니다. NFC 하드웨어 검증은 별도의 현장 테스트가 필요합니다.

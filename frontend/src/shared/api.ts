@@ -1,20 +1,21 @@
 import { CONTROL_KEY, DB_KEY, MOCK } from './config';
 import { seed, type Database } from './seed';
+import { authApi, requireSession } from './auth';
+import { AUTH_DEMO } from './authPolicy';
 import type { DemoControls, Fault, ServiceApi, Receipt } from './types';
 
 export class ServiceError extends Error {
   constructor(
     public code: string,
     message: string,
+    public retryAt?: number,
   ) {
     super(message);
   }
 }
-const fail = (code: string, message: string): never => {
+export const fail = (code: string, message: string): never => {
   throw new ServiceError(code, message);
 };
-export const passwordValid = (v: string) =>
-  v.length >= 8 && /[a-zA-Z]/.test(v) && /[0-9]/.test(v) && /[\p{P}\p{S}]/u.test(v);
 export const normalizePhone = (v: string) => v.replace(/[\s-]/g, '');
 export const phoneValid = (v: string) => /^010\d{8}$/.test(normalizePhone(v));
 export async function hash(v: string) {
@@ -37,23 +38,68 @@ export function setControls(patch: Partial<DemoControls>) {
   localStorage.setItem(CONTROL_KEY, JSON.stringify({ ...controls(), ...patch }));
   window.dispatchEvent(new Event('tagback-controls'));
 }
-function notify() {
+export function notify() {
   window.dispatchEvent(new Event('tagback-change'));
 }
 // Web Locks serializes simulated transactions across tabs. This is NOT a production authorization or database boundary.
-async function transaction<T>(fn: (db: Database) => T | Promise<T>): Promise<T> {
+export async function transaction<T>(fn: (db: Database) => T | Promise<T>): Promise<T> {
   if (!navigator.locks)
-    return fail('UNSUPPORTED', '이 시연은 localhost 또는 HTTPS 브라우저에서 열어 주세요.');
+    return fail(
+      'UNSUPPORTED',
+      '현재 환경에서는 연결할 수 없습니다. 지원되는 브라우저의 보안 연결로 다시 접속해 주세요.',
+    );
   return navigator.locks.request('tagback-database', async () => {
     const raw = localStorage.getItem(DB_KEY);
-    const db: Database = raw ? JSON.parse(raw) : seed(await hash(MOCK.demoPassword));
+    const db: Database = raw ? JSON.parse(raw) : seed(await hash(AUTH_DEMO.pin));
+    // Preserve existing demo accounts and rental history when consolidating stations.
+    if (!db.schemaVersion) {
+      db.stations = db.stations.filter((s) => s.id === MOCK.stationId);
+      db.items.forEach((item) => {
+        item.stationId = MOCK.stationId;
+      });
+      db.rentals.forEach((rental) => {
+        rental.stationId = MOCK.stationId;
+      });
+      Object.values(db.operations).forEach((receipt) => {
+        receipt.item.stationId = MOCK.stationId;
+        receipt.rental.stationId = MOCK.stationId;
+      });
+      db.schemaVersion = 2;
+    }
+    if ((db.schemaVersion || 0) < 3) {
+      for (const user of db.users) {
+        if (user.id === 'demo') user.pinHash = await hash(AUTH_DEMO.pin);
+        delete user.passwordHash;
+      }
+      db.sessions = {};
+      db.sms = [];
+      db.auth = undefined;
+      db.schemaVersion = 3;
+    }
+    if ((db.schemaVersion || 0) < 4) {
+      const station = db.stations.find((s) => s.id === MOCK.stationId);
+      if (station) {
+        station.name = '대전대 융합과학관';
+        station.location = '융합과학관 2층 학생 라운지';
+      }
+      db.schemaVersion = 4;
+    }
+    if ((db.schemaVersion || 0) < 5) {
+      db.codes.forEach((code) => {
+        code.expiresAt = Math.min(code.expiresAt, Date.now() + MOCK.codeTtlMs);
+      });
+      db.schemaVersion = 5;
+    }
     const result = await fn(db);
     const serialized = JSON.stringify(db);
     if (serialized !== raw) localStorage.setItem(DB_KEY, serialized);
     return structuredClone(result);
   });
 }
-async function before(write = false, target: DemoControls['nextTarget'] = 'read'): Promise<Fault> {
+export async function before(
+  write = false,
+  target: DemoControls['nextTarget'] = 'read',
+): Promise<Fault> {
   await new Promise((r) => setTimeout(r, MOCK.delayMs));
   if (!controls().service)
     fail('NETWORK', '서비스에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요.');
@@ -73,7 +119,7 @@ async function before(write = false, target: DemoControls['nextTarget'] = 'read'
   return fault;
 }
 function userId(db: Database, token: string) {
-  return db.sessions[token] || fail('AUTH', '로그인이 만료되었습니다. 다시 로그인해 주세요.');
+  return requireSession(db, token).userId;
 }
 function checkCode(db: Database, value: string) {
   const c = db.codes.find((c) => c.value === value);
@@ -108,43 +154,17 @@ export const api: ServiceApi = {
     await before();
     return transaction((db) => ({ kinds: db.kinds, items: db.items, stations: db.stations }));
   },
-  async login(phone, password) {
-    await before();
-    const h = await hash(password);
-    return transaction((db) => {
-      const user = db.users.find((u) => u.phone === normalizePhone(phone) && u.passwordHash === h);
-      if (!user)
-        return fail('LOGIN', '전화번호 또는 비밀번호가 일치하지 않습니다. 다시 확인해 주세요.');
-      const token = crypto.randomUUID();
-      db.sessions[token] = user.id;
-      return token;
-    });
-  },
-  async signup(phone, password) {
-    await before();
-    if (!phoneValid(phone) || !passwordValid(password))
-      return fail('VALIDATION', '전화번호와 비밀번호 조건을 확인해 주세요.');
-    const h = await hash(password);
-    return transaction((db) => {
-      if (db.users.some((u) => u.phone === normalizePhone(phone)))
-        return fail('DUPLICATE', '이미 가입된 전화번호입니다. 로그인해 주세요.');
-      const user = { id: crypto.randomUUID(), phone: normalizePhone(phone), passwordHash: h };
-      db.users.push(user);
-      const token = crypto.randomUUID();
-      db.sessions[token] = user.id;
-      return token;
-    });
-  },
-  async logout(token) {
-    await transaction((db) => {
-      delete db.sessions[token];
-    });
-  },
+  logout: (token) => authApi.logout(token),
   async me(token) {
     await before();
-    return transaction((db) => ({
-      phone: db.users.find((u) => u.id === userId(db, token))!.phone,
-    }));
+    return transaction((db) => {
+      const user = db.users.find((u) => u.id === userId(db, token))!;
+      return {
+        phone: user.phone,
+        name: user.name || (user.id === 'demo' ? '김태백' : '회원'),
+        occupation: user.occupation || (user.id === 'demo' ? '학생' : ''),
+      };
+    });
   },
   async code(token, renew = false) {
     await before();
@@ -284,7 +304,7 @@ export const api: ServiceApi = {
 };
 export async function resetDemo() {
   await navigator.locks.request('tagback-database', async () =>
-    localStorage.setItem(DB_KEY, JSON.stringify(seed(await hash(MOCK.demoPassword)))),
+    localStorage.setItem(DB_KEY, JSON.stringify(seed(await hash(AUTH_DEMO.pin)))),
   );
   notify();
 }
