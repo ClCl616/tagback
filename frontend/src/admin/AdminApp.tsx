@@ -487,16 +487,6 @@ export default function AdminApp() {
                     <Box size={34} />
                     <h2>조건에 맞는 물품이 없어요</h2>
                     <p>검색어나 필터를 변경해 보세요.</p>
-                    <button
-                      className="text-button"
-                      onClick={() => {
-                        setQuery('');
-                        setKind('');
-                        setStatus('');
-                      }}
-                    >
-                      필터 초기화
-                    </button>
                   </div>
                 )}
               </>
