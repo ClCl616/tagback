@@ -478,3 +478,40 @@ it('물품 전체 삭제는 관련 기록을 지우고 계정·카테고리를 �
   for (const key of ['users', 'auth', 'kinds', 'categories', 'stations'])
     expect(after[key]).toEqual(before[key]);
 });
+
+import { adminApi } from '../src/admin/adminApi';
+
+it('mock NFC 동일 연결은 기존 물품을 반환하고 다른 연결은 충돌을 유지한다', async () => {
+  mutate((db) => {
+    db.items[0].tag = '';
+    db.items[1].tag = '';
+  });
+  const initial = (await api.catalog()).items;
+  const first = await adminApi.attachTag(initial[0].id, '04:a2-3b 1c');
+  const retry = await adminApi.attachTag(initial[0].id, '04A23B1C');
+  expect(retry).toEqual(first);
+  await expect(adminApi.attachTag(initial[0].id, '04000099')).rejects.toMatchObject({
+    code: 'ITEM_ALREADY_TAGGED',
+  });
+  await expect(adminApi.attachTag(initial[1].id, '04A23B1C')).rejects.toMatchObject({
+    code: 'TAG_ALREADY_REGISTERED',
+  });
+  const current = (await api.catalog()).items;
+  expect(current).toHaveLength(initial.length);
+  expect(current.filter((i) => i.tag === '04A23B1C')).toHaveLength(1);
+});
+
+it('mock NFC 응답 유실 후 같은 요청과 동시 요청 모두 중복 없이 성공한다', async () => {
+  mutate((db) => {
+    db.items[0].tag = '';
+  });
+  const id = (await api.catalog()).items[0].id;
+  setControls({ nextFault: 'unknown', nextTarget: 'save' });
+  await expect(adminApi.attachTag(id, '04000077')).rejects.toMatchObject({ code: 'UNKNOWN' });
+  const [a, b] = await Promise.all([
+    adminApi.attachTag(id, '04:00:00:77'),
+    adminApi.attachTag(id, '04000077'),
+  ]);
+  expect(a).toEqual(b);
+  expect((await api.catalog()).items.filter((i) => i.tag === '04000077')).toHaveLength(1);
+});

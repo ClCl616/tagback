@@ -667,6 +667,7 @@ function ItemEditor({
   const submitting = useRef(false);
   const pending = registration.item;
   const checking = !!registration.checking;
+  const retryingTag = registration.retryingTag;
   const [draft, setDraft] = useState<ItemDraft>(
     original
       ? {
@@ -694,7 +695,7 @@ function ItemEditor({
     dialog.current?.showModal();
   }, []);
   useEffect(() => {
-    if (original?.tag || busy || imageLoading || checking) return;
+    if (original?.tag || busy || imageLoading || checking || retryingTag) return;
     return nfc.subscribe((value) => {
       try {
         const tag = normalizeUid(value);
@@ -704,7 +705,7 @@ function ItemEditor({
         setError(e);
       }
     });
-  }, [original, busy, imageLoading, checking]);
+  }, [original, busy, imageLoading, checking, retryingTag]);
   const update = (patch: Partial<ItemDraft>) => {
     setDraft((v) => ({ ...v, ...patch }));
     setError(undefined);
@@ -910,20 +911,26 @@ function ItemEditor({
         </fieldset>
         {pending && !original?.tag && !pending.tag && (
           <p className="admin-help" role="status">
-            물품 정보는 저장되었지만 태그 연결은 완료되지 않았습니다. 다시 시도하면 태그만
-            연결합니다.
+            {retryingTag
+              ? '물품 정보는 저장되었습니다. 태그 연결 결과 확인을 위해 같은 UID로 재시도합니다.'
+              : '물품 정보는 저장되었지만 태그 연결은 완료되지 않았습니다. 다시 시도하면 태그만 연결합니다.'}
           </p>
         )}
-        <fieldset disabled={busy || imageLoading || checking} className="admin-tag-field">
+        <fieldset
+          disabled={busy || imageLoading || checking || retryingTag}
+          className="admin-tag-field"
+        >
           <label>
             태그 ID
             <input readOnly value={draft.tag} placeholder="NFC 태그를 리더기에 접촉해 주세요" />
           </label>
           {!original?.tag && (
             <p className="admin-help">
-              {draft.tag
-                ? '다른 태그를 접촉하면 입력된 UID가 변경됩니다.'
-                : '태그 없이 등록한 뒤 나중에 연결할 수 있습니다.'}
+              {retryingTag
+                ? '연결 결과가 확인될 때까지 같은 UID를 유지합니다.'
+                : draft.tag
+                  ? '다른 태그를 접촉하면 입력된 UID가 변경됩니다.'
+                  : '태그 없이 등록한 뒤 나중에 연결할 수 있습니다.'}
             </p>
           )}
         </fieldset>
