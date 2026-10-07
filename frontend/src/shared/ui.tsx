@@ -1,4 +1,4 @@
-import { ArrowUpRight, Check, CircleAlert, LoaderCircle, Radio } from 'lucide-react';
+import { ArrowUpRight, Box, Check, CircleAlert, LoaderCircle, Radio } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { ServiceError } from './api';
 export const date = (n: number) =>
@@ -68,7 +68,9 @@ export function ReaderArt() {
 export function ProductArt({ kind, large = false }: { kind: string; large?: boolean }) {
   return (
     <div className={`product-art ${kind} ${large ? 'large' : ''}`} aria-hidden="true">
-      {kind === 'calculator' ? (
+      {kind === 'generic' ? (
+        <Box size={64} strokeWidth={1.25} />
+      ) : kind === 'calculator' ? (
         <div className="calc-body">
           <span className="calc-brand">SCIENTIFIC</span>
           <div className="calc-screen">1.23456789</div>

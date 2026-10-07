@@ -152,7 +152,12 @@ async function save(id: string, fn: (db: Database) => Receipt) {
 export const api: ServiceApi = {
   async catalog() {
     await before();
-    return transaction((db) => ({ kinds: db.kinds, items: db.items, stations: db.stations }));
+    return transaction((db) => ({
+      kinds: db.kinds,
+      items: db.items.filter((i) => !i.deleted),
+      stations: db.stations,
+      categories: [...new Set([...(db.categories || []), ...db.kinds.map((k) => k.category)])],
+    }));
   },
   logout: (token) => authApi.logout(token),
   async me(token) {

@@ -1,20 +1,24 @@
-export type ItemStatus = 'available' | 'rented' | 'inspection';
+export type ItemStatus = 'available' | 'rented' | 'inspection' | 'repair';
 export type Station = { id: string; name: string; location: string };
 export type Kind = {
   id: string;
   name: string;
   category: string;
   description: string;
-  art: 'calculator' | 'umbrella' | 'battery' | 'cable';
+  art: 'calculator' | 'umbrella' | 'battery' | 'cable' | 'generic';
 };
 export type Item = {
   id: string;
   label: string;
+  name?: string;
+  inventoryNumber?: string;
   kindId: string;
   stationId: string;
   tag: string;
   active: boolean;
+  deleted?: boolean;
   status: ItemStatus;
+  image?: string;
 };
 export type Rental = {
   id: string;
@@ -43,7 +47,7 @@ export type Grant = {
   expiresAt: number;
   maskedPhone: string;
 };
-export type Catalog = { kinds: Kind[]; items: Item[]; stations: Station[] };
+export type Catalog = { categories?: string[]; kinds: Kind[]; items: Item[]; stations: Station[] };
 export type Receipt = { operationId: string; item: Item; rental: Rental; type: 'rent' | 'return' };
 export type Fault = '' | 'network' | 'timeout' | 'save' | 'unknown' | 'conflict';
 export type DemoControls = {
