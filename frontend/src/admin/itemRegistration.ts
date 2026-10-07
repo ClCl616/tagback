@@ -2,15 +2,8 @@ import { ServiceError } from '../shared/api';
 import type { Item } from '../shared/types';
 import type { ItemDraft } from './adminApi';
 
-export function normalizeUid(value: string) {
-  const uid = value.replace(/[\s:-]/g, '').toUpperCase();
-  if (!/^(?:[0-9A-F]{8}|[0-9A-F]{14}|[0-9A-F]{20})$/.test(uid))
-    throw new ServiceError(
-      'INVALID_UID_FORMAT',
-      'NFC UID는 16진수 8·14·20자리여야 합니다. 태그를 다시 인식해 주세요.',
-    );
-  return uid;
-}
+import { normalizeUid } from '../shared/nfcUid';
+export { normalizeUid } from '../shared/nfcUid';
 
 // Application interface, NOT an HTTP contract. Only the mock implements lookup
 // until create response, reconciliation and tag-query contracts are agreed.

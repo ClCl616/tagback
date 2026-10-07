@@ -2688,3 +2688,14 @@ dd {
 .stock-toolbar { display: flex; justify-content: flex-end; margin-top: 18px; }
 .stock-toolbar .text-button { display: inline-flex; align-items: center; gap: 5px; min-height: 40px; font-size: 12px; text-decoration: none; }
 .stock-toolbar + .stock-panel { margin-top: 4px; }
+
+.simulator .sim-uid-label {
+  display: grid;
+  gap: 8px;
+}
+.sim-uid-label input {
+  font-family: monospace;
+}
+@media (max-width: 600px) {
+  .sim-links { flex-wrap: wrap; gap: 12px; }
+}

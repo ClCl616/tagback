@@ -5,6 +5,7 @@ import { AUTH_DEMO, REGISTRATION_KEY } from '../shared/authPolicy';
 import { transaction, notify } from '../shared/api';
 import { MOCK } from '../shared/config';
 import { emitTag } from '../shared/nfc';
+import { normalizeUid } from '../shared/nfcUid';
 import { ErrorBox, useResource } from '../shared/ui';
 import type { DemoControls, Fault } from '../shared/types';
 export default function Simulator() {
@@ -34,6 +35,9 @@ export default function Simulator() {
     }
   }
   const [message, setMessage] = useState('');
+  const [uid, setUid] = useState('04A23B1C5D6E80');
+  const [nfcError, setNfcError] = useState<unknown>();
+  const [sentUid, setSentUid] = useState('');
   const [error, setError] = useState<unknown>();
   const r = useResource(() => api.catalog(), [], true);
   function change(p: Parameters<typeof setControls>[0]) {
@@ -44,10 +48,13 @@ export default function Simulator() {
     <main className="simulator">
       <h1>TagBack · 개발 시뮬레이터</h1>
       <p>
-        이 화면은 서비스 UI가 아닙니다. 같은 브라우저·같은 주소의 다른 탭에서 키오스크를 열어
-        주세요.
+        같은 브라우저·같은 주소의 다른 탭에서 관리자 또는 키오스크 화면을 열어 주세요. 실제 리더기
+        없이 NFC 인식을 테스트할 수 있습니다.
       </p>
       <div className="sim-links">
+        <a href="/admin/items" target="_blank" rel="noreferrer">
+          관리자 열기 ↗
+        </a>
         <a href="/mobile" target="_blank" rel="noreferrer">
           모바일 열기 ↗
         </a>
@@ -55,6 +62,75 @@ export default function Simulator() {
           키오스크 열기 ↗
         </a>
       </div>
+      <section aria-labelledby="nfc-test-title">
+        <h2 id="nfc-test-title">NFC 인식 테스트</h2>
+        <p>관리자에서 물품 등록·수정 창을 열거나, 키오스크에서 NFC 인식 대기 단계로 이동하세요.</p>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!state.reader) return;
+            setNfcError(undefined);
+            setSentUid('');
+            try {
+              const normalized = normalizeUid(uid);
+              emitTag(normalized);
+              setUid(normalized);
+              setSentUid(normalized);
+            } catch (error) {
+              setNfcError(error);
+            }
+          }}
+        >
+          <label className="sim-uid-label">
+            테스트 태그 UID
+            <input
+              value={uid}
+              maxLength={100}
+              spellCheck={false}
+              autoComplete="off"
+              placeholder="예: 04:A2:3B:1C:5D:6E:80"
+              aria-describedby="nfc-uid-help"
+              onChange={(e) => {
+                setUid(e.target.value);
+                setNfcError(undefined);
+                setSentUid('');
+              }}
+            />
+          </label>
+          <p id="nfc-uid-help">16진수 8·14·20자리. 공백, 콜론, 하이픈은 자동으로 제거됩니다.</p>
+          <div className="sim-tags">
+            <button type="submit" disabled={!state.reader}>
+              NFC 태그 인식시키기
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const bytes = crypto.getRandomValues(new Uint8Array(6));
+                setUid(
+                  '04' +
+                    Array.from(bytes, (b) => b.toString(16).padStart(2, '0'))
+                      .join('')
+                      .toUpperCase(),
+                );
+                setNfcError(undefined);
+                setSentUid('');
+              }}
+            >
+              새 테스트 UID 만들기
+            </button>
+          </div>
+          {!state.reader && <p>NFC 리더기 연결 설정을 켜 주세요.</p>}
+          <ErrorBox error={nfcError} />
+          {sentUid && (
+            <p role="status">
+              인식 이벤트 전송: <code>{sentUid}</code> · 연결 결과는 대상 화면에서 확인하세요.
+            </p>
+          )}
+        </form>
+        <p>
+          새 UID로 신규 연결을, 이미 연결한 UID를 다시 보내 중복 태그 오류를 테스트할 수 있습니다.
+        </p>
+      </section>
       <section>
         <h2>시연 계정</h2>
         <p>
@@ -137,20 +213,22 @@ export default function Simulator() {
       <section>
         <h2>NFC 태그 이벤트</h2>
         <div className="sim-tags">
-          {r.data?.items.map((i) => (
-            <button
-              key={i.id}
-              onClick={() => {
-                emitTag(i.tag);
-                setMessage(`${i.tag} 태그 전송`);
-              }}
-            >
-              {i.label}
-              <small>
-                {i.tag} · {i.status} {!i.active ? '· 비활성' : ''}
-              </small>
-            </button>
-          ))}
+          {r.data?.items
+            .filter((i) => i.tag)
+            .map((i) => (
+              <button
+                key={i.id}
+                onClick={() => {
+                  emitTag(i.tag);
+                  setMessage(`${i.tag} 태그 전송`);
+                }}
+              >
+                {i.label}
+                <small>
+                  {i.tag} · {i.status} {!i.active ? '· 비활성' : ''}
+                </small>
+              </button>
+            ))}
           <button
             onClick={() => {
               emitTag('UNKNOWN');
