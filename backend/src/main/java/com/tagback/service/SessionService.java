@@ -1,6 +1,7 @@
 package com.tagback.service;
 
 import com.tagback.config.AuthProperties;
+import com.tagback.config.AuthenticatedUser;
 import com.tagback.domain.entity.*;
 import com.tagback.domain.repository.*;
 import com.tagback.dto.auth.AuthResponses;
@@ -44,6 +45,13 @@ public class SessionService {
             return unregistered();
         }
         return new AuthResponses.BrowserStatus(true, mask(browser.getUser().getPhoneNumber()), browser.getExpiresAt());
+    }
+
+    // Request authentication does not count as user activity or extend any expiry.
+    @Transactional(noRollbackFor = SessionInvalid.class)
+    public AuthenticatedUser authenticate(String sessionToken) {
+        var user = requireValid(sessionToken).getUser();
+        return new AuthenticatedUser(user.getId(), user.getRole());
     }
 
     // Status polling intentionally does not refresh inactivity or registration expiry.

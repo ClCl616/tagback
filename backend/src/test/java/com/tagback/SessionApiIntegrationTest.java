@@ -1,11 +1,9 @@
 package com.tagback;
 
 import com.tagback.config.AuthCookies;
-import com.tagback.controller.SessionController;
 import com.tagback.domain.entity.SessionRevokedReason;
 import com.tagback.domain.repository.LoginSessionRepository;
 import com.tagback.dto.auth.*;
-import com.tagback.exception.ApiExceptionHandler;
 import com.tagback.service.*;
 import com.tagback.service.sms.*;
 import jakarta.servlet.http.Cookie;
@@ -16,6 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.context.WebApplicationContext;
 import java.time.*;
 import java.sql.Timestamp;
 import java.util.*;
@@ -23,7 +22,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
-import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
+import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
 @EnabledIfEnvironmentVariable(named = "TAGBACK_AUTH_SCHEMA_TEST", matches = "true")
 @SpringBootTest(properties = {"spring.profiles.active=sms-mock",
@@ -31,7 +30,7 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
         "spring.datasource.username=postgres", "spring.datasource.password="})
 @Import(SmsMockApiIntegrationTest.TimeConfiguration.class)
 class SessionApiIntegrationTest {
-    @Autowired SessionController controller;
+    @Autowired WebApplicationContext context;
     @Autowired SessionService service;
     @Autowired SignupService signup;
     @Autowired LoginService login;
@@ -47,7 +46,7 @@ class SessionApiIntegrationTest {
 
     @BeforeEach void setup() {
         clock.set(initial);
-        mvc = standaloneSetup(controller).setControllerAdvice(new ApiExceptionHandler()).build();
+        mvc = webAppContextSetup(context).build();
     }
     @AfterEach void cleanup() {
         for (String phone : phones) {
