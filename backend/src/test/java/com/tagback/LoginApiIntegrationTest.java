@@ -187,10 +187,13 @@ class LoginApiIntegrationTest {
         var account = account();
         clock.advance(Duration.ofMinutes(1));
         String token = grant(account.phone(), SmsPurpose.PIN_RESET);
-        doThrow(new IllegalStateException("test persistence failure")).when(browsers)
-                .revokeAllForUser(eq(account.userId()), any(Instant.class));
-        assertThrows(IllegalStateException.class,
+        // The repository proxy requires a transaction even when configuring its spy.
+        new TransactionTemplate(transactionManager).executeWithoutResult(status ->
+                doThrow(new IllegalStateException("test persistence failure")).when(browsers)
+                        .revokeAllForUser(eq(account.userId()), any(Instant.class)));
+        var failure = assertThrows(IllegalStateException.class,
                 () -> pinReset.reset(new AuthRequests.PinReset(token, "246802"), UUID.randomUUID()));
+        assertEquals("test persistence failure", failure.getMessage());
         assertTrue(pins.matches("041527", users.findById(account.userId()).orElseThrow().getPinHash()));
         assertNull(grants.findByTokenHash(secrets.tokenHash(token)).orElseThrow().getConsumedAt());
         assertTrue(sessions.findValidByTokenHash(secrets.tokenHash(account.sessionToken()), clock.instant()).isPresent());
