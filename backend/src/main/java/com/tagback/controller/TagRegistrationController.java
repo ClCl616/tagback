@@ -1,5 +1,6 @@
 package com.tagback.controller;
 
+import com.tagback.config.AdminOnly;
 import com.tagback.dto.tag.RegisterTagRequest;
 import com.tagback.dto.tag.TagErrorResponse;
 import com.tagback.dto.tag.TagRegistrationResponse;
@@ -24,6 +25,7 @@ public class TagRegistrationController {
         this.registrationService = registrationService;
     }
 
+    @AdminOnly
     @PostMapping("/{itemId}/tag")
     public ResponseEntity<TagRegistrationResponse> register(@PathVariable Long itemId,
                                                              @RequestBody(required = false) RegisterTagRequest request) {
