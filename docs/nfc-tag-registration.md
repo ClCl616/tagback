@@ -28,7 +28,13 @@ Content-Type: application/json
 {"tag":{"tagId":1,"uid":"04A23B1C5D6E80","itemId":12,"status":"ACTIVE","createdAt":"2026-10-06T12:00:00+09:00"}}
 ```
 
-태그 등록 오류 본문은 `{"code":"...","message":"..."}`이다. 세션·권한 오류는 공통 인증 형식인 `{"error":{"code":"...","message":"...","retryAt":null}}`을 사용한다. 두 오류 응답 형식의 통일 여부는 팀 합의가 필요하다.
+태그 등록 오류와 세션·권한 오류 모두 공용 형식 `{"error":{"code":"...","message":"...","retryAt":null}}`을 사용한다. 태그 등록 오류의 `retryAt`은 `null`이다.
+
+예를 들어 이미 등록된 UID는 `409`와 함께 다음 본문을 반환한다.
+
+```json
+{"error":{"code":"TAG_ALREADY_REGISTERED","message":"이미 등록된 태그입니다.","retryAt":null}}
+```
 
 | HTTP | code | 조건 |
 | --- | --- | --- |

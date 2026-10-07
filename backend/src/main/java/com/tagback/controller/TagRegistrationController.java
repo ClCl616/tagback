@@ -1,8 +1,8 @@
 package com.tagback.controller;
 
 import com.tagback.config.AdminOnly;
+import com.tagback.dto.ApiErrorResponse;
 import com.tagback.dto.tag.RegisterTagRequest;
-import com.tagback.dto.tag.TagErrorResponse;
 import com.tagback.dto.tag.TagRegistrationResponse;
 import com.tagback.exception.TagRegistrationException;
 import com.tagback.service.TagRegistrationService;
@@ -36,13 +36,15 @@ public class TagRegistrationController {
     }
 
     @ExceptionHandler(TagRegistrationException.class)
-    public ResponseEntity<TagErrorResponse> handleTagRegistration(TagRegistrationException exception) {
+    public ResponseEntity<ApiErrorResponse> handleTagRegistration(TagRegistrationException exception) {
         return ResponseEntity.status(exception.status())
-                .body(new TagErrorResponse(exception.code(), exception.getMessage()));
+                .body(new ApiErrorResponse(new ApiErrorResponse.Error(
+                        exception.code(), exception.getMessage(), null)));
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ResponseEntity<TagErrorResponse> handleUnreadableBody() {
-        return ResponseEntity.badRequest().body(new TagErrorResponse("VALIDATION", "요청 본문이 올바르지 않습니다."));
+    public ResponseEntity<ApiErrorResponse> handleUnreadableBody() {
+        return ResponseEntity.badRequest().body(new ApiErrorResponse(new ApiErrorResponse.Error(
+                "VALIDATION", "요청 본문이 올바르지 않습니다.", null)));
     }
 }

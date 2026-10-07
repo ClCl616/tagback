@@ -11,10 +11,12 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -46,12 +48,23 @@ class TagRegistrationControllerTest {
     void returnsValidationForMissingBodyOrUid() throws Exception {
         mvc.perform(post("/api/items/12/tag").contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION"));
+                .andExpect(jsonPath("$.error.code").value("VALIDATION"));
         mvc.perform(post("/api/items/12/tag")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("VALIDATION"));
+                .andExpect(jsonPath("$.error.code").value("VALIDATION"));
+    }
+
+    @Test
+    void returnsValidationForMalformedJson() throws Exception {
+        mvc.perform(post("/api/items/12/tag")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"uid\":"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION"))
+                .andExpect(jsonPath("$.error.message").value("요청 본문이 올바르지 않습니다."))
+                .andExpect(content().string(containsString("\"retryAt\":null")));
     }
 
     @Test
@@ -64,6 +77,6 @@ class TagRegistrationControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"uid\":\"04A23B1C5D6E80\"}"))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("TAG_ALREADY_REGISTERED"));
+                .andExpect(jsonPath("$.error.code").value("TAG_ALREADY_REGISTERED"));
     }
 }
