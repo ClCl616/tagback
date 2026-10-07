@@ -37,16 +37,25 @@ public class TagLifecycleService {
         if (active != null && uid.equals(active.getUid())) {
             return new TagRegistrationService.RegistrationResult(response(active, itemId), false);
         }
-        // The UID remains globally reserved, including after a previous tag was deactivated.
-        if (tags.existsByUid(uid)) {
+        NfcTag previous = tags.findByUid(uid).orElse(null);
+        if (previous != null && !itemId.equals(previous.getItem().getId())) {
             throw new TagRegistrationException(HttpStatus.CONFLICT, "TAG_ALREADY_REGISTERED", "이미 등록된 태그입니다.");
+        }
+
+        if (previous != null && previous.getDeactivatedAt() == null) {
+            return new TagRegistrationService.RegistrationResult(response(previous, itemId), false);
         }
 
         if (active != null) {
             active.deactivate();
-            tags.flush(); // Release the partial unique index before inserting the replacement.
+            tags.flush(); // Release the partial unique index before reactivating or inserting.
         }
         try {
+            if (previous != null) {
+                previous.reactivate();
+                tags.flush();
+                return new TagRegistrationService.RegistrationResult(response(previous, itemId), true);
+            }
             NfcTag created = tags.saveAndFlush(new NfcTag(uid, item));
             entityManager.refresh(created);
             return new TagRegistrationService.RegistrationResult(response(created, itemId), true);

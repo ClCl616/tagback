@@ -59,4 +59,8 @@ public class NfcTag {
             deactivatedAt = OffsetDateTime.now(ZoneOffset.UTC);
         }
     }
+
+    public void reactivate() {
+        deactivatedAt = null;
+    }
 }

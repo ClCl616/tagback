@@ -54,7 +54,7 @@ Content-Type: application/json
 
 ## 6주차: 교체·비활성화·태그 조회
 
-- `PUT /api/items/{itemId}/tag`에 `{"uid":"04A23B1C5D6E81"}`을 전송하면 기존 활성 태그를 비활성화하고 새 태그를 만든다. 두 DB 변경은 한 트랜잭션이다. 기존 활성 태그가 없어도 새 태그를 만든다. 새 연결은 `201`, 같은 활성 UID의 재호출은 기존 태그 정보와 `200`이다.
+- `PUT /api/items/{itemId}/tag`에 `{"uid":"04A23B1C5D6E81"}`을 전송하면 기존 활성 태그를 비활성화하고 새 태그를 만든다. 같은 물품의 과거 비활성 UID라면 기존 행의 `deactivated_at`을 `NULL`로 바꿔 재활성화한다. 기존 활성 태그가 있으면 먼저 비활성화하고 flush한다. 모든 변경은 한 트랜잭션이다. 새 연결·재활성화는 `201`, 같은 활성 UID의 재호출은 기존 태그 정보와 `200`이다.
 - `DELETE /api/items/{itemId}/tag`는 활성 태그를 비활성화하고 `204`를 반환한다. 이미 활성 태그가 없어도 `204`다. 존재하지 않는 물품은 `404 ITEM_NOT_FOUND`다.
 - `PUT`과 `DELETE`는 관리자 세션 전용이다. 교체·해제 시 물품 행을 잠가 같은 물품에 대한 동시 요청을 직렬화한다. 서로 다른 UID로 동시 교체하면 나중 요청이 최종 활성 태그가 된다. 이 정책에 버전 검사/사전 조건이 필요하면 팀에서 별도로 결정해야 한다.
 - `GET /api/tags/{uid}`는 로그인한 `USER`와 `ADMIN` 모두 호출할 수 있다. UID는 등록 때와 같이 정규화한다. 응답 예시는 아래와 같다. `rentable`은 현재 물품 상태가 `AVAILABLE`일 때만 `true`다.
@@ -63,7 +63,7 @@ Content-Type: application/json
 {"item":{"itemId":12,"name":"공용 물품","status":"AVAILABLE","rentable":true},"tag":{"uid":"04A23B1C5D6E81","status":"ACTIVE"}}
 ```
 
-미등록 UID는 `404 TAG_NOT_FOUND`, 비활성 UID는 `409 TAG_INACTIVE`다. 오류는 모두 `{"error":{"code":"...","message":"...","retryAt":null}}` 형식이다. 비활성 UID는 다른 물품에 재등록하거나, 같은 물품에 재활성화하는 것도 현재는 전역 `tag_uid UNIQUE` 때문에 `409 TAG_ALREADY_REGISTERED`로 거절한다. 교체 시 새 UID로 등록해야 한다.
+미등록 UID는 `404 TAG_NOT_FOUND`, 비활성 UID는 `409 TAG_INACTIVE`다. 오류는 모두 `{"error":{"code":"...","message":"...","retryAt":null}}` 형식이다. 비활성 UID는 **같은 물품의 PUT에서만** 재활성화할 수 있으며 기존 `tagId`를 유지한다. 다른 물품에 등록·교체하려고 하면 전역 `tag_uid UNIQUE` 정책에 따라 `409 TAG_ALREADY_REGISTERED`다. 5주차 POST도 비활성 UID를 재활성화하지 않으며 `409`를 반환한다.
 
 ## DB와 후속 작업
 

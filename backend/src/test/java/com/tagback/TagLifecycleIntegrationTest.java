@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -58,7 +59,7 @@ class TagLifecycleIntegrationTest {
         Item item = item();
         String oldUid = uid();
         String newUid = uid();
-        registration.register(item.getId(), oldUid);
+        var original = registration.register(item.getId(), oldUid);
 
         var replaced = lifecycle.replace(item.getId(), newUid);
         var retried = lifecycle.replace(item.getId(), newUid.toLowerCase());
@@ -71,6 +72,16 @@ class TagLifecycleIntegrationTest {
         assertTrue(tags.existsByItem_Id(item.getId()));
         assertEquals(2L, countTags(item.getId()));
         assertEquals(1L, countActive(item.getId()));
+
+        var restored = lifecycle.replace(item.getId(), oldUid);
+        assertTrue(restored.created());
+        assertEquals(original.response().tag().tagId(), restored.response().tag().tagId());
+        assertEquals(oldUid, tags.findByItem_Id(item.getId()).orElseThrow().getUid());
+        assertNull(tags.findByUid(oldUid).orElseThrow().getDeactivatedAt());
+        assertNotNull(tags.findByUid(newUid).orElseThrow().getDeactivatedAt());
+        assertEquals(2L, countTags(item.getId()));
+        assertEquals(1L, countActive(item.getId()));
+        assertFalse(lifecycle.replace(item.getId(), oldUid).created());
     }
 
     @Test
@@ -94,7 +105,24 @@ class TagLifecycleIntegrationTest {
     }
 
     @Test
-    void inactiveUidRemainsReservedEvenForAnotherItem() {
+    void deleteThenPutSameUidReactivatesOriginalRow() {
+        Item item = item();
+        String uid = uid();
+        var original = registration.register(item.getId(), uid);
+
+        lifecycle.deactivate(item.getId());
+        assertEquals(0L, countActive(item.getId()));
+        var restored = lifecycle.replace(item.getId(), uid.toLowerCase());
+
+        assertTrue(restored.created());
+        assertEquals(original.response().tag().tagId(), restored.response().tag().tagId());
+        assertEquals(1L, countTags(item.getId()));
+        assertEquals(1L, countActive(item.getId()));
+        assertNull(tags.findByUid(uid).orElseThrow().getDeactivatedAt());
+    }
+
+    @Test
+    void anotherItemCannotReuseInactiveUid() {
         Item first = item();
         Item second = item();
         String uid = uid();
@@ -107,8 +135,8 @@ class TagLifecycleIntegrationTest {
                 () -> registration.register(first.getId(), uid)).code());
         assertEquals("TAG_ALREADY_REGISTERED", assertThrows(TagRegistrationException.class,
                 () -> lifecycle.replace(second.getId(), uid)).code());
-        assertEquals("TAG_ALREADY_REGISTERED", assertThrows(TagRegistrationException.class,
-                () -> lifecycle.replace(first.getId(), uid)).code());
+        assertEquals(0L, countTags(second.getId()));
+        assertEquals(0L, countActive(first.getId()));
     }
 
     @Test
