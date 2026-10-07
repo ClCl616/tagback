@@ -32,7 +32,8 @@ public class TagRegistrationController {
         if (request == null || request.uid() == null) {
             throw new TagRegistrationException(HttpStatus.BAD_REQUEST, "VALIDATION", "uid가 필요합니다.");
         }
-        return ResponseEntity.status(HttpStatus.CREATED).body(registrationService.register(itemId, request.uid()));
+        TagRegistrationService.RegistrationResult result = registrationService.register(itemId, request.uid());
+        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(result.response());
     }
 
     @ExceptionHandler(TagRegistrationException.class)

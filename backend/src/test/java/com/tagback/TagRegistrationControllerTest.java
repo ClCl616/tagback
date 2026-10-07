@@ -34,7 +34,8 @@ class TagRegistrationControllerTest {
     void returnsCreatedTagWithItemConnection() throws Exception {
         TagRegistrationResponse response = new TagRegistrationResponse(
                 new TagRegistrationResponse.Tag(1L, "04A23B1C5D6E80", 12L, "ACTIVE", null));
-        when(service.register(eq(12L), eq("04:a2:3b:1c:5d:6e:80"))).thenReturn(response);
+        when(service.register(eq(12L), eq("04:a2:3b:1c:5d:6e:80")))
+                .thenReturn(new TagRegistrationService.RegistrationResult(response, true));
 
         mvc.perform(post("/api/items/12/tag")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -42,6 +43,21 @@ class TagRegistrationControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.tag.uid").value("04A23B1C5D6E80"))
                 .andExpect(jsonPath("$.tag.itemId").value(12));
+    }
+
+    @Test
+    void returnsOkWithSameTagOnRetry() throws Exception {
+        TagRegistrationResponse response = new TagRegistrationResponse(
+                new TagRegistrationResponse.Tag(1L, "04A23B1C5D6E80", 12L, "ACTIVE", null));
+        when(service.register(12L, "04:a2:3b:1c:5d:6e:80"))
+                .thenReturn(new TagRegistrationService.RegistrationResult(response, false));
+
+        mvc.perform(post("/api/items/12/tag")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"uid\":\"04:a2:3b:1c:5d:6e:80\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tag.tagId").value(1))
+                .andExpect(jsonPath("$.tag.uid").value("04A23B1C5D6E80"));
     }
 
     @Test

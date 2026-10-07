@@ -10,14 +10,16 @@ import com.tagback.domain.repository.NfcTagRepository;
 import com.tagback.dto.tag.TagRegistrationResponse;
 import com.tagback.exception.TagRegistrationException;
 import com.tagback.service.TagRegistrationService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -25,7 +27,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SpringBootTest
-@Transactional
 @EnabledIfEnvironmentVariable(named = "TAGBACK_DB_PASSWORD", matches = ".+")
 class TagRegistrationIntegrationTest {
     @Autowired
@@ -38,21 +39,53 @@ class TagRegistrationIntegrationTest {
     private TagRegistrationService registrationService;
     @Autowired
     private JdbcTemplate jdbcTemplate;
+    private final List<Long> itemIds = new ArrayList<>();
+    private final List<Long> typeIds = new ArrayList<>();
+
+    @AfterEach
+    void cleanup() {
+        for (Long itemId : itemIds) {
+            jdbcTemplate.update("DELETE FROM nfc_tags WHERE item_id = ?", itemId);
+            jdbcTemplate.update("DELETE FROM items WHERE item_id = ?", itemId);
+        }
+        for (Long typeId : typeIds) {
+            jdbcTemplate.update("DELETE FROM item_types WHERE item_type_id = ?", typeId);
+        }
+    }
 
     @Test
     void persistsNormalizedUidAndConnectsItToTheItem() {
         Item item = testItem();
         String uid = randomUid();
 
-        TagRegistrationResponse response = registrationService.register(item.getId(), uid.toLowerCase());
+        TagRegistrationService.RegistrationResult result = registrationService.register(item.getId(), uid.toLowerCase());
+        TagRegistrationResponse response = result.response();
         NfcTag saved = tagRepository.findByUid(uid).orElseThrow();
 
+        assertEquals(true, result.created());
         assertEquals(item.getId(), response.tag().itemId());
         assertEquals(uid, response.tag().uid());
         assertEquals(uid, saved.getUid());
         assertEquals(item.getId(), saved.getItem().getId());
         assertEquals("ACTIVE", response.tag().status());
         assertNotNull(response.tag().createdAt());
+    }
+
+    @Test
+    void retryingSameItemAndUidReturnsExistingTagWithoutAnotherRow() {
+        Item item = testItem();
+        String uid = randomUid();
+
+        TagRegistrationService.RegistrationResult created = registrationService.register(item.getId(), uid);
+        TagRegistrationService.RegistrationResult retried = registrationService.register(
+                item.getId(), uid.toLowerCase());
+
+        assertEquals(true, created.created());
+        assertEquals(false, retried.created());
+        assertEquals(created.response().tag().tagId(), retried.response().tag().tagId());
+        assertEquals(created.response().tag().createdAt(), retried.response().tag().createdAt());
+        assertEquals(1L, jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM nfc_tags WHERE item_id = ?", Long.class, item.getId()));
     }
 
     @Test
@@ -95,7 +128,10 @@ class TagRegistrationIntegrationTest {
     private Item testItem() {
         String suffix = UUID.randomUUID().toString();
         ItemType type = itemTypeRepository.saveAndFlush(new ItemType("NFC 테스트 " + suffix, null));
-        return itemRepository.saveAndFlush(new Item("테스트 물품 " + suffix, ItemStatus.AVAILABLE, type));
+        typeIds.add(type.getId());
+        Item item = itemRepository.saveAndFlush(new Item("테스트 물품 " + suffix, ItemStatus.AVAILABLE, type));
+        itemIds.add(item.getId());
+        return item;
     }
 
     private static String randomUid() {

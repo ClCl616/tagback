@@ -69,16 +69,56 @@ class TagRegistrationConcurrencyIntegrationTest {
         }
     }
 
+    @Test
+    void concurrentRetryOfSameItemAndUidCreatesOnlyOneTag() throws Exception {
+        TestItem data = transactionTemplate.execute(status -> {
+            ItemType type = itemTypeRepository.saveAndFlush(
+                    new ItemType("동일 물품 재시도 " + UUID.randomUUID(), null));
+            Item item = itemRepository.saveAndFlush(new Item("테스트 물품", ItemStatus.AVAILABLE, type));
+            return new TestItem(type.getId(), item.getId());
+        });
+        String uid = UUID.randomUUID().toString().replace("-", "").substring(0, 14).toUpperCase();
+        ExecutorService workers = Executors.newFixedThreadPool(2);
+        CountDownLatch start = new CountDownLatch(1);
+
+        try {
+            Future<TagRegistrationService.RegistrationResult> first = workers.submit(() -> {
+                start.await();
+                return registrationService.register(data.itemId(), uid);
+            });
+            Future<TagRegistrationService.RegistrationResult> second = workers.submit(() -> {
+                start.await();
+                return registrationService.register(data.itemId(), uid);
+            });
+            start.countDown();
+
+            List<TagRegistrationService.RegistrationResult> results = List.of(
+                    first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS));
+            assertEquals(1, results.stream().filter(TagRegistrationService.RegistrationResult::created).count());
+            assertEquals(results.get(0).response().tag().tagId(), results.get(1).response().tag().tagId());
+            assertEquals(1L, jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM nfc_tags WHERE item_id = ? AND tag_uid = ?",
+                    Long.class, data.itemId(), uid));
+        } finally {
+            workers.shutdownNow();
+            jdbcTemplate.update("DELETE FROM nfc_tags WHERE item_id = ?", data.itemId());
+            jdbcTemplate.update("DELETE FROM items WHERE item_id = ?", data.itemId());
+            jdbcTemplate.update("DELETE FROM item_types WHERE item_type_id = ?", data.typeId());
+        }
+    }
+
     private String registerAfterSignal(Long itemId, String uid, CountDownLatch start) throws InterruptedException {
         start.await();
         try {
-            registrationService.register(itemId, uid);
-            return "CREATED";
+            return registrationService.register(itemId, uid).created() ? "CREATED" : "EXISTING";
         } catch (TagRegistrationException exception) {
             return exception.code();
         }
     }
 
     private record TestItems(Long typeId, Long firstId, Long secondId) {
+    }
+
+    private record TestItem(Long typeId, Long itemId) {
     }
 }

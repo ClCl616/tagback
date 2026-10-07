@@ -59,8 +59,8 @@ class TagRegistrationAuthorizationTest {
     void adminCanRegisterTag() throws Exception {
         when(sessions.authenticate("admin-session")).thenReturn(new AuthenticatedUser(8L, UserRole.ADMIN));
         when(registrationService.register(12L, "04A23B1C5D6E80")).thenReturn(
-                new TagRegistrationResponse(new TagRegistrationResponse.Tag(
-                        1L, "04A23B1C5D6E80", 12L, "ACTIVE", null)));
+                new TagRegistrationService.RegistrationResult(new TagRegistrationResponse(
+                        new TagRegistrationResponse.Tag(1L, "04A23B1C5D6E80", 12L, "ACTIVE", null)), true));
 
         mvc.perform(request().cookie(new Cookie(AuthCookies.SESSION_COOKIE, "admin-session")))
                 .andExpect(status().isCreated())
