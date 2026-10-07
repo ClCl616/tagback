@@ -364,8 +364,8 @@ export default function AdminApp() {
                                 );
                               }}
                             >
-                              {column.label}
-                              <span aria-hidden="true">
+                              <span className="admin-sort-label">{column.label}</span>
+                              <span className="admin-sort-icon" aria-hidden="true">
                                 {sort?.key === column.key
                                   ? sort.direction === 'ascending'
                                     ? '↑'

@@ -996,7 +996,12 @@
   backdrop-filter: blur(2px);
 }
 .admin-sort {
-  display: inline-flex;
+  display: grid;
+  position: relative;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  grid-template-columns: 16px auto 16px;
   align-items: center;
   justify-content: center;
   gap: 7px;
@@ -1007,7 +1012,16 @@
   font: inherit;
   cursor: pointer;
 }
-.admin-sort span {
+.admin-sort::before {
+  content: '';
+}
+.admin-sort-label {
+  white-space: nowrap;
+}
+.admin-sort-icon {
+  width: 16px;
+  line-height: 1;
+  text-align: center;
   color: #87988b;
   font-size: 14px;
 }
