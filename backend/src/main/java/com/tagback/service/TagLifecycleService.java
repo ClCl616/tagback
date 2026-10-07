@@ -1,0 +1,103 @@
+package com.tagback.service;
+
+import com.tagback.domain.entity.Item;
+import com.tagback.domain.entity.ItemStatus;
+import com.tagback.domain.entity.NfcTag;
+import com.tagback.domain.repository.ItemRepository;
+import com.tagback.domain.repository.NfcTagRepository;
+import com.tagback.dto.tag.TagLookupResponse;
+import com.tagback.dto.tag.TagRegistrationResponse;
+import com.tagback.exception.TagRegistrationException;
+import jakarta.persistence.EntityManager;
+import org.hibernate.exception.ConstraintViolationException;
+import org.postgresql.util.PSQLException;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+@Service
+public class TagLifecycleService {
+    private final ItemRepository items;
+    private final NfcTagRepository tags;
+    private final EntityManager entityManager;
+
+    public TagLifecycleService(ItemRepository items, NfcTagRepository tags, EntityManager entityManager) {
+        this.items = items;
+        this.tags = tags;
+        this.entityManager = entityManager;
+    }
+
+    @Transactional
+    public TagRegistrationService.RegistrationResult replace(Long itemId, String rawUid) {
+        String uid = TagUidNormalizer.normalize(rawUid);
+        Item item = items.findByIdForUpdate(itemId).orElseThrow(() ->
+                new TagRegistrationException(HttpStatus.NOT_FOUND, "ITEM_NOT_FOUND", "물품을 찾을 수 없습니다."));
+        NfcTag active = tags.findByItem_Id(itemId).orElse(null);
+        if (active != null && uid.equals(active.getUid())) {
+            return new TagRegistrationService.RegistrationResult(response(active, itemId), false);
+        }
+        // The UID remains globally reserved, including after a previous tag was deactivated.
+        if (tags.existsByUid(uid)) {
+            throw new TagRegistrationException(HttpStatus.CONFLICT, "TAG_ALREADY_REGISTERED", "이미 등록된 태그입니다.");
+        }
+
+        if (active != null) {
+            active.deactivate();
+            tags.flush(); // Release the partial unique index before inserting the replacement.
+        }
+        try {
+            NfcTag created = tags.saveAndFlush(new NfcTag(uid, item));
+            entityManager.refresh(created);
+            return new TagRegistrationService.RegistrationResult(response(created, itemId), true);
+        } catch (DataIntegrityViolationException exception) {
+            for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+                if (cause instanceof ConstraintViolationException violation && "23505".equals(violation.getSQLState())) {
+                    throw conflict(violation.getConstraintName());
+                }
+                if (cause instanceof PSQLException postgres && "23505".equals(postgres.getSQLState())) {
+                    String name = postgres.getServerErrorMessage() == null ? null
+                            : postgres.getServerErrorMessage().getConstraint();
+                    throw conflict(name);
+                }
+            }
+            throw exception;
+        }
+    }
+
+    @Transactional
+    public void deactivate(Long itemId) {
+        items.findByIdForUpdate(itemId).orElseThrow(() ->
+                new TagRegistrationException(HttpStatus.NOT_FOUND, "ITEM_NOT_FOUND", "물품을 찾을 수 없습니다."));
+        tags.findByItem_Id(itemId).ifPresent(NfcTag::deactivate);
+    }
+
+    @Transactional(readOnly = true)
+    public TagLookupResponse lookup(String rawUid) {
+        String uid = TagUidNormalizer.normalize(rawUid);
+        NfcTag tag = tags.findByUid(uid).orElseThrow(() ->
+                new TagRegistrationException(HttpStatus.NOT_FOUND, "TAG_NOT_FOUND", "태그를 찾을 수 없습니다."));
+        if (tag.getDeactivatedAt() != null) {
+            throw new TagRegistrationException(HttpStatus.CONFLICT, "TAG_INACTIVE", "비활성화된 태그입니다.");
+        }
+        Item item = tag.getItem();
+        return new TagLookupResponse(
+                new TagLookupResponse.Item(item.getId(), item.getItemName(), item.getStatus(),
+                        item.getStatus() == ItemStatus.AVAILABLE),
+                new TagLookupResponse.Tag(uid, "ACTIVE"));
+    }
+
+    private static TagRegistrationResponse response(NfcTag tag, Long itemId) {
+        return new TagRegistrationResponse(new TagRegistrationResponse.Tag(
+                tag.getId(), tag.getUid(), itemId, "ACTIVE", tag.getCreatedAt()));
+    }
+
+    private static TagRegistrationException conflict(String constraint) {
+        if ("uq_nfc_tags_active_item".equals(constraint)) {
+            return new TagRegistrationException(HttpStatus.CONFLICT, "ITEM_ALREADY_TAGGED",
+                    "물품에 이미 태그가 연결되어 있습니다.");
+        }
+        return new TagRegistrationException(HttpStatus.CONFLICT, "TAG_ALREADY_REGISTERED",
+                "이미 등록된 태그입니다.");
+    }
+}
