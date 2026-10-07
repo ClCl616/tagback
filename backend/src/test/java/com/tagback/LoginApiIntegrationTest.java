@@ -31,6 +31,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -52,6 +53,7 @@ class LoginApiIntegrationTest {
     @Autowired SmsSecrets secrets;
     @Autowired UserRepository users;
     @Autowired VerificationGrantRepository grants;
+    @MockitoSpyBean BrowserRegistrationRepository browsers;
     @MockitoSpyBean LoginSessionRepository sessions;
     @Autowired SmsMockApiIntegrationTest.MutableClock clock;
     @Autowired JdbcTemplate jdbc;
@@ -110,17 +112,25 @@ class LoginApiIntegrationTest {
         error(AuthErrorCode.PIN_MISMATCH, () -> login.phone(new AuthRequests.PhoneLogin(account.phone(), "041528"), UUID.randomUUID()));
         assertEquals(1, users.findById(account.userId()).orElseThrow().getPinFailedCount());
         UUID key = UUID.randomUUID();
-        mvc.perform(post("/api/v1/auth/login/phone").header("Idempotency-Key", key)
+        String body = json.writeValueAsString(new AuthRequests.PhoneLogin(account.phone(), "041527"));
+        var firstResponse = mvc.perform(post("/api/v1/auth/login/phone").header("Idempotency-Key", key)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json.writeValueAsString(new AuthRequests.PhoneLogin(account.phone(), "041527"))))
+                        .content(body))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.user.name").value("테스트"))
                 .andExpect(jsonPath("$.user.occupation").value("학생"))
-                .andExpect(header().exists("Set-Cookie"));
+                .andExpect(header().exists("Set-Cookie")).andReturn().getResponse();
+        var retryResponse = mvc.perform(post("/api/v1/auth/login/phone").header("Idempotency-Key", key)
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        assertEquals(firstResponse.getContentAsString(), retryResponse.getContentAsString());
+        assertEquals(firstResponse.getHeaders("Set-Cookie").stream().map(value -> value.split(";", 2)[0]).toList(),
+                retryResponse.getHeaders("Set-Cookie").stream().map(value -> value.split(";", 2)[0]).toList());
         assertEquals(SessionRevokedReason.SESSION_REPLACED,
                 sessions.findBySessionTokenHash(secrets.tokenHash(account.sessionToken())).orElseThrow().getRevokedReason());
         assertTrue(login.phone(new AuthRequests.PhoneLogin(account.phone(), "041527"), key).previousBrowserRevoked());
         assertEquals(1, jdbc.queryForObject("select count(*) from browser_registrations where user_id = ? and revoked_at is null", Long.class, account.userId()));
+        assertEquals(1, jdbc.queryForObject("select count(*) from login_sessions where user_id = ? and revoked_at is null", Long.class, account.userId()));
     }
 
     @Test void verifiedRecoverySmsResetsPinWithoutApprovalAndRevokesAuthentication() throws Exception {
@@ -141,6 +151,10 @@ class LoginApiIntegrationTest {
         assertFalse(pins.matches("041527", users.findById(account.userId()).orElseThrow().getPinHash()));
         assertEquals(0, users.findById(account.userId()).orElseThrow().getPinFailedCount());
         assertTrue(sessions.findValidByTokenHash(secrets.tokenHash(account.sessionToken()), clock.instant()).isEmpty());
+        assertEquals(SessionRevokedReason.PIN_RESET,
+                sessions.findBySessionTokenHash(secrets.tokenHash(account.sessionToken())).orElseThrow().getRevokedReason());
+        assertEquals(0, jdbc.queryForObject("select count(*) from login_sessions where user_id = ? and revoked_at is null", Long.class, account.userId()));
+        assertEquals(0, jdbc.queryForObject("select count(*) from browser_registrations where user_id = ? and revoked_at is null", Long.class, account.userId()));
         error(AuthErrorCode.VERIFICATION_CONSUMED, () -> pinReset.reset(input, UUID.randomUUID()));
         error(AuthErrorCode.IDEMPOTENCY_KEY_CONFLICT,
                 () -> pinReset.reset(new AuthRequests.PinReset(token, "246803"), key));
@@ -152,6 +166,35 @@ class LoginApiIntegrationTest {
                         .content(json.writeValueAsString(new AuthRequests.RegisteredLogin("041527"))))
                 .andExpect(status().isUnauthorized()).andReturn().getResponse();
         assertTrue(response.getContentAsString().contains("BROWSER_REGISTRATION_INVALID"));
+        error(AuthErrorCode.PIN_MISMATCH,
+                () -> login.phone(new AuthRequests.PhoneLogin(account.phone(), "041527"), UUID.randomUUID()));
+        assertEquals(account.userId().toString(),
+                login.phone(new AuthRequests.PhoneLogin(account.phone(), "246802"), UUID.randomUUID()).response().user().userId());
+    }
+
+    @Test void expiredResetProofCannotChangePin() {
+        var account = account();
+        clock.advance(Duration.ofMinutes(1));
+        String token = grant(account.phone(), SmsPurpose.PIN_RESET);
+        clock.advance(Duration.ofMinutes(10));
+        error(AuthErrorCode.VERIFICATION_EXPIRED,
+                () -> pinReset.reset(new AuthRequests.PinReset(token, "246802"), UUID.randomUUID()));
+        assertTrue(pins.matches("041527", users.findById(account.userId()).orElseThrow().getPinHash()));
+        assertTrue(sessions.findValidByTokenHash(secrets.tokenHash(account.sessionToken()), clock.instant()).isPresent());
+    }
+
+    @Test void pinResetStorageFailureRollsBackPinProofAndRevocations() {
+        var account = account();
+        clock.advance(Duration.ofMinutes(1));
+        String token = grant(account.phone(), SmsPurpose.PIN_RESET);
+        doThrow(new IllegalStateException("test persistence failure")).when(browsers)
+                .revokeAllForUser(eq(account.userId()), any(Instant.class));
+        assertThrows(IllegalStateException.class,
+                () -> pinReset.reset(new AuthRequests.PinReset(token, "246802"), UUID.randomUUID()));
+        assertTrue(pins.matches("041527", users.findById(account.userId()).orElseThrow().getPinHash()));
+        assertNull(grants.findByTokenHash(secrets.tokenHash(token)).orElseThrow().getConsumedAt());
+        assertTrue(sessions.findValidByTokenHash(secrets.tokenHash(account.sessionToken()), clock.instant()).isPresent());
+        assertTrue(browsers.findValidByTokenHash(secrets.tokenHash(account.browserToken()), clock.instant()).isPresent());
     }
 
     @Test void pinResetRejectsOtherSmsPurposeAndClearsCookiesOnSuccess() throws Exception {
