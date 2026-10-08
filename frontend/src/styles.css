@@ -2345,9 +2345,10 @@ dd {
   min-height: 64px;
   border-radius: 12px;
 }
+.mobile-main input:focus-visible,
+.mobile-main select:focus-visible,
 .pin-field:focus-within {
-  outline: 2px solid #205b45;
-  outline-offset: 4px;
+  outline: none;
 }
 .pin-dots {
   display: flex;
