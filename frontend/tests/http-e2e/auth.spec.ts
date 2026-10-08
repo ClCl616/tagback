@@ -410,3 +410,107 @@ test('existing signup number is blocked before verification and offers login', a
     writes.some((x) => x.path.endsWith('/sms/verifications') || x.path.endsWith('/signup')),
   ).toBe(false);
 });
+
+test('recovery navigation, PIN confirmation correction and completion stay on a clear path', async ({
+  page,
+}) => {
+  await server(page);
+  await page.route('**/api/v1/auth/sms/verifications', (route) =>
+    route.fulfill({
+      json: {
+        verificationToken: 'reset-proof',
+        purpose: 'PIN_RESET',
+        expiresAt: new Date(Date.now() + 600000).toISOString(),
+        maskedPhoneNumber: '010-****-5678',
+      },
+    }),
+  );
+  let resets = 0;
+  await page.route('**/api/v1/auth/pin/reset', (route) => {
+    resets++;
+    return route.fulfill({ json: { completed: true } });
+  });
+  await page.goto('/mobile/recover');
+  await expect(page.getByText('기존 전화번호를 사용할 수 없어요')).toHaveCount(0);
+  await expect(
+    page.locator('.auth-links').getByRole('link', { name: 'PIN 찾기', exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole('button', { name: '이전', exact: true }).click();
+  await expect(page).toHaveURL(/\/mobile\/login$/);
+  await page.getByRole('link', { name: 'PIN 찾기', exact: true }).click();
+  await expect(page).toHaveURL(/\/mobile\/recover$/);
+  await expect(
+    page.getByRole('heading', { name: '등록된 전화번호를 확인해 주세요.' }),
+  ).toBeVisible();
+  await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
+  await page.getByRole('button', { name: '인증번호 발송', exact: true }).click();
+  await page.getByLabel('SMS 인증번호').fill('123456');
+  await page.getByRole('button', { name: '인증번호 확인', exact: true }).click();
+  await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
+  await page.getByRole('button', { name: '계속', exact: true }).click();
+  await page.getByLabel('PIN 번호', { exact: true }).fill('246802');
+  await page.getByRole('button', { name: 'PIN 재설정', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('처음 입력한 PIN과 일치하지 않습니다.');
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'PIN 번호를 한 번 더 입력해 주세요.' }),
+  ).toBeVisible();
+  expect(resets).toBe(0);
+  await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
+  await page.getByRole('button', { name: 'PIN 재설정', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'PIN이 재설정되었습니다.' })).toBeVisible();
+  expect(resets).toBe(1);
+  await page.getByRole('link', { name: '로그인으로', exact: true }).click();
+  await expect(page).toHaveURL(/\/mobile\/login$/);
+});
+
+test('expired verification can restart from PIN entry', async ({ page }) => {
+  await page.clock.install();
+  await server(page);
+  await page.route('**/api/v1/auth/sms/verifications', (route) =>
+    route.fulfill({
+      json: {
+        verificationToken: 'short-proof',
+        purpose: 'SIGNUP',
+        expiresAt: new Date(Date.now() + 10000).toISOString(),
+        maskedPhoneNumber: '010-****-5678',
+      },
+    }),
+  );
+  await beginSignup(page);
+  await page.getByRole('button', { name: '인증번호 발송', exact: true }).click();
+  await page.getByLabel('SMS 인증번호').fill('123456');
+  await page.getByRole('button', { name: '인증번호 확인', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
+  await page.clock.fastForward(11000);
+  await expect(page.getByRole('dialog')).toContainText('인증 결과가 만료되었습니다.');
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
+  await page.getByRole('button', { name: '전화번호 인증 다시 시작', exact: true }).click();
+  await expect(page.getByLabel('전화번호', { exact: true })).toHaveValue('01012345678');
+  await expect(page.getByRole('button', { name: '인증번호 재발송', exact: true })).toBeEnabled();
+});
+
+test('a definite retry error leaves unknown-result mode instead of trapping signup', async ({
+  page,
+}) => {
+  await server(page);
+  let attempts = 0;
+  await page.route('**/api/v1/auth/signup', (route) => {
+    if (attempts++ === 0) return route.abort();
+    return route.fulfill({
+      status: 400,
+      json: {
+        error: { code: 'VERIFICATION_EXPIRED', message: '인증이 만료되었습니다.', retryAt: null },
+      },
+    });
+  });
+  await signup(page);
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
+  await page.getByRole('button', { name: '처리 결과 다시 확인', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('인증이 만료되었습니다.');
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
+  await expect(page.getByRole('button', { name: '처리 결과 다시 확인', exact: true })).toHaveCount(
+    0,
+  );
+  await expect(page.getByLabel('전화번호', { exact: true })).toBeVisible();
+});

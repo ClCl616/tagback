@@ -216,8 +216,13 @@ export default function AuthFlow({
         if (e.retryAt) setRetryAt(e.retryAt);
         if (e.code === 'PIN_LOCKED') setLocked(true);
         if (e.code === 'UNKNOWN' && operationId.current) setUnknown(operationId.current);
-        else if (!unknown) {
+        else {
           sessionStorage.removeItem(PENDING);
+          if (unknown) {
+            setUnknown('');
+            startPhone();
+            setError(e);
+          }
           if (HTTP_AUTH) operationId.current = '';
         }
         if (
@@ -352,9 +357,7 @@ export default function AuthFlow({
     }
     if (step === 'confirm' && pin !== firstPin) {
       setPin('');
-      setFirstPin('');
-      setStep('setup');
-      setError(new Error('PIN이 일치하지 않습니다. 다시 설정해 주세요.'));
+      setError(new Error('처음 입력한 PIN과 일치하지 않습니다. 다시 입력해 주세요.'));
       return;
     }
     await task(async () => {
@@ -413,7 +416,7 @@ export default function AuthFlow({
               startPhone();
               setStep('profile');
             } else if (isPin && mode !== 'change') startPhone();
-            else nav('/mobile');
+            else nav(mode === 'signup' || mode === 'reset' ? '/mobile/login' : '/mobile');
           }}
           aria-label="이전"
         >
@@ -466,11 +469,13 @@ export default function AuthFlow({
               setUnknown('');
               startPhone();
               setNotice(
-                '결과 확인을 중단했습니다. 기존 처리가 완료되었을 수 있으므로 전화번호 인증으로 계정을 다시 확인하세요.',
+                mode === 'access'
+                  ? '전화번호와 PIN으로 다시 로그인해 주세요.'
+                  : '이전 요청이 완료되었을 수 있습니다. 가입했다면 로그인하고, PIN을 변경했다면 새 PIN으로 로그인해 주세요.',
               );
             }}
           >
-            전화번호 인증으로 안전하게 재진입
+            {mode === 'access' ? '로그인 다시 시작' : '전화번호 인증 다시 시작'}
           </button>
         </>
       ) : step === 'boot' ? (
@@ -535,8 +540,9 @@ export default function AuthFlow({
           <ShieldCheck className="auth-symbol" />
           <h1>{mode === 'change' ? '전화번호가 변경되었습니다.' : 'PIN이 재설정되었습니다.'}</h1>
           <p>
-            기존 로그인과 브라우저 등록이 모두 해제되었습니다. 전화번호와 PIN으로 다시 로그인해
-            주세요.
+            {mode === 'change'
+              ? '변경한 전화번호로 다시 로그인해 주세요.'
+              : '새 PIN으로 다시 로그인해 주세요.'}
           </p>
           <Link className="primary full" to="/mobile/login">
             로그인으로
@@ -549,14 +555,20 @@ export default function AuthFlow({
           <p>
             {verification?.needsPin
               ? 'PIN 찾기에서 등록된 전화번호로 문자를 인증한 뒤 새 PIN을 설정해 주세요.'
-              : '등록된 전화번호로 다시 확인해 주세요. 기존 전화번호를 사용할 수 없다면 현재 자동 복구를 진행할 수 없습니다.'}
+              : '등록된 전화번호를 확인한 뒤 다시 인증해 주세요.'}
           </p>
           <Link className="primary full" to="/mobile/login">
             로그인으로 돌아가기
           </Link>
-          <Link className="text-link" to="/mobile/recover">
-            PIN 찾기로
-          </Link>
+          {mode === 'reset' ? (
+            <button className="text-button" onClick={startPhone}>
+              전화번호 다시 입력
+            </button>
+          ) : (
+            <Link className="text-link" to="/mobile/recover">
+              PIN 찾기로
+            </Link>
+          )}
         </>
       ) : step === 'change-confirm' ? (
         <>
@@ -639,15 +651,17 @@ export default function AuthFlow({
               >
                 {busy
                   ? '확인 중…'
-                  : step === 'setup'
-                    ? '계속'
-                    : step === 'confirm'
-                      ? mode === 'reset'
-                        ? 'PIN 재설정'
-                        : '가입 완료'
-                      : mode === 'change'
-                        ? '계정 확인'
-                        : '로그인'}
+                  : wait > 0
+                    ? `${wait}초 후 다시 시도`
+                    : step === 'setup'
+                      ? '계속'
+                      : step === 'confirm'
+                        ? mode === 'reset'
+                          ? 'PIN 재설정'
+                          : '가입 완료'
+                        : mode === 'change'
+                          ? '계정 확인'
+                          : '로그인'}
                 <ArrowRight size={18} />
               </button>
             </form>
@@ -769,14 +783,10 @@ export default function AuthFlow({
           </section>
 
           <div className="auth-links">
-            <Link to="/mobile/recover">PIN 찾기</Link>
-            <Link to="/mobile/signup">회원가입</Link>
+            {mode !== 'access' && <Link to="/mobile/login">로그인</Link>}
+            {mode !== 'reset' && <Link to="/mobile/recover">PIN 찾기</Link>}
+            {mode !== 'signup' && <Link to="/mobile/signup">회원가입</Link>}
           </div>
-          {mode === 'reset' && (
-            <button className="text-button" onClick={() => setStep('blocked')}>
-              기존 전화번호를 사용할 수 없어요
-            </button>
-          )}
         </>
       )}
       <ErrorBox
@@ -800,10 +810,12 @@ export default function AuthFlow({
           </ul>
         </MessagePopup>
       )}{' '}
-      {error instanceof ServiceError &&
-        ['REGISTRATION', 'SMS_REQUIRED', 'AUTH', 'RECOVERY'].includes(error.code) && (
+      {(proofExpired ||
+        (error instanceof ServiceError &&
+          ['REGISTRATION', 'SMS_REQUIRED', 'AUTH', 'RECOVERY'].includes(error.code))) &&
+        !unknown && (
           <button className="text-button" onClick={startPhone}>
-            전화번호 인증부터 다시 시작
+            {mode === 'access' ? '전화번호 다시 입력' : '전화번호 인증 다시 시작'}
           </button>
         )}
       {notice && (
