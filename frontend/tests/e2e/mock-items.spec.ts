@@ -1,0 +1,34 @@
+import { test, expect } from '@playwright/test';
+
+test('물품 전체 삭제 확인·취소, 수량 지정 생성, 관리자 자동 반영', async ({ page, context }) => {
+  await page.goto('/dev/simulator');
+  const panel = page.getByRole('region', { name: '물품 Mock 데이터' });
+  await expect(panel).toContainText('현재 물품 14개');
+  const admin = await context.newPage();
+  await admin.goto('/admin/items');
+  await expect(admin.locator('.admin-table tbody tr')).toHaveCount(14);
+  page.once('dialog', (dialog) => dialog.dismiss());
+  await panel.getByRole('button', { name: '물품 전체 삭제' }).click();
+  await expect(panel).toContainText('현재 물품 14개');
+  page.once('dialog', (dialog) => dialog.accept());
+  await panel.getByRole('button', { name: '물품 전체 삭제' }).click();
+  await expect(panel).toContainText('현재 물품 0개');
+  await expect(admin.locator('.admin-table tbody tr')).toHaveCount(0);
+  await panel.getByLabel('생성 수량').fill('12');
+  await panel.getByLabel('생성할 태그 상태').selectOption('unlinked');
+  await panel.getByRole('button', { name: '무작위 물품 생성' }).click();
+  await expect(panel).toContainText('현재 물품 12개');
+  await expect(admin.locator('.admin-table tbody tr')).toHaveCount(12);
+  await expect(admin.locator('.admin-table tbody')).not.toContainText('대여 가능');
+  await expect(admin.locator('.admin-table tbody tr').first()).toContainText('태그 미등록');
+  await panel.getByLabel('생성 수량').fill('3');
+  await panel.getByLabel('생성할 태그 상태').selectOption('linked');
+  await panel.getByRole('button', { name: '무작위 물품 생성' }).click();
+  await expect(panel).toContainText('현재 물품 15개');
+  await expect(admin.locator('.admin-table tbody tr')).toHaveCount(15);
+  await page.reload();
+  await expect(panel).toContainText('현재 물품 15개');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await panel.scrollIntoViewIfNeeded();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});

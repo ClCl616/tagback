@@ -9,5 +9,9 @@ public interface NfcTagRepository extends JpaRepository<NfcTag, Long> {
 
     Optional<NfcTag> findByUid(String uid);
 
+    Optional<NfcTag> findByItem_Id(Long itemId);
+
+    boolean existsByUid(String uid);
+
     boolean existsByItem_Id(Long itemId);
 }

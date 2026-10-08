@@ -80,7 +80,7 @@ describe('Mock service contract — not real server verification', () => {
     });
     await api.catalog();
     const db = JSON.parse(localStorage.getItem(DB_KEY)!);
-    expect(db.schemaVersion).toBe(5);
+    expect(db.schemaVersion).toBe(6);
     expect(db.users.find((u: any) => u.id === 'legacy')).toEqual({
       id: 'legacy',
       phone: '01044445555',
@@ -419,4 +419,65 @@ it('SMS 없는 전화번호 로그인: 오인증 방지, PIN 제한 유지, 새 
   await expect(api.me(first.token)).rejects.toThrow();
   await expect(api.me(second.token)).resolves.toMatchObject({ phone: MOCK.demoPhone });
   expect(JSON.parse(localStorage.getItem(DB_KEY)!).auth.sms).toHaveLength(0);
+});
+
+it('이전 태그 미등록 물품은 점검 중으로 이관하고 연결된 물품은 유지한다', async () => {
+  mutate((db) => {
+    db.schemaVersion = 5;
+    db.items[0].tag = '';
+    db.items[0].status = 'available';
+    db.items[0].active = true;
+  });
+  const before = JSON.parse(localStorage.getItem(DB_KEY)!);
+  const catalog = await api.catalog();
+  expect(catalog.items[0]).toMatchObject({ tag: '', status: 'inspection', active: false });
+  expect(catalog.items[1]).toEqual(before.items[1]);
+});
+
+import { generateMockItems, clearMockItems } from '../src/dev/mockItems';
+
+it('물품 무작위 생성은 수량·UID·미등록 상태 제약을 유지한다', async () => {
+  await clearMockItems();
+  await generateMockItems(500, 'linked');
+  await Promise.all([generateMockItems(20, 'unlinked'), generateMockItems(20, 'mixed')]);
+  const { items } = await api.catalog();
+  expect(items).toHaveLength(540);
+  expect(new Set(items.map((i) => i.id)).size).toBe(540);
+  expect(new Set(items.map((i) => i.inventoryNumber)).size).toBe(540);
+  const tagged = items.filter((i) => i.tag);
+  expect(new Set(tagged.map((i) => i.tag)).size).toBe(tagged.length);
+  tagged.forEach((i) => expect(i.tag).toMatch(/^04[0-9A-F]{12}$/));
+  items
+    .filter((i) => !i.tag)
+    .forEach((i) => {
+      expect(['inspection', 'repair']).toContain(i.status);
+      expect(i.active).toBe(false);
+    });
+  expect(items.some((i) => i.status === 'rented')).toBe(false);
+});
+
+it('물품 생성 한도·잘못된 수량은 쓰기 전에 거부한다', async () => {
+  const initial = (await api.catalog()).items.length;
+  for (const count of [0, -1, 1.5, 501, NaN]) {
+    await expect(generateMockItems(count, 'mixed')).rejects.toMatchObject({ code: 'COUNT' });
+  }
+  expect((await api.catalog()).items).toHaveLength(initial);
+  await clearMockItems();
+  for (let n = 0; n < 4; n++) await generateMockItems(500, 'unlinked');
+  await expect(generateMockItems(1, 'mixed')).rejects.toMatchObject({ code: 'LIMIT' });
+  expect((await api.catalog()).items).toHaveLength(2000);
+});
+
+it('물품 전체 삭제는 관련 기록을 지우고 계정·카테고리를 보존한다', async () => {
+  await prepare();
+  const before = JSON.parse(localStorage.getItem(DB_KEY)!);
+  await clearMockItems();
+  const after = JSON.parse(localStorage.getItem(DB_KEY)!);
+  expect(after.items).toEqual([]);
+  expect(after.rentals).toEqual([]);
+  expect(after.operations).toEqual({});
+  expect(after.codes).toEqual([]);
+  expect(after.grants).toEqual([]);
+  for (const key of ['users', 'auth', 'kinds', 'categories', 'stations'])
+    expect(after[key]).toEqual(before[key]);
 });
