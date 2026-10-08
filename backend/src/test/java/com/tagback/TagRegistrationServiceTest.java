@@ -81,6 +81,7 @@ class TagRegistrationServiceTest {
         assertEquals(1L, result.response().tag().tagId());
         assertEquals("04A23B1C5D6E80", result.response().tag().uid());
         verify(writer, never()).create(anyLong(), anyString());
+        verify(writer).makeAvailableIfTagged(12L);
     }
 
     @Test
@@ -134,5 +135,6 @@ class TagRegistrationServiceTest {
 
         assertEquals(false, result.created());
         assertEquals(1L, result.response().tag().tagId());
+        verify(writer).makeAvailableIfTagged(12L);
     }
 }

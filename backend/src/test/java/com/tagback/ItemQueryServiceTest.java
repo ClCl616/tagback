@@ -15,8 +15,7 @@ import static org.mockito.Mockito.*;
 
 class ItemQueryServiceTest {
     private final ItemRepository items = mock(ItemRepository.class);
-    private final ItemService service = new ItemService(items, mock(ItemTypeRepository.class),
-            mock(NfcTagRepository.class), mock(EntityManager.class));
+    private final ItemService service = new ItemService(items, mock(ItemTypeRepository.class), mock(EntityManager.class));
 
     @Test void mapsDetailAndReportsMissingItem() {
         var item = item();

@@ -33,7 +33,9 @@ public class TagRegistrationService {
 
         Optional<NfcTag> attached = tagRepository.findByItem_Id(itemId);
         if (attached.isPresent()) {
-            return existingOrConflict(attached.get(), itemId, uid);
+            RegistrationResult result = existingOrConflict(attached.get(), itemId, uid);
+            writer.makeAvailableIfTagged(itemId);
+            return result;
         }
         if (tagRepository.findByUid(uid).isPresent()) {
             throw alreadyRegistered();
@@ -51,7 +53,9 @@ public class TagRegistrationService {
             // the winning request without using PostgreSQL's aborted transaction.
             Optional<NfcTag> winner = tagRepository.findByItem_Id(itemId);
             if (winner.isPresent() && uid.equals(winner.get().getUid())) {
-                return existingOrConflict(winner.get(), itemId, uid);
+                RegistrationResult result = existingOrConflict(winner.get(), itemId, uid);
+                writer.makeAvailableIfTagged(itemId);
+                return result;
             }
             if ("nfc_tags_tag_uid_key".equals(constraint)) {
                 throw alreadyRegistered();

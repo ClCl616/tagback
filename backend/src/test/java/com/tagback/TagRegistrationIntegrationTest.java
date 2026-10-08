@@ -26,8 +26,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
-@SpringBootTest
-@EnabledIfEnvironmentVariable(named = "TAGBACK_DB_PASSWORD", matches = ".+")
+@SpringBootTest(properties = {
+        "spring.profiles.active=sms-mock",
+        "spring.datasource.url=jdbc:postgresql://127.0.0.1:${TAGBACK_ITEM_DB_PORT:55440}/tagback_items_test",
+        "spring.datasource.username=postgres", "spring.datasource.password=",
+        "spring.jpa.hibernate.ddl-auto=validate", "spring.jpa.open-in-view=false"})
+@EnabledIfEnvironmentVariable(named = "TAGBACK_ITEM_DB_TEST", matches = "true")
 class TagRegistrationIntegrationTest {
     @Autowired
     private ItemTypeRepository itemTypeRepository;
@@ -45,6 +49,7 @@ class TagRegistrationIntegrationTest {
     @AfterEach
     void cleanup() {
         for (Long itemId : itemIds) {
+            jdbcTemplate.update("UPDATE items SET status = 'TAG_PENDING' WHERE item_id = ?", itemId);
             jdbcTemplate.update("DELETE FROM nfc_tags WHERE item_id = ?", itemId);
             jdbcTemplate.update("DELETE FROM items WHERE item_id = ?", itemId);
         }
@@ -69,6 +74,7 @@ class TagRegistrationIntegrationTest {
         assertEquals(item.getId(), saved.getItem().getId());
         assertEquals("ACTIVE", response.tag().status());
         assertNotNull(response.tag().createdAt());
+        assertEquals(ItemStatus.AVAILABLE, itemRepository.findById(item.getId()).orElseThrow().getStatus());
     }
 
     @Test
@@ -129,7 +135,7 @@ class TagRegistrationIntegrationTest {
         String suffix = UUID.randomUUID().toString();
         ItemType type = itemTypeRepository.saveAndFlush(new ItemType("NFC 테스트 " + suffix, null));
         typeIds.add(type.getId());
-        Item item = itemRepository.saveAndFlush(new Item("테스트 물품 " + suffix, ItemStatus.AVAILABLE, type));
+        Item item = itemRepository.saveAndFlush(new Item("테스트 물품 " + suffix, ItemStatus.TAG_PENDING, type));
         itemIds.add(item.getId());
         return item;
     }

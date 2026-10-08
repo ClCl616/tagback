@@ -69,7 +69,7 @@ JPA offset 한계로 page × size가 2,147,483,647을 초과하는 요청도 400
 | 목록 | GET /api/v1/items | 로그인 사용자 | 200, 목록 응답 |
 | 상세 | GET /api/v1/items/{itemId} | 로그인 사용자 | 200, 물품 응답 |
 | 수정 | PATCH /api/v1/items/{itemId} | ADMIN | 200, 수정된 물품 응답 |
-| 태그 연결 | POST /api/v1/items/{itemId}/tag | ADMIN | 200, 태그 연결된 물품 응답 |
+| 태그 연결 | POST /api/items/{itemId}/tag | ADMIN | 201 신규 연결, 200 동일 연결 재시도 |
 | 삭제 | DELETE /api/v1/items/{itemId} | ADMIN | 204, 본문 없음 |
 
 기존 세션 쿠키 인증과 @AdminOnly를 사용하고 변경 요청에는 기존 Origin 검사를 적용한다.
@@ -104,11 +104,12 @@ JPA offset 한계로 page × size가 2,147,483,647을 초과하는 요청도 400
 태그 연결 요청 예시:
 
 ```json
-{ "tagUid": "04A1B2C3D4" }
+{ "uid": "04A1B2C3D4" }
 ```
 
-태그 UID는 물품당 하나만 연결할 수 있고 전체 물품에서 중복될 수 없다. 연결 성공 시 `TAG_PENDING` 물품은
-`AVAILABLE`로 전환된다. 이미 태그가 연결된 물품 또는 이미 등록된 UID는 409를 반환한다.
+기존 태그 등록 API를 사용하며 UID 필드와 응답 형식은 [NFC 태그 등록 계약](admin-nfc-contract.md)을 따른다.
+연결 성공 시 `TAG_PENDING` 물품은 `AVAILABLE`로 전환된다. 이미 태그가 연결된 물품 또는 이미 등록된 UID는 409를 반환한다.
+전환 결과는 `GET /api/v1/items/{itemId}`로 확인한다.
 DB 트리거도 태그 없는 `AVAILABLE` 상태 변경과 대여 가능 물품의 태그 삭제·이동을 차단한다.
 
 수정 요청 예시:

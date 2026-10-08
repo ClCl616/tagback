@@ -104,19 +104,6 @@ class ItemCrudPostgresIntegrationTest {
                 .andExpect(jsonPath("$.error.code").value("ITEM_NOT_FOUND"));
     }
 
-    @Test void assigningTagMakesRegisteredItemAvailable() throws Exception {
-        String id = create("태그 연결 물품", typeId);
-
-        mvc.perform(post("/api/v1/items/" + id + "/tag").cookie(admin).contentType("application/json")
-                .content("{\"tagUid\":\"integration-assigned-tag\"}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("AVAILABLE"));
-
-        assertEquals(1, jdbc.queryForObject("select count(*) from nfc_tags where item_id = ?",
-                Integer.class, Long.valueOf(id)));
-        assertEquals("AVAILABLE", jdbc.queryForObject("select status from items where item_id = ?",
-                String.class, Long.valueOf(id)));
-    }
-
     @Test void databaseRejectsAvailableStatusWithoutTag() throws Exception {
         String id = create("태그 없는 물품", typeId);
 

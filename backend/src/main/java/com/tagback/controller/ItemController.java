@@ -4,7 +4,6 @@ import com.tagback.config.AdminOnly;
 import com.tagback.config.AuthOriginGuard;
 import com.tagback.dto.item.ItemRequests;
 import com.tagback.dto.item.ItemResponses;
-import com.tagback.dto.item.TagRequests;
 import com.tagback.domain.entity.ItemStatus;
 import com.tagback.service.ItemService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -52,16 +51,6 @@ public class ItemController {
             @Valid @RequestBody ItemRequests.Update body, HttpServletRequest request) {
         origins.check(request);
         return service.update(Long.parseLong(itemId), body);
-    }
-
-    @AdminOnly
-    @PostMapping("/{itemId}/tag")
-    public ItemResponses.Detail assignTag(
-            @PathVariable @Pattern(regexp = "[1-9][0-9]{0,18}")
-            @DecimalMax("9223372036854775807") String itemId,
-            @Valid @RequestBody TagRequests.Assign body, HttpServletRequest request) {
-        origins.check(request);
-        return service.assignTag(Long.parseLong(itemId), body);
     }
 
     @GetMapping
