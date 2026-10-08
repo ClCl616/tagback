@@ -73,7 +73,7 @@ class ItemCrudPostgresIntegrationTest {
         var response = mvc.perform(post("/api/v1/items").cookie(admin).contentType("application/json")
                 .content("{\"itemName\":\"" + name + "\",\"itemTypeId\":\"" + kind + "\"}"))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.createdAt").isString())
-                .andExpect(jsonPath("$.status").value("AVAILABLE")).andReturn().getResponse();
+                .andExpect(jsonPath("$.status").value("TAG_PENDING")).andReturn().getResponse();
         String id = json.readTree(response.getContentAsString()).get("itemId").asString();
         assertEquals("/api/v1/items/" + id, response.getHeader("Location"));
         return id;

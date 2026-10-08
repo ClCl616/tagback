@@ -40,12 +40,12 @@ class ItemRegistrationApiTest {
     void createsItemAndReturnsLocation() throws Exception {
         var body = new ItemRequests.Create("우산 01", "1");
         when(items.create(body)).thenReturn(new ItemResponses.Detail("10", "우산 01", "1", "우산",
-                ItemStatus.AVAILABLE, OffsetDateTime.parse("2026-10-07T01:00:00Z")));
+                ItemStatus.TAG_PENDING, OffsetDateTime.parse("2026-10-07T01:00:00Z")));
         mvc.perform(post("/api/v1/items").cookie(cookie("admin")).contentType("application/json")
                 .content("{\"itemName\":\"  우산 01  \",\"itemTypeId\":\"1\"}"))
                 .andExpect(status().isCreated()).andExpect(header().string("Location", "/api/v1/items/10"))
                 .andExpect(jsonPath("$.itemId").value("10"))
-                .andExpect(jsonPath("$.status").value("AVAILABLE"))
+                .andExpect(jsonPath("$.status").value("TAG_PENDING"))
                 .andExpect(jsonPath("$.createdAt").isString());
         verify(items).create(body);
     }

@@ -59,7 +59,7 @@ public class ItemController {
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
             @RequestParam(required = false) @Pattern(regexp = "[1-9][0-9]{0,18}")
             @DecimalMax("9223372036854775807") String itemTypeId,
-            @RequestParam(required = false) @Pattern(regexp = "AVAILABLE|RENTED|INSPECTION|REPAIR") String status) {
+            @RequestParam(required = false) @Pattern(regexp = "TAG_PENDING|AVAILABLE|RENTED|INSPECTION|REPAIR") String status) {
         return service.list(page, size, itemTypeId == null ? null : Long.valueOf(itemTypeId),
                 status == null ? null : ItemStatus.valueOf(status));
     }

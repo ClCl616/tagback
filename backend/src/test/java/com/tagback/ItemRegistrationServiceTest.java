@@ -15,7 +15,7 @@ import static org.mockito.Mockito.*;
 
 class ItemRegistrationServiceTest {
     @Test
-    void savesAvailableItemAndReloadsDatabaseTimestamp() {
+    void savesTagPendingItemAndReloadsDatabaseTimestamp() {
         var items = mock(ItemRepository.class);
         var types = mock(ItemTypeRepository.class);
         var em = mock(EntityManager.class);
@@ -27,7 +27,7 @@ class ItemRegistrationServiceTest {
         when(saved.getId()).thenReturn(10L);
         when(saved.getItemName()).thenReturn("우산");
         when(saved.getItemType()).thenReturn(type);
-        when(saved.getStatus()).thenReturn(ItemStatus.AVAILABLE);
+        when(saved.getStatus()).thenReturn(ItemStatus.TAG_PENDING);
         var timestamp = OffsetDateTime.parse("2026-10-07T01:00:00Z");
         doAnswer(invocation -> { when(saved.getCreatedAt()).thenReturn(timestamp); return null; })
                 .when(em).refresh(saved);
@@ -36,7 +36,7 @@ class ItemRegistrationServiceTest {
         var captured = ArgumentCaptor.forClass(Item.class);
         verify(items).saveAndFlush(captured.capture());
         assertEquals("우산", captured.getValue().getItemName());
-        assertEquals(ItemStatus.AVAILABLE, captured.getValue().getStatus());
+        assertEquals(ItemStatus.TAG_PENDING, captured.getValue().getStatus());
         assertSame(type, captured.getValue().getItemType());
         assertEquals(timestamp, response.createdAt());
     }

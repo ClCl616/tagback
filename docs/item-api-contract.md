@@ -7,7 +7,7 @@ CRUD API 구현과 아래 범위의 검증은 완료했다. 권한·삭제·연�
 ## 등록 API 구현 현황
 
 `POST /api/v1/items` 구현 완료: ADMIN 세션·Origin 검사, 요청 검증 및 알 수 없는 필드 거부,
-종류 존재 확인, AVAILABLE 상태 저장, DB 등록일 재조회, 201 응답·Location 헤더 반환.
+종류 존재 확인, 태그 연결 대기(TAG_PENDING) 상태 저장, DB 등록일 재조회, 201 응답·Location 헤더 반환.
 종류가 없으면 404 ITEM_TYPE_NOT_FOUND를 반환한다.
 등록 컨트롤러·서비스와 DTO 검증 테스트 8개가 통과했다. 저장소·세션은 테스트에서 mock으로 대체했다.
 실제 PostgreSQL 검증 결과는 아래 통합 검증 절을 참고한다.
@@ -51,7 +51,7 @@ JPA offset 한계로 page × size가 2,147,483,647을 초과하는 요청도 400
 | itemName | 등록 필수, 수정 선택 | 문자열 | 앞뒤 공백 제거 후 1~100자. 공백만 있는 값과 null은 거부한다. |
 | itemTypeId | 등록 필수, 수정 선택 | 문자열 | 양의 BIGINT 문자열이며 존재하는 물품 종류여야 한다. |
 | itemTypeName | 없음 | 문자열 | 연결된 물품 종류 이름. |
-| status | CRUD 요청에서 받지 않음 | 문자열 | AVAILABLE / RENTED / INSPECTION / REPAIR. 신규 등록은 AVAILABLE. |
+| status | CRUD 요청에서 받지 않음 | 문자열 | TAG_PENDING / AVAILABLE / RENTED / INSPECTION / REPAIR. 신규 등록은 태그 연결 대기(TAG_PENDING). |
 | createdAt | 없음 | ISO 8601 문자열 | DB가 생성한 등록 시각. UTC 또는 오프셋을 포함한다. |
 
 물품명 중복은 현재 DB 제약이 없으므로 허용한다. 물품 종류 이름의 중복 금지와 구분한다.
@@ -91,7 +91,7 @@ JPA offset 한계로 page × size가 2,147,483,647을 초과하는 요청도 400
   "itemName": "우산 01",
   "itemTypeId": "1",
   "itemTypeName": "우산",
-  "status": "AVAILABLE",
+  "status": "TAG_PENDING",
   "createdAt": "2026-10-07T01:00:00Z"
 }
 ```
