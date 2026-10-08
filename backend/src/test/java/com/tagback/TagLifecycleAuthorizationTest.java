@@ -45,7 +45,7 @@ class TagLifecycleAuthorizationTest {
     void replacementAndDeactivationRequireSession() throws Exception {
         when(sessions.authenticate(null)).thenThrow(new AuthException(AuthErrorCode.SESSION_REQUIRED));
         mvc.perform(put("/api/items/12/tag").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"uid\":\"04A23B1C5D6E80\"}"))
+                        .content("{\"uid\":\"04A23B1C5D6E80\",\"expectedUid\":null}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("SESSION_REQUIRED"));
         mvc.perform(delete("/api/items/12/tag"))
@@ -61,7 +61,7 @@ class TagLifecycleAuthorizationTest {
         when(sessions.authenticate("user-session")).thenReturn(new AuthenticatedUser(7L, UserRole.USER));
         Cookie user = new Cookie(AuthCookies.SESSION_COOKIE, "user-session");
         mvc.perform(put("/api/items/12/tag").cookie(user).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"uid\":\"04A23B1C5D6E80\"}"))
+                        .content("{\"uid\":\"04A23B1C5D6E80\",\"expectedUid\":null}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
         mvc.perform(delete("/api/items/12/tag").cookie(user))
@@ -84,16 +84,45 @@ class TagLifecycleAuthorizationTest {
         Cookie admin = new Cookie(AuthCookies.SESSION_COOKIE, "admin-session");
         TagRegistrationResponse response = new TagRegistrationResponse(
                 new TagRegistrationResponse.Tag(1L, "04A23B1C5D6E80", 12L, "ACTIVE", null));
-        when(lifecycle.replace(12L, "04A23B1C5D6E80"))
+        when(lifecycle.replace(12L, "04A23B1C5D6E80", null))
                 .thenReturn(new TagRegistrationService.RegistrationResult(response, true),
                         new TagRegistrationService.RegistrationResult(response, false));
         for (int i = 0; i < 2; i++) {
             mvc.perform(put("/api/items/12/tag").cookie(admin).contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"uid\":\"04A23B1C5D6E80\"}"))
+                            .content("{\"uid\":\"04A23B1C5D6E80\",\"expectedUid\":null}"))
                     .andExpect(i == 0 ? status().isCreated() : status().isOk())
                     .andExpect(jsonPath("$.tag.tagId").value(1));
         }
         mvc.perform(delete("/api/items/12/tag").cookie(admin)).andExpect(status().isNoContent());
+    }
+
+    @Test
+    void missingExpectedUidIsValidationError() throws Exception {
+        when(sessions.authenticate("admin-session")).thenReturn(new AuthenticatedUser(8L, UserRole.ADMIN));
+        Cookie admin = new Cookie(AuthCookies.SESSION_COOKIE, "admin-session");
+        mvc.perform(put("/api/items/12/tag").cookie(admin).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"uid\":\"04A23B1C5D6E80\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION"));
+        verifyNoInteractions(lifecycle);
+    }
+
+    @Test
+    void replacementConflictsUseSharedErrorEnvelope() throws Exception {
+        when(sessions.authenticate("admin-session")).thenReturn(new AuthenticatedUser(8L, UserRole.ADMIN));
+        Cookie admin = new Cookie(AuthCookies.SESSION_COOKIE, "admin-session");
+        when(lifecycle.replace(12L, "04A23B1C5D6E81", "04A23B1C5D6E80"))
+                .thenThrow(new TagRegistrationException(HttpStatus.CONFLICT, "TAG_CHANGED", "활성 태그가 변경되었습니다."));
+        mvc.perform(put("/api/items/12/tag").cookie(admin).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"uid\":\"04A23B1C5D6E81\",\"expectedUid\":\"04A23B1C5D6E80\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("TAG_CHANGED"));
+        when(lifecycle.replace(12L, "04A23B1C5D6E82", "04A23B1C5D6E80"))
+                .thenThrow(new TagRegistrationException(HttpStatus.CONFLICT, "ITEM_RENTED", "대여 중입니다."));
+        mvc.perform(put("/api/items/12/tag").cookie(admin).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"uid\":\"04A23B1C5D6E82\",\"expectedUid\":\"04A23B1C5D6E80\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("ITEM_RENTED"));
     }
 
     @Test

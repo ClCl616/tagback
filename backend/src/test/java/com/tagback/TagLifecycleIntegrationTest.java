@@ -44,13 +44,16 @@ class TagLifecycleIntegrationTest {
 
     private final List<Long> itemIds = new ArrayList<>();
     private final List<Long> typeIds = new ArrayList<>();
+    private final List<Long> userIds = new ArrayList<>();
 
     @AfterEach
     void cleanup() {
         for (Long id : itemIds) {
+            jdbc.update("DELETE FROM rentals WHERE item_id = ?", id);
             jdbc.update("DELETE FROM nfc_tags WHERE item_id = ?", id);
             jdbc.update("DELETE FROM items WHERE item_id = ?", id);
         }
+        for (Long id : userIds) jdbc.update("DELETE FROM users WHERE user_id = ?", id);
         for (Long id : typeIds) jdbc.update("DELETE FROM item_types WHERE item_type_id = ?", id);
     }
 
@@ -61,8 +64,8 @@ class TagLifecycleIntegrationTest {
         String newUid = uid();
         var original = registration.register(item.getId(), oldUid);
 
-        var replaced = lifecycle.replace(item.getId(), newUid);
-        var retried = lifecycle.replace(item.getId(), newUid.toLowerCase());
+        var replaced = lifecycle.replace(item.getId(), newUid, oldUid);
+        var retried = lifecycle.replace(item.getId(), newUid.toLowerCase(), oldUid);
 
         assertTrue(replaced.created());
         assertFalse(retried.created());
@@ -73,7 +76,7 @@ class TagLifecycleIntegrationTest {
         assertEquals(2L, countTags(item.getId()));
         assertEquals(1L, countActive(item.getId()));
 
-        var restored = lifecycle.replace(item.getId(), oldUid);
+        var restored = lifecycle.replace(item.getId(), oldUid, newUid);
         assertTrue(restored.created());
         assertEquals(original.response().tag().tagId(), restored.response().tag().tagId());
         assertEquals(oldUid, tags.findByItem_Id(item.getId()).orElseThrow().getUid());
@@ -81,7 +84,7 @@ class TagLifecycleIntegrationTest {
         assertNotNull(tags.findByUid(newUid).orElseThrow().getDeactivatedAt());
         assertEquals(2L, countTags(item.getId()));
         assertEquals(1L, countActive(item.getId()));
-        assertFalse(lifecycle.replace(item.getId(), oldUid).created());
+        assertFalse(lifecycle.replace(item.getId(), oldUid, newUid).created());
     }
 
     @Test
@@ -89,7 +92,7 @@ class TagLifecycleIntegrationTest {
         Item item = item();
         String uid = uid();
 
-        var first = lifecycle.replace(item.getId(), uid);
+        var first = lifecycle.replace(item.getId(), uid, null);
         assertTrue(first.created());
         lifecycle.deactivate(item.getId());
         lifecycle.deactivate(item.getId());
@@ -112,7 +115,7 @@ class TagLifecycleIntegrationTest {
 
         lifecycle.deactivate(item.getId());
         assertEquals(0L, countActive(item.getId()));
-        var restored = lifecycle.replace(item.getId(), uid.toLowerCase());
+        var restored = lifecycle.replace(item.getId(), uid.toLowerCase(), null);
 
         assertTrue(restored.created());
         assertEquals(original.response().tag().tagId(), restored.response().tag().tagId());
@@ -134,7 +137,7 @@ class TagLifecycleIntegrationTest {
         assertEquals("TAG_ALREADY_REGISTERED", assertThrows(TagRegistrationException.class,
                 () -> registration.register(first.getId(), uid)).code());
         assertEquals("TAG_ALREADY_REGISTERED", assertThrows(TagRegistrationException.class,
-                () -> lifecycle.replace(second.getId(), uid)).code());
+                () -> lifecycle.replace(second.getId(), uid, null)).code());
         assertEquals(0L, countTags(second.getId()));
         assertEquals(0L, countActive(first.getId()));
     }
@@ -142,7 +145,7 @@ class TagLifecycleIntegrationTest {
     @Test
     void missingItemIsNotSilentlyTreatedAsDeactivated() {
         assertEquals("ITEM_NOT_FOUND", assertThrows(TagRegistrationException.class,
-                () -> lifecycle.replace(Long.MAX_VALUE, uid())).code());
+                () -> lifecycle.replace(Long.MAX_VALUE, uid(), null)).code());
         assertEquals("ITEM_NOT_FOUND", assertThrows(TagRegistrationException.class,
                 () -> lifecycle.deactivate(Long.MAX_VALUE)).code());
     }
@@ -170,12 +173,13 @@ class TagLifecycleIntegrationTest {
     @Test
     void concurrentReplacementWithSameUidCreatesOnlyOneNewTag() throws Exception {
         Item item = item();
-        registration.register(item.getId(), uid());
+        String originalUid = uid();
+        registration.register(item.getId(), originalUid);
         String newUid = uid();
         CountDownLatch start = new CountDownLatch(1);
         try (var workers = Executors.newFixedThreadPool(2)) {
-            var first = workers.submit(() -> { start.await(); return lifecycle.replace(item.getId(), newUid); });
-            var second = workers.submit(() -> { start.await(); return lifecycle.replace(item.getId(), newUid); });
+            var first = workers.submit(() -> { start.await(); return lifecycle.replace(item.getId(), newUid, originalUid); });
+            var second = workers.submit(() -> { start.await(); return lifecycle.replace(item.getId(), newUid, originalUid); });
             start.countDown();
             var a = first.get(20, TimeUnit.SECONDS);
             var b = second.get(20, TimeUnit.SECONDS);
@@ -187,20 +191,103 @@ class TagLifecycleIntegrationTest {
     }
 
     @Test
-    void concurrentReplacementWithDifferentUidsSerializesAndKeepsOneActive() throws Exception {
+    void concurrentReplacementWithDifferentUidsRejectsStaleExpectedUid() throws Exception {
         Item item = item();
-        registration.register(item.getId(), uid());
+        String originalUid = uid();
+        registration.register(item.getId(), originalUid);
         String aUid = uid();
         String bUid = uid();
         CountDownLatch start = new CountDownLatch(1);
         try (var workers = Executors.newFixedThreadPool(2)) {
-            var first = workers.submit(() -> { start.await(); return lifecycle.replace(item.getId(), aUid); });
-            var second = workers.submit(() -> { start.await(); return lifecycle.replace(item.getId(), bUid); });
+            var first = workers.submit(() -> { start.await(); return replaceOutcome(item.getId(), aUid, originalUid); });
+            var second = workers.submit(() -> { start.await(); return replaceOutcome(item.getId(), bUid, originalUid); });
             start.countDown();
-            assertTrue(first.get(20, TimeUnit.SECONDS).created());
-            assertTrue(second.get(20, TimeUnit.SECONDS).created());
-            assertEquals(3L, countTags(item.getId()));
+            List<String> outcomes = List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS));
+            assertEquals(1, outcomes.stream().filter("CREATED"::equals).count());
+            assertEquals(1, outcomes.stream().filter("TAG_CHANGED"::equals).count());
+            assertEquals(2L, countTags(item.getId()));
             assertEquals(1L, countActive(item.getId()));
+        }
+    }
+
+    @Test
+    void expectedUidMustMatchUnlessRequestIsAlreadyActive() {
+        Item item = item();
+        String oldUid = uid();
+        registration.register(item.getId(), oldUid);
+        assertEquals("TAG_CHANGED", assertThrows(TagRegistrationException.class,
+                () -> lifecycle.replace(item.getId(), uid(), null)).code());
+        assertEquals("TAG_CHANGED", assertThrows(TagRegistrationException.class,
+                () -> lifecycle.replace(item.getId(), uid(), uid())).code());
+        assertFalse(lifecycle.replace(item.getId(), oldUid, uid()).created());
+        assertEquals(oldUid, tags.findByItem_Id(item.getId()).orElseThrow().getUid());
+    }
+
+    @Test
+    void rentedStatusBlocksReplaceAndDeleteButEmptyDeleteRemainsIdempotent() {
+        Item item = item();
+        String oldUid = uid();
+        registration.register(item.getId(), oldUid);
+        jdbc.update("UPDATE items SET status = 'RENTED' WHERE item_id = ?", item.getId());
+        assertRentedTagUnchanged(item, oldUid);
+        lifecycle.deactivate(itemWithoutTagAndRentedStatus().getId());
+    }
+
+    @Test
+    void unreturnedRentalBlocksReplaceAndDeleteEvenWhenStatusIsAvailable() {
+        Item item = item();
+        String oldUid = uid();
+        registration.register(item.getId(), oldUid);
+        addRental(item, false);
+        assertRentedTagUnchanged(item, oldUid);
+    }
+
+    @Test
+    void returnedRentalAllowsReplacementAndDeletion() {
+        Item item = item();
+        String oldUid = uid();
+        String newUid = uid();
+        registration.register(item.getId(), oldUid);
+        addRental(item, true);
+        assertTrue(lifecycle.replace(item.getId(), newUid, oldUid).created());
+        lifecycle.deactivate(item.getId());
+        assertEquals(0L, countActive(item.getId()));
+    }
+
+    private void assertRentedTagUnchanged(Item item, String oldUid) {
+        assertEquals("ITEM_RENTED", assertThrows(TagRegistrationException.class,
+                () -> lifecycle.replace(item.getId(), uid(), oldUid)).code());
+        assertEquals("ITEM_RENTED", assertThrows(TagRegistrationException.class,
+                () -> lifecycle.deactivate(item.getId())).code());
+        assertEquals(oldUid, tags.findByItem_Id(item.getId()).orElseThrow().getUid());
+        assertEquals(1L, countActive(item.getId()));
+    }
+
+    private Item itemWithoutTagAndRentedStatus() {
+        Item item = item();
+        jdbc.update("UPDATE items SET status = 'RENTED' WHERE item_id = ?", item.getId());
+        return item;
+    }
+
+    private void addRental(Item item, boolean returned) {
+        String phone = "+8210" + String.format("%08d", Math.floorMod(UUID.randomUUID().getLeastSignificantBits(), 100_000_000));
+        Long userId = jdbc.queryForObject("INSERT INTO users (phone_number, password_hash) VALUES (?, 'test') RETURNING user_id",
+                Long.class, phone);
+        userIds.add(userId);
+        if (returned) {
+            jdbc.update("INSERT INTO rentals (user_id, item_id, due_at, returned_at, status) "
+                    + "VALUES (?, ?, now() + interval '1 day', now(), 'RETURNED')", userId, item.getId());
+        } else {
+            jdbc.update("INSERT INTO rentals (user_id, item_id, due_at) "
+                    + "VALUES (?, ?, now() + interval '1 day')", userId, item.getId());
+        }
+    }
+
+    private String replaceOutcome(Long itemId, String uid, String expectedUid) {
+        try {
+            return lifecycle.replace(itemId, uid, expectedUid).created() ? "CREATED" : "UNCHANGED";
+        } catch (TagRegistrationException exception) {
+            return exception.code();
         }
     }
 

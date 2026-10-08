@@ -29,14 +29,19 @@ public class TagLifecycleService {
     }
 
     @Transactional
-    public TagRegistrationService.RegistrationResult replace(Long itemId, String rawUid) {
-        String uid = TagUidNormalizer.normalize(rawUid);
+    public TagRegistrationService.RegistrationResult replace(Long itemId, String rawUid, String rawExpectedUid) {
         Item item = items.findByIdForUpdate(itemId).orElseThrow(() ->
                 new TagRegistrationException(HttpStatus.NOT_FOUND, "ITEM_NOT_FOUND", "물품을 찾을 수 없습니다."));
+        String uid = TagUidNormalizer.normalize(rawUid);
         NfcTag active = tags.findByItem_Id(itemId).orElse(null);
         if (active != null && uid.equals(active.getUid())) {
             return new TagRegistrationService.RegistrationResult(response(active, itemId), false);
         }
+        String expectedUid = rawExpectedUid == null ? null : TagUidNormalizer.normalize(rawExpectedUid);
+        if (!java.util.Objects.equals(expectedUid, active == null ? null : active.getUid())) {
+            throw new TagRegistrationException(HttpStatus.CONFLICT, "TAG_CHANGED", "활성 태그가 변경되었습니다.");
+        }
+        rejectIfRented(item);
         NfcTag previous = tags.findByUid(uid).orElse(null);
         if (previous != null && !itemId.equals(previous.getItem().getId())) {
             throw new TagRegistrationException(HttpStatus.CONFLICT, "TAG_ALREADY_REGISTERED", "이미 등록된 태그입니다.");
@@ -76,9 +81,18 @@ public class TagLifecycleService {
 
     @Transactional
     public void deactivate(Long itemId) {
-        items.findByIdForUpdate(itemId).orElseThrow(() ->
+        Item item = items.findByIdForUpdate(itemId).orElseThrow(() ->
                 new TagRegistrationException(HttpStatus.NOT_FOUND, "ITEM_NOT_FOUND", "물품을 찾을 수 없습니다."));
-        tags.findByItem_Id(itemId).ifPresent(NfcTag::deactivate);
+        NfcTag active = tags.findByItem_Id(itemId).orElse(null);
+        if (active == null) return;
+        rejectIfRented(item);
+        active.deactivate();
+    }
+
+    private void rejectIfRented(Item item) {
+        if (item.getStatus() == ItemStatus.RENTED || items.hasUnreturnedRental(item.getId())) {
+            throw new TagRegistrationException(HttpStatus.CONFLICT, "ITEM_RENTED", "대여 중인 물품의 태그는 변경할 수 없습니다.");
+        }
     }
 
     @Transactional(readOnly = true)

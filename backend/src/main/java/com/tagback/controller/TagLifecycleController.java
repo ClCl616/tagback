@@ -2,7 +2,7 @@ package com.tagback.controller;
 
 import com.tagback.config.AdminOnly;
 import com.tagback.dto.ApiErrorResponse;
-import com.tagback.dto.tag.RegisterTagRequest;
+import java.util.Map;
 import com.tagback.dto.tag.TagRegistrationResponse;
 import com.tagback.exception.TagRegistrationException;
 import com.tagback.service.TagLifecycleService;
@@ -30,11 +30,16 @@ public class TagLifecycleController {
     @AdminOnly
     @PutMapping("/{itemId}/tag")
     public ResponseEntity<TagRegistrationResponse> replace(@PathVariable Long itemId,
-                                                            @RequestBody(required = false) RegisterTagRequest request) {
-        if (request == null || request.uid() == null) {
-            throw new TagRegistrationException(HttpStatus.BAD_REQUEST, "VALIDATION", "uid가 필요합니다.");
+                                                            @RequestBody(required = false) Map<String, Object> request) {
+        if (request == null || !(request.get("uid") instanceof String uid)
+                || !request.containsKey("expectedUid")
+                || (request.get("expectedUid") != null && !(request.get("expectedUid") instanceof String))) {
+            throw new TagRegistrationException(HttpStatus.BAD_REQUEST, "VALIDATION",
+                    "uid와 expectedUid가 필요합니다.");
         }
-        TagRegistrationService.RegistrationResult result = lifecycle.replace(itemId, request.uid());
+        String expectedUid = (String) request.get("expectedUid");
+        TagRegistrationService.RegistrationResult result = lifecycle.replace(
+                itemId, uid, expectedUid);
         return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(result.response());
     }
 
