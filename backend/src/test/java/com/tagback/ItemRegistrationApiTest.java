@@ -6,6 +6,7 @@ import com.tagback.domain.entity.ItemStatus;
 import com.tagback.domain.entity.UserRole;
 import com.tagback.dto.item.ItemRequests;
 import com.tagback.dto.item.ItemResponses;
+import com.tagback.dto.item.TagRequests;
 import com.tagback.exception.*;
 import com.tagback.service.ItemService;
 import com.tagback.service.SessionService;
@@ -80,6 +81,20 @@ class ItemRegistrationApiTest {
         mvc.perform(post("/api/v1/items").cookie(cookie("admin")).contentType("application/json")
                 .content("{\"itemName\":\"우산\",\"itemTypeId\":\"99\"}"))
                 .andExpect(status().isNotFound()).andExpect(jsonPath("$.error.code").value("ITEM_TYPE_NOT_FOUND"));
+    }
+
+    @Test
+    void assignsTagAndReturnsAvailableItem() throws Exception {
+        when(items.assignTag(10L, new TagRequests.Assign("TAG-01")))
+                .thenReturn(new ItemResponses.Detail("10", "우산 01", "1", "우산", ItemStatus.AVAILABLE,
+                        OffsetDateTime.parse("2026-10-07T01:00:00Z")));
+
+        mvc.perform(post("/api/v1/items/10/tag").cookie(cookie("admin")).contentType("application/json")
+                        .content("{\"tagUid\":\"TAG-01\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("AVAILABLE"))
+                .andExpect(jsonPath("$.itemId").value("10"));
+        verify(items).assignTag(10L, new TagRequests.Assign("TAG-01"));
     }
 
     private Cookie cookie(String value) { return new Cookie(AuthCookies.SESSION_COOKIE, value); }

@@ -55,6 +55,11 @@ public class Item {
         return createdAt;
     }
 
+    /** Called only after an NFC tag has been persisted for this item. */
+    public void markAvailable() {
+        this.status = ItemStatus.AVAILABLE;
+    }
+
     /** The service checks permissions and history before changing the item type. */
     public void updateDetails(String itemName, ItemType itemType) {
         String normalizedName = java.util.Objects.requireNonNull(itemName, "itemName").strip();

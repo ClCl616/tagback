@@ -69,6 +69,7 @@ JPA offset 한계로 page × size가 2,147,483,647을 초과하는 요청도 400
 | 목록 | GET /api/v1/items | 로그인 사용자 | 200, 목록 응답 |
 | 상세 | GET /api/v1/items/{itemId} | 로그인 사용자 | 200, 물품 응답 |
 | 수정 | PATCH /api/v1/items/{itemId} | ADMIN | 200, 수정된 물품 응답 |
+| 태그 연결 | POST /api/v1/items/{itemId}/tag | ADMIN | 200, 태그 연결된 물품 응답 |
 | 삭제 | DELETE /api/v1/items/{itemId} | ADMIN | 204, 본문 없음 |
 
 기존 세션 쿠키 인증과 @AdminOnly를 사용하고 변경 요청에는 기존 Origin 검사를 적용한다.
@@ -99,6 +100,16 @@ JPA offset 한계로 page × size가 2,147,483,647을 초과하는 요청도 400
 등록 응답의 Location 예시: `/api/v1/items/10`.
 물품 종류는 기존 item_types 데이터를 참조한다. 종류 생성·수정 API는 이번 범위에 포함하지 않는다.
 환경에 종류 데이터가 없으면 먼저 준비해야 한다. 선택 UI용 종류 목록 API는 별도 협의한다.
+
+태그 연결 요청 예시:
+
+```json
+{ "tagUid": "04A1B2C3D4" }
+```
+
+태그 UID는 물품당 하나만 연결할 수 있고 전체 물품에서 중복될 수 없다. 연결 성공 시 `TAG_PENDING` 물품은
+`AVAILABLE`로 전환된다. 이미 태그가 연결된 물품 또는 이미 등록된 UID는 409를 반환한다.
+DB 트리거도 태그 없는 `AVAILABLE` 상태 변경과 대여 가능 물품의 태그 삭제·이동을 차단한다.
 
 수정 요청 예시:
 
@@ -175,6 +186,8 @@ NFC 태그, 대여 기록(반납 완료 포함), 점검 기록 중 하나라도 
 | 404 | ITEM_TYPE_NOT_FOUND | 등록·수정 시 지정한 물품 종류 없음 |
 | 409 | ITEM_DELETE_CONFLICT | 연결된 태그·대여·점검 기록 때문에 삭제 불가 |
 | 409 | ITEM_TYPE_CHANGE_CONFLICT | 대여·점검 기록이 있는 물품의 종류 변경 |
+| 409 | ITEM_TAG_ALREADY_ASSIGNED | 물품에 이미 태그가 연결됨 |
+| 409 | TAG_UID_ALREADY_REGISTERED | 태그 UID가 이미 등록됨 |
 | 405 | METHOD_NOT_ALLOWED | 지원하지 않는 메서드. Allow 헤더 포함 |
 | 415 | UNSUPPORTED_MEDIA_TYPE | 지원하지 않는 요청 본문 형식 |
 | 500 | INTERNAL_ERROR | 예상하지 못한 물품 API 내부 오류. 내부 세부 정보는 응답에 포함하지 않음 |

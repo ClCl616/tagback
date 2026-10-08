@@ -16,7 +16,8 @@ import static org.mockito.Mockito.*;
 
 class ItemDeleteServiceTest {
     private final ItemRepository items = mock(ItemRepository.class);
-    private final ItemService service = new ItemService(items, mock(ItemTypeRepository.class), mock(EntityManager.class));
+    private final ItemService service = new ItemService(items, mock(ItemTypeRepository.class),
+            mock(NfcTagRepository.class), mock(EntityManager.class));
     private final Item item = mock(Item.class);
 
     @BeforeEach void setup() { when(items.findForUpdate(10L)).thenReturn(Optional.of(item)); }

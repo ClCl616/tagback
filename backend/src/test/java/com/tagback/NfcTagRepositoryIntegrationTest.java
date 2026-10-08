@@ -40,9 +40,11 @@ class NfcTagRepositoryIntegrationTest {
                 new ItemType(itemTypeName, "스모크 테스트용 품목 종류")
         );
         Item item = itemRepository.saveAndFlush(
-                new Item(itemName, ItemStatus.AVAILABLE, itemType)
+                new Item(itemName, ItemStatus.TAG_PENDING, itemType)
         );
         nfcTagRepository.saveAndFlush(new NfcTag(tagUid, item));
+        item.markAvailable();
+        itemRepository.flush();
 
         NfcTag foundTag = nfcTagRepository.findByUid(tagUid).orElseThrow();
 

@@ -15,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
@@ -103,6 +104,35 @@ class ItemCrudPostgresIntegrationTest {
                 .andExpect(jsonPath("$.error.code").value("ITEM_NOT_FOUND"));
     }
 
+    @Test void assigningTagMakesRegisteredItemAvailable() throws Exception {
+        String id = create("태그 연결 물품", typeId);
+
+        mvc.perform(post("/api/v1/items/" + id + "/tag").cookie(admin).contentType("application/json")
+                .content("{\"tagUid\":\"integration-assigned-tag\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("AVAILABLE"));
+
+        assertEquals(1, jdbc.queryForObject("select count(*) from nfc_tags where item_id = ?",
+                Integer.class, Long.valueOf(id)));
+        assertEquals("AVAILABLE", jdbc.queryForObject("select status from items where item_id = ?",
+                String.class, Long.valueOf(id)));
+    }
+
+    @Test void databaseRejectsAvailableStatusWithoutTag() throws Exception {
+        String id = create("태그 없는 물품", typeId);
+
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
+                "update items set status = 'AVAILABLE' where item_id = ?", Long.valueOf(id)));
+    }
+
+    @Test void databaseRejectsRemovingTagFromAvailableItem() throws Exception {
+        String id = create("태그 삭제 방지 물품", typeId);
+        jdbc.update("insert into nfc_tags(item_id, tag_uid) values (?, ?)", Long.valueOf(id), "integration-protected-tag");
+        jdbc.update("update items set status = 'AVAILABLE' where item_id = ?", Long.valueOf(id));
+
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
+                "delete from nfc_tags where item_id = ?", Long.valueOf(id)));
+    }
+
     @Test void realQueriesHandleFiltersSortingPagingAndEmptyResults() throws Exception {
         String first = create("우산 01", typeId);
         String second = create("우산 02", typeId);
@@ -112,7 +142,7 @@ class ItemCrudPostgresIntegrationTest {
         mvc.perform(get("/api/v1/items").cookie(member)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(3));
         mvc.perform(get("/api/v1/items").cookie(member).param("itemTypeId", Long.toString(typeId))
-                .param("status", "AVAILABLE").param("size", "1"))
+                .param("status", "TAG_PENDING").param("size", "1"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.totalPages").value(2))
                 .andExpect(jsonPath("$.items[0].itemId").value(second));
         mvc.perform(get("/api/v1/items").cookie(member).param("itemTypeId", Long.toString(typeId))

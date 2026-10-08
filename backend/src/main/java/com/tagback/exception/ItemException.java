@@ -33,4 +33,12 @@ public class ItemException extends RuntimeException {
     public static ItemException deleteConflict() {
         return new ItemException("ITEM_DELETE_CONFLICT", "태그·대여·점검 기록이 연결된 물품은 삭제할 수 없습니다.", 409);
     }
+
+    public static ItemException tagAlreadyAssigned() {
+        return new ItemException("ITEM_TAG_ALREADY_ASSIGNED", "물품에 이미 태그가 연결되어 있습니다.", 409);
+    }
+
+    public static ItemException tagUidAlreadyRegistered() {
+        return new ItemException("TAG_UID_ALREADY_REGISTERED", "이미 다른 물품에 등록된 태그입니다.", 409);
+    }
 }
