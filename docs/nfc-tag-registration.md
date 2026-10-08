@@ -68,9 +68,9 @@ Content-Type: application/json
 
 ## DB와 후속 작업
 
-등록·중복 방지는 V4의 `nfc_tags.tag_uid UNIQUE`와 V10의 `uq_nfc_tags_active_item` 부분 유니크 인덱스를 사용한다. 동시 요청에서 유니크 위반이 나면 삽입 트랜잭션을 롤백한 뒤 해당 물품·UID를 다시 조회한다. 같은 연결이면 기존 태그를 성공으로 반환하고, 다른 연결이면 위 409 오류로 변환한다.
+등록·중복 방지는 V4의 `nfc_tags.tag_uid UNIQUE`와 V12의 `uq_nfc_tags_active_item` 부분 유니크 인덱스를 사용한다. 동시 요청에서 유니크 위반이 나면 삽입 트랜잭션을 롤백한 뒤 해당 물품·UID를 다시 조회한다. 같은 연결이면 기존 태그를 성공으로 반환하고, 다른 연결이면 위 409 오류로 변환한다.
 
-V9는 사용자 프로필 마이그레이션이 사용하므로 NFC 교체 스키마는 V10이다. V10은 `nfc_tags_item_id_key`를 제거하고 `deactivated_at TIMESTAMPTZ`와 물품별 활성 태그만 유일하게 만드는 `uq_nfc_tags_active_item`을 추가한다. `tag_uid UNIQUE`는 그대로 둔다. 기존 V1~V9는 수정하지 않는다.
+V9는 사용자 프로필, 물품 API 브랜치의 V10·V11은 물품 상태 정책에 사용되므로 NFC 교체 스키마는 V12다. V12는 `nfc_tags_item_id_key`를 제거하고 `deactivated_at TIMESTAMPTZ`와 물품별 활성 태그만 유일하게 만드는 `uq_nfc_tags_active_item`을 추가한다. `tag_uid UNIQUE`는 그대로 둔다. 기존 V1~V9는 수정하지 않는다.
 
 등록 API는 관리자 전용 세션을 요구한다. 현재 세션 발급 기능은 `sms-mock` 프로필에서만 제공되므로 운영 사용 전 실제 인증 연동을 별도로 확인해야 한다.
 
