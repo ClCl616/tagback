@@ -292,13 +292,13 @@ em {
   background: var(--paper);
 }
 .message-popup {
-  width: min(420px, calc(100vw - 40px));
+  width: min(360px, calc(100vw - 40px));
   max-height: calc(100dvh - 48px);
   overflow: auto;
   margin: auto;
-  padding: 28px;
+  padding: 24px;
   border: 1px solid var(--line, #dce4dc);
-  border-radius: 22px;
+  border-radius: 20px;
   color: var(--ink, #203c32);
   background: var(--paper, #fff);
   box-shadow: 0 18px 64px #173d3226;
@@ -307,19 +307,47 @@ em {
   background: #142d2666;
 }
 .message-popup h2 {
-  margin: 0 0 20px;
-  font-size: 21px;
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.4;
+  letter-spacing: -0.5px;
+}
+.message-popup-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.message-popup-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #edf2e9;
+  color: var(--green);
+}
+.message-popup-actions {
+  display: flex;
+  gap: 10px;
+}
+.message-popup-actions > button {
+  flex: 1;
+  min-height: 46px;
+  padding: 12px;
+  border-radius: 12px;
+  font-size: 14px;
 }
 .message-popup-content {
   margin-bottom: 24px;
-  line-height: 1.7;
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.65;
   overflow-wrap: anywhere;
 }
-.message-popup-content [role='alert'] > svg {
-  color: #a34632;
-}
 .message-popup-content p {
-  margin: 8px 0 16px;
+  margin: 0;
 }
 .message-popup .pin-guidance {
   margin: 0;

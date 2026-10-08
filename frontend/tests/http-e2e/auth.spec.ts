@@ -88,6 +88,13 @@ test('signup profile, session reload, account and logout use HTTP without storin
   const writes = await server(page);
   await signup(page);
   await expect(page).toHaveURL(/\/mobile$/);
+  await page.goto('/mobile/code');
+  const unavailable = page.getByRole('dialog', { name: '서비스 준비 중이에요' });
+  await expect(unavailable).toBeVisible();
+  await expect(unavailable.getByRole('button', { name: '다시 시도' })).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 740 });
+  await page.screenshot({ path: 'test-results/service-popup.png' });
+  await unavailable.getByRole('button', { name: '확인', exact: true }).click();
   await page.goto('/mobile/account');
   await expect(page.getByText('홍길동님')).toBeVisible();
   await page.reload();
