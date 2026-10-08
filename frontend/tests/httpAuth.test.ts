@@ -51,10 +51,13 @@ it('lost login response retries identical POST body and key without a result end
   expect(fetch.mock.calls[1][1].body).toBe(fetch.mock.calls[0][1].body);
   expect(fetch.mock.calls[1][1].headers['Idempotency-Key']).toBe('key');
 });
-it('unknown SMS issuance keeps original key and prevents changing the number', async () => {
+it('unknown SMS issuance keeps a separate key for each phone number', async () => {
   const fetch = vi
     .fn()
     .mockRejectedValueOnce(new Error())
+    .mockResolvedValueOnce(
+      json({ requestId: 'r2', expiresAt: expiry, resendAvailableAt: expiry }, 202),
+    )
     .mockResolvedValueOnce(
       json({ requestId: 'r1', expiresAt: expiry, resendAvailableAt: expiry }, 202),
     );
@@ -63,11 +66,12 @@ it('unknown SMS issuance keeps original key and prevents changing the number', a
   await expect(api.requestSms('01012345678', 'access', '')).rejects.toMatchObject({
     code: 'SMS_PENDING',
   });
-  await expect(api.requestSms('01099999999', 'access', '')).rejects.toMatchObject({
-    code: 'SMS_PENDING',
-  });
+  await api.requestSms('01099999999', 'access', '');
   await api.requestSms('01012345678', 'access', '');
-  expect(fetch.mock.calls[1][1].headers['Idempotency-Key']).toBe(
+  expect(fetch.mock.calls[2][1].headers['Idempotency-Key']).toBe(
+    fetch.mock.calls[0][1].headers['Idempotency-Key'],
+  );
+  expect(fetch.mock.calls[1][1].headers['Idempotency-Key']).not.toBe(
     fetch.mock.calls[0][1].headers['Idempotency-Key'],
   );
   expect(JSON.parse(fetch.mock.calls[1][1].body).purpose).toBe('SIGNUP');

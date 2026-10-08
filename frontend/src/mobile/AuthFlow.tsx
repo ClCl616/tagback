@@ -1,3 +1,11 @@
+import {
+  readDraft,
+  writeDraft,
+  clearDraft,
+  readSmsDraft,
+  writeSmsDraft,
+  phoneKey,
+} from '../shared/authDraft';
 import { HTTP_AUTH, COOKIE_SESSION } from '../shared/authMode';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -72,6 +80,18 @@ export default function AuthFlow({
   const alive = useRef(true),
     running = useRef(false),
     operationId = useRef('');
+  const resumable = mode === 'signup' || mode === 'reset';
+  const restoreSms = (number: string) => {
+    const saved = readSmsDraft(mode, number);
+    setChallenge(saved.challenge);
+    setSmsRestart(saved.restart);
+    setRetryAt(saved.retryAt);
+  };
+  useEffect(() => {
+    if (!resumable || step === 'boot' || step === 'done' || unknown) return;
+    writeDraft(mode, { name, occupation, phone, policyShown: policyShown.current });
+    writeSmsDraft(mode, phone, { challenge, restart: smsRestart || !!verification, retryAt });
+  }, [mode, step, name, occupation, phone, challenge, smsRestart, verification, retryAt, unknown]);
   const purpose: Purpose = mode === 'reset' ? 'reset' : mode === 'change' ? 'change' : 'access';
   useEffect(() => {
     alive.current = true;
@@ -121,7 +141,33 @@ export default function AuthFlow({
               localStorage.removeItem(REGISTRATION_KEY);
               setStep('phone');
             }
-          } else setStep(mode === 'signup' ? 'profile' : 'phone');
+          } else {
+            const draft = resumable
+              ? readDraft<{
+                  name: string;
+                  occupation: string;
+                  phone: string;
+                  policyShown?: boolean;
+                }>(mode)
+              : undefined;
+            if (
+              draft &&
+              typeof draft.name === 'string' &&
+              typeof draft.occupation === 'string' &&
+              typeof draft.phone === 'string'
+            ) {
+              setName(draft.name);
+              setOccupation(draft.occupation);
+              setPhone(draft.phone);
+              policyShown.current = draft.policyShown === true;
+              restoreSms(draft.phone);
+              setStep(
+                mode === 'signup' && (!draft.name.trim() || !draft.occupation.trim())
+                  ? 'profile'
+                  : 'phone',
+              );
+            } else setStep(mode === 'signup' ? 'profile' : 'phone');
+          }
         } catch (e) {
           if (alive.current) {
             if (mode === 'change' && e instanceof ServiceError && e.code === 'AUTH') {
@@ -161,10 +207,23 @@ export default function AuthFlow({
           sessionStorage.removeItem(PENDING);
           if (HTTP_AUTH) operationId.current = '';
         }
-        if (e.code === 'SMS_RESTART') {
+        if (
+          [
+            'SMS_RESTART',
+            'SMS_ALREADY_VERIFIED',
+            'SMS_CODE_EXPIRED',
+            'SMS_ATTEMPTS_EXCEEDED',
+            'SMS_REQUEST_INVALIDATED',
+            'SMS_USED',
+            'SMS_EXPIRED',
+            'SMS_LIMIT',
+          ].includes(e.code)
+        ) {
           setSms('');
           setVerification(undefined);
           setSmsRestart(true);
+        } else if (['SMS_CODE_MISMATCH', 'SMS_MISMATCH', 'SMS_INVALID'].includes(e.code)) {
+          writeSmsDraft(mode, phone, { challenge, restart: false, retryAt });
         }
       } else if (!unknown) sessionStorage.removeItem(PENDING);
     } finally {
@@ -175,6 +234,8 @@ export default function AuthFlow({
   function complete(result: AuthResult) {
     if (!alive.current) return;
     sessionStorage.removeItem(PENDING);
+    clearDraft(mode);
+    clearDraft('sms.' + mode + '.' + phoneKey(phone));
     setUnknown('');
     setPin('');
     setFirstPin('');
@@ -205,16 +266,18 @@ export default function AuthFlow({
     setPin('');
     setFirstPin('');
     setVerification(undefined);
-    setChallenge(undefined);
+    if (resumable) restoreSms(phone);
+    else setChallenge(undefined);
     setSms('');
     setRegistration('');
     setError(undefined);
     setNotice('');
-    setRetryAt(0);
+    if (!resumable) setRetryAt(0);
     setLocked(false);
     operationId.current = '';
   }
   async function send() {
+    if (busy || wait > 0 || resend > 0) return;
     if (!phoneValid(phone)) {
       setError(new Error('010으로 시작하는 11자리 전화번호를 입력해 주세요.'));
       return;
@@ -223,6 +286,8 @@ export default function AuthFlow({
       const c = await authApi.requestSms(phone, purpose, source, reauth);
       if (!alive.current) return;
       setChallenge(c);
+      setRetryAt(0);
+      writeSmsDraft(mode, phone, { challenge: c, restart: false, retryAt: 0 });
       setSmsRestart(false);
       setSms('');
       setVerification(undefined);
@@ -232,10 +297,12 @@ export default function AuthFlow({
   }
   async function verify() {
     await task(async () => {
-      if (!challenge) return;
+      if (!challenge || smsRestart || remaining === 0 || sms.length !== 6) return;
+      writeSmsDraft(mode, phone, { challenge, restart: true, retryAt });
       const v = await authApi.verifySms(challenge.id, phone, sms, purpose, source);
       if (!alive.current) return;
       setVerification(v);
+      setRetryAt(0);
       setMask(v.maskedPhone);
       setPin('');
       setNotice('');
@@ -616,7 +683,8 @@ export default function AuthFlow({
                   disabled={busy}
                   onChange={(e) => {
                     setPhone(e.target.value);
-                    setChallenge(undefined);
+                    if (resumable) restoreSms(e.target.value);
+                    else setChallenge(undefined);
                     setVerification(undefined);
                     setSms('');
                     setPin('');
@@ -633,6 +701,11 @@ export default function AuthFlow({
                 </button>
               ) : (
                 <>
+                  {smsRestart && (
+                    <p className="note-text">
+                      인증을 다시 진행해 주세요. 새 인증번호를 받아 입력해 주세요.
+                    </p>
+                  )}
                   {challenge && (
                     <>
                       <div className="auth-sms-field">
@@ -657,7 +730,7 @@ export default function AuthFlow({
                       <button
                         className="primary full"
                         type="submit"
-                        disabled={busy || smsRestart || sms.length !== 6 || !remaining || wait > 0}
+                        disabled={busy || smsRestart || sms.length !== 6 || !remaining}
                       >
                         인증번호 확인
                       </button>
@@ -666,21 +739,16 @@ export default function AuthFlow({
                   <button
                     className="secondary full"
                     type="button"
-                    disabled={busy || wait > 0}
-                    onClick={() => {
-                      if (resend > 0) {
-                        setRetryAt(challenge!.resendAt);
-                        setError(
-                          new ServiceError(
-                            'SMS_WAIT',
-                            '인증번호 재발송을 잠시 기다려 주세요.',
-                            challenge!.resendAt,
-                          ),
-                        );
-                      } else void send();
-                    }}
+                    disabled={busy || wait > 0 || resend > 0}
+                    onClick={() => void send()}
                   >
-                    {challenge ? '인증번호 재발송' : '인증번호 발송'}
+                    {busy
+                      ? '요청 중…'
+                      : Math.max(wait, resend) > 0
+                        ? `${challenge ? '재발송' : '인증 요청'}까지 ${Math.max(wait, resend)}초`
+                        : challenge
+                          ? '인증번호 재발송'
+                          : '인증번호 발송'}{' '}
                   </button>
                 </>
               )}

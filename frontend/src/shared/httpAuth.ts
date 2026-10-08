@@ -1,6 +1,7 @@
 import { ServiceError } from './serviceError';
 import type { AuthAdapter, AuthResult } from './authTypes';
 import { COOKIE_SESSION } from './authMode';
+import { readDraft, writeDraft, clearDraft } from './authDraft';
 
 const base = '/api/v1/auth';
 export function timestamp(value: unknown): number {
@@ -118,7 +119,7 @@ async function loginResult(value: any): Promise<AuthResult> {
 // Retry bodies live only in memory. PIN/SMS/proof never enter browser storage.
 export function createHttpAuth(): AuthAdapter {
   const pending = new Map<string, () => Promise<AuthResult>>();
-  let smsPending: { fingerprint: string; key: string } | undefined;
+  const smsPending = new Map<string, string>();
   async function write(
     id: string,
     path: string,
@@ -158,11 +159,15 @@ export function createHttpAuth(): AuthAdapter {
         purpose: purpose === 'reset' ? 'PIN_RESET' : 'SIGNUP',
       };
       const fingerprint = JSON.stringify(body);
-      if (smsPending && smsPending.fingerprint !== fingerprint)
-        throw new ServiceError('SMS_PENDING', '이전 전화번호의 발송 결과를 먼저 확인해 주세요.');
-      smsPending ||= { fingerprint, key: crypto.randomUUID() };
+      const storageKey = 'request.' + fingerprint;
+      const saved = readDraft<{ key: string }>(storageKey);
+      const key =
+        smsPending.get(fingerprint) ||
+        (typeof saved?.key === 'string' ? saved.key : crypto.randomUUID());
+      smsPending.set(fingerprint, key);
+      writeDraft(storageKey, { key });
       try {
-        const value = await authRequest('/sms/requests', 'POST', body, smsPending.key, 202);
+        const value = await authRequest('/sms/requests', 'POST', body, key, 202);
         if (typeof value.requestId !== 'string' || !value.requestId)
           throw new ServiceError('UNKNOWN', '인증 요청을 확인하지 못했습니다.');
         const result = {
@@ -170,7 +175,8 @@ export function createHttpAuth(): AuthAdapter {
           expiresAt: timestamp(value.expiresAt),
           resendAt: timestamp(value.resendAvailableAt),
         };
-        smsPending = undefined;
+        smsPending.delete(fingerprint);
+        clearDraft(storageKey);
         return result;
       } catch (e) {
         if (e instanceof ServiceError && e.code === 'UNKNOWN')
@@ -178,7 +184,8 @@ export function createHttpAuth(): AuthAdapter {
             'SMS_PENDING',
             '발송 결과가 불명확합니다. 같은 전화번호로 다시 발송을 눌러 확인해 주세요.',
           );
-        smsPending = undefined;
+        smsPending.delete(fingerprint);
+        clearDraft(storageKey);
         throw e;
       }
     },

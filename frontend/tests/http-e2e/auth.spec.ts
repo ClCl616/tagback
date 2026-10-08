@@ -213,3 +213,171 @@ test('a corrected PIN uses a new operation and prevents concurrent submissions',
   expect(attempts[1].key).not.toBe(attempts[0].key);
   expect(attempts[1].pin).toBe('246802');
 });
+
+async function beginSignup(page: Page) {
+  await page.goto('/mobile/signup');
+  await page.getByLabel('이름', { exact: true }).fill('홍길동');
+  await page.getByLabel('직업', { exact: true }).selectOption('학생');
+  await page.getByRole('button', { name: '다음', exact: true }).click();
+  await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
+}
+
+test('SMS challenge and cooldown survive reload, back navigation and phone switches', async ({
+  page,
+}) => {
+  const writes = await server(page);
+  let requests = 0;
+  await page.route('**/api/v1/auth/sms/requests', (route) => {
+    requests++;
+    return route.fulfill({
+      status: 202,
+      json: {
+        requestId: 'resumable',
+        expiresAt: new Date(Date.now() + 300000).toISOString(),
+        resendAvailableAt: new Date(Date.now() + 60000).toISOString(),
+      },
+    });
+  });
+  await beginSignup(page);
+  await page.getByRole('button', { name: '인증번호 발송', exact: true }).click();
+  await expect(page.getByRole('button', { name: /재발송까지/ })).toBeDisabled();
+  await page.reload();
+  await expect(page.getByLabel('SMS 인증번호')).toBeVisible();
+  await expect(page.getByLabel('전화번호', { exact: true })).toHaveValue('01012345678');
+  await page.getByRole('button', { name: '이전', exact: true }).click();
+  await expect(page.getByLabel('이름', { exact: true })).toHaveValue('홍길동');
+  await page.getByRole('button', { name: '다음', exact: true }).click();
+  await expect(page.getByLabel('SMS 인증번호')).toBeVisible();
+  await page.getByLabel('전화번호', { exact: true }).fill('01099999999');
+  await expect(page.getByLabel('SMS 인증번호')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '인증번호 발송', exact: true })).toBeEnabled();
+  await page.getByLabel('전화번호', { exact: true }).fill('010-1234-5678');
+  await expect(page.getByLabel('SMS 인증번호')).toBeVisible();
+  await page.getByLabel('SMS 인증번호').fill('123456');
+  await expect(page.getByRole('button', { name: '인증번호 확인', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: '인증번호 확인', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'PIN 설정 안내' })).toBeVisible();
+  expect(requests).toBe(1);
+  expect(writes.find((x) => x.path.endsWith('/sms/verifications'))?.body).toMatchObject({
+    requestId: 'resumable',
+  });
+  await page.reload();
+  await expect(page.getByLabel('SMS 인증번호')).toBeDisabled();
+  await expect(
+    page.getByText('인증을 다시 진행해 주세요. 새 인증번호를 받아 입력해 주세요.'),
+  ).toBeVisible();
+  const stored = await page.evaluate(() => JSON.stringify(sessionStorage));
+  expect(stored).not.toContain('proof-secret');
+  expect(stored).not.toContain('"code"');
+});
+
+test('lost SMS issuance retries its original key after reload without issuing twice', async ({
+  page,
+}) => {
+  await server(page);
+  const keys: string[] = [];
+  await page.route('**/api/v1/auth/sms/requests', (route) => {
+    keys.push(route.request().headers()['idempotency-key']);
+    if (keys.length === 1) return route.abort();
+    return route.fulfill({
+      status: 202,
+      json: {
+        requestId: 'same-request',
+        expiresAt: new Date(Date.now() + 300000).toISOString(),
+        resendAvailableAt: new Date(Date.now() + 60000).toISOString(),
+      },
+    });
+  });
+  await beginSignup(page);
+  await page.getByRole('button', { name: '인증번호 발송', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: '인증번호 발송', exact: true }).click();
+  await expect(page.getByLabel('SMS 인증번호')).toBeVisible();
+  expect(keys).toHaveLength(2);
+  expect(keys[1]).toBe(keys[0]);
+});
+
+test('server cooldown without a local challenge survives reload and expires', async ({ page }) => {
+  await page.clock.install();
+  await server(page);
+  let requests = 0;
+  await page.route('**/api/v1/auth/sms/requests', (route) => {
+    requests++;
+    return route.fulfill({
+      status: 429,
+      json: {
+        error: {
+          code: 'SMS_RESEND_WAIT',
+          message: '재발송까지 기다려 주세요.',
+          retryAt: new Date(Date.now() + 60000).toISOString(),
+        },
+      },
+    });
+  });
+  await beginSignup(page);
+  await page.getByRole('button', { name: '인증번호 발송', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
+  await expect(page.getByRole('button', { name: /인증 요청까지/ })).toBeDisabled();
+  await page.reload();
+  await expect(page.getByRole('button', { name: /인증 요청까지/ })).toBeDisabled();
+  await page.clock.fastForward(61000);
+  await expect(page.getByRole('button', { name: '인증번호 발송', exact: true })).toBeEnabled();
+  expect(requests).toBe(1);
+});
+
+test('wrong code stays editable after reload; expired code is replaced; rapid requests send once', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await server(page);
+  let requests = 0;
+  await page.route('**/api/v1/auth/sms/requests', async (route) => {
+    requests++;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const now = await page.evaluate(() => Date.now());
+    await route.fulfill({
+      status: 202,
+      json: {
+        requestId: 'request-' + requests,
+        expiresAt: new Date(now + 120000).toISOString(),
+        resendAvailableAt: new Date(now + 60000).toISOString(),
+      },
+    });
+  });
+  await page.route('**/api/v1/auth/sms/verifications', (route) =>
+    route.fulfill({
+      status: 400,
+      json: {
+        error: {
+          code: 'SMS_CODE_MISMATCH',
+          message: '인증번호가 일치하지 않습니다.',
+          retryAt: null,
+        },
+      },
+    }),
+  );
+  await beginSignup(page);
+  await page
+    .getByRole('button', { name: '인증번호 발송', exact: true })
+    .evaluate((button: HTMLButtonElement) => {
+      button.click();
+      button.click();
+    });
+  await expect(page.getByLabel('SMS 인증번호')).toBeVisible();
+  expect(requests).toBe(1);
+  await page.getByLabel('SMS 인증번호').fill('999999');
+  await page.getByRole('button', { name: '인증번호 확인', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('인증번호가 일치하지 않습니다.');
+  await page.reload();
+  await expect(page.getByLabel('SMS 인증번호')).toBeEnabled();
+  await page.clock.fastForward(121000);
+  await expect(page.getByRole('dialog')).toContainText('인증번호가 만료되었습니다.');
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
+  await expect(page.getByLabel('SMS 인증번호')).toBeDisabled();
+  await page.getByRole('button', { name: '인증번호 재발송', exact: true }).click();
+  await expect(page.getByLabel('SMS 인증번호')).toBeEnabled();
+  await page.reload();
+  await expect(page.getByLabel('SMS 인증번호')).toBeEnabled();
+  expect(requests).toBe(2);
+});
