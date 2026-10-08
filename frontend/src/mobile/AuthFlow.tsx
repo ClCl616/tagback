@@ -6,7 +6,7 @@ import { authApi } from '../shared/auth';
 import { api, phoneValid, ServiceError } from '../shared/api';
 import { browserSource, pinError, REGISTRATION_KEY } from '../shared/authPolicy';
 import type { AuthResult, Challenge, Purpose, Verification } from '../shared/authTypes';
-import { ErrorBox, Loading } from '../shared/ui';
+import { ErrorBox, Loading, MessagePopup } from '../shared/ui';
 
 type Mode = 'access' | 'signup' | 'reset' | 'change';
 type Step =
@@ -44,6 +44,14 @@ export default function AuthFlow({
   const [occupation, setOccupation] = useState('');
   const [step, setStep] = useState<Step>('boot');
   const [smsRestart, setSmsRestart] = useState(false);
+  const [showPinPolicy, setShowPinPolicy] = useState(false);
+  const policyShown = useRef(false);
+  useEffect(() => {
+    if (mode === 'signup' && step === 'setup' && !policyShown.current) {
+      policyShown.current = true;
+      setShowPinPolicy(true);
+    }
+  }, [mode, step]);
   const [phone, setPhone] = useState(''),
     [sms, setSms] = useState('');
   const [pin, setPin] = useState(''),
@@ -310,18 +318,6 @@ export default function AuthFlow({
       </div>
     );
   const isPin = ['pin', 'setup', 'confirm'].includes(step);
-  const errorMessage = (
-    <ErrorBox
-      error={
-        error instanceof ServiceError && error.retryAt
-          ? new Error(error.message + ' 남은 시간: ' + wait + '초')
-          : error ||
-            (wait > 0
-              ? new Error('PIN 입력을 잠시 기다려 주세요. 남은 시간: ' + wait + '초')
-              : undefined)
-      }
-    />
-  );
   return (
     <div className="page-content auth-flow">
       <div className="auth-topline">
@@ -503,23 +499,14 @@ export default function AuthFlow({
             <LockKeyhole className="auth-symbol" />
             <h1>
               {step === 'setup'
-                ? '사용할 PIN 번호를 설정해 주세요.'
+                ? mode === 'reset'
+                  ? '변경할 PIN 번호를 입력해 주세요.'
+                  : '사용할 PIN 번호를 설정해 주세요.'
                 : step === 'confirm'
                   ? 'PIN 번호를 한 번 더 입력해 주세요.'
                   : 'PIN 번호를 입력해 주세요.'}
             </h1>
             <p className="auth-mask">{mask}</p>
-            {step === 'setup' && (
-              <ul className="pin-guidance">
-                <li>숫자 6자리</li>
-                <li>
-                  6자리 연속 숫자 제외 <span>123456 · 789012 등</span>
-                </li>
-                <li>
-                  같은 숫자 3번 연속 제외 <span>000 · 888 등</span>
-                </li>
-              </ul>
-            )}
             <form onSubmit={submitPin} aria-busy={busy}>
               <div className="pin-field">
                 <div className="pin-dots" aria-hidden="true">
@@ -584,13 +571,8 @@ export default function AuthFlow({
                 <ArrowRight size={18} />
               </button>
             </form>
-            {locked && (
-              <p role="alert">
-                PIN 로그인이 제한되었습니다. PIN 찾기에서 계정 복구를 진행해 주세요.
-              </p>
-            )}
           </section>
-          {errorMessage}
+
           {step === 'pin' && mode !== 'change' && (
             <div className="auth-links">
               <Link to="/mobile/recover">PIN 찾기</Link>
@@ -672,9 +654,6 @@ export default function AuthFlow({
                           onChange={(e) => setSms(e.target.value.replace(/\D/g, ''))}
                         />
                       </div>
-                      {!remaining && (
-                        <p className="note-text">인증번호가 만료되었습니다. 다시 발송해 주세요.</p>
-                      )}
                       <button
                         className="primary full"
                         type="submit"
@@ -707,7 +686,7 @@ export default function AuthFlow({
               )}
             </form>
           </section>
-          {errorMessage}
+
           <div className="auth-links">
             <Link to="/mobile/recover">PIN 찾기</Link>
             <Link to="/mobile/signup">회원가입</Link>
@@ -719,15 +698,27 @@ export default function AuthFlow({
           )}
         </>
       )}
-      {proofExpired && !unknown && (
-        <p role="alert">
-          인증 결과가 만료되었습니다.{' '}
-          <button className="text-button" onClick={startPhone}>
-            전화번호부터 다시 인증
-          </button>
-        </p>
-      )}
-      {!(!unknown && (isPin || step === 'phone')) && errorMessage}
+      <ErrorBox
+        error={
+          error ||
+          (proofExpired && !unknown
+            ? '인증 결과가 만료되었습니다. 전화번호부터 다시 인증해 주세요.'
+            : challenge && remaining === 0 && step === 'phone'
+              ? '인증번호가 만료되었습니다. 다시 발송해 주세요.'
+              : locked
+                ? 'PIN 로그인이 제한되었습니다. PIN 찾기에서 계정을 복구해 주세요.'
+                : undefined)
+        }
+      />
+      {showPinPolicy && (
+        <MessagePopup title="PIN 설정 안내" onClose={() => setShowPinPolicy(false)}>
+          <ul className="pin-guidance">
+            <li>숫자 6자리로 설정해 주세요.</li>
+            <li>6자리 전체가 연속된 숫자는 사용할 수 없어요.</li>
+            <li>같은 숫자를 3번 연속 사용할 수 없어요.</li>
+          </ul>
+        </MessagePopup>
+      )}{' '}
       {error instanceof ServiceError &&
         ['REGISTRATION', 'SMS_REQUIRED', 'AUTH', 'RECOVERY'].includes(error.code) && (
           <button className="text-button" onClick={startPhone}>

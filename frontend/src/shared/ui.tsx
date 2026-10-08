@@ -1,5 +1,5 @@
 import { ArrowUpRight, Box, Check, CircleAlert, LoaderCircle, Radio } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { ServiceError } from './api';
 export const date = (n: number) =>
   new Intl.DateTimeFormat('ko-KR', {
@@ -19,20 +19,60 @@ export function Brand() {
     </span>
   );
 }
-export function ErrorBox({ error, retry }: { error: unknown; retry?: () => void }) {
-  if (!error) return null;
+export function MessagePopup({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  useEffect(() => {
+    dialog.current?.showModal();
+    return () => dialog.current?.close();
+  }, []);
   return (
-    <div className="error-box" role="alert">
-      <CircleAlert size={20} />
-      <div>
-        {error instanceof Error ? error.message : String(error)}
-        {retry && (
-          <button className="text-button" onClick={retry}>
-            다시 시도
-          </button>
-        )}
+    <dialog
+      ref={dialog}
+      className="message-popup"
+      aria-labelledby={titleId}
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+    >
+      <h2 id={titleId}>{title}</h2>
+      <div className="message-popup-content">{children}</div>
+      <button autoFocus className="primary full" onClick={onClose}>
+        확인
+      </button>
+    </dialog>
+  );
+}
+export function ErrorBox({ error, retry }: { error: unknown; retry?: () => void }) {
+  const [dismissed, setDismissed] = useState<unknown>();
+  if (!error || dismissed === error) return null;
+  return (
+    <MessagePopup title="확인해 주세요" onClose={() => setDismissed(error)}>
+      <div role="alert">
+        <CircleAlert size={22} />
+        <p>{error instanceof Error ? error.message : String(error)}</p>
       </div>
-    </div>
+      {retry && (
+        <button
+          className="secondary full"
+          onClick={() => {
+            setDismissed(error);
+            retry();
+          }}
+        >
+          다시 시도
+        </button>
+      )}
+    </MessagePopup>
   );
 }
 export function Loading({ text = '불러오는 중이에요' }: { text?: string }) {

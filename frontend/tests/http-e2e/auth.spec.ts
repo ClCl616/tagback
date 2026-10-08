@@ -75,6 +75,8 @@ async function signup(page: Page) {
   await page.getByRole('button', { name: '인증번호 발송', exact: true }).click();
   await page.getByLabel('SMS 인증번호').fill('123456');
   await page.getByRole('button', { name: '인증번호 확인', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'PIN 설정 안내' })).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
   await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
   await page.getByRole('button', { name: '계속', exact: true }).click();
   await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
@@ -121,6 +123,7 @@ test('phone PIN login goes to main without requesting SMS', async ({ page }) => 
 test('lost signup response retries the same payload and key', async ({ page }) => {
   const writes = await server(page, true);
   await signup(page);
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
   await expect(
     page.getByRole('button', { name: '처리 결과 다시 확인', exact: true }),
   ).toBeVisible();
@@ -129,6 +132,47 @@ test('lost signup response retries the same payload and key', async ({ page }) =
   const signups = writes.filter((x) => x.path.endsWith('/signup'));
   expect(signups).toHaveLength(2);
   expect(signups[1]).toEqual(signups[0]);
+});
+
+test('PIN recovery shows rules only on invalid input and header stays fixed', async ({ page }) => {
+  await server(page);
+  await page.route('**/api/v1/auth/sms/verifications', (route) =>
+    route.fulfill({
+      json: {
+        verificationToken: 'reset-proof',
+        purpose: 'PIN_RESET',
+        expiresAt: new Date(Date.now() + 600000).toISOString(),
+        maskedPhoneNumber: '010-****-5678',
+      },
+    }),
+  );
+  await page.goto('/mobile/recover');
+  await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
+  await page.getByRole('button', { name: '인증번호 발송', exact: true }).click();
+  await page.getByLabel('SMS 인증번호').fill('123456');
+  await page.getByRole('button', { name: '인증번호 확인', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: '변경할 PIN 번호를 입력해 주세요.' }),
+  ).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('.pin-guidance')).toHaveCount(0);
+  await page.getByLabel('PIN 번호', { exact: true }).fill('123456');
+  await page.getByRole('button', { name: '계속', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText('6자리 전체가 연속');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
+  await page.getByRole('button', { name: '계속', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'PIN 번호를 한 번 더 입력해 주세요.' }),
+  ).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 704 });
+  await page.goto('/mobile');
+  await page.evaluate(() => window.scrollTo(0, 600));
+  await expect
+    .poll(() => page.locator('.mobile-header').evaluate((el) => el.getBoundingClientRect().top))
+    .toBe(0);
+  await page.screenshot({ path: 'test-results/sticky-header.png' });
 });
 
 test('a corrected PIN uses a new operation and prevents concurrent submissions', async ({
@@ -155,6 +199,7 @@ test('a corrected PIN uses a new operation and prevents concurrent submissions',
   await expect(page.getByRole('button', { name: '확인 중…', exact: true })).toBeDisabled();
   await expect(page.getByText('PIN이 일치하지 않습니다.', { exact: true })).toBeVisible();
   expect(attempts).toHaveLength(1);
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
   await page.getByLabel('PIN 번호', { exact: true }).fill('246802');
   await page.getByRole('button', { name: '로그인', exact: true }).click();
   await expect.poll(() => attempts.length).toBe(2);

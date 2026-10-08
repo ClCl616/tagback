@@ -720,14 +720,7 @@ export default function MobileApp() {
     );
   return (
     <Auth.Provider value={{ token, setToken }}>
-      {sessionNotice && (
-        <div className="session-notice" role="alert">
-          {sessionNotice}
-          <button className="text-button" onClick={() => setSessionNotice('')}>
-            닫기
-          </button>
-        </div>
-      )}
+      <ErrorBox error={sessionNotice} />
       <Routes>
         <Route element={<MobileLayout />}>
           <Route index element={<Explore />} />
