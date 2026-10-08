@@ -85,6 +85,20 @@ class SmsMockApiIntegrationTest {
         assertEquals(code, assertThrows(AuthException.class, action::run).code());
     }
 
+    @Test void registeredNumberIsRejectedBeforeSignupSmsButCanResetPin() throws Exception {
+        String phone = phone();
+        users.saveAndFlush(new User(phone, "unused-pin-hash", initial));
+        String localPhone = "0" + phone.substring(3);
+        mvc.perform(post("/api/v1/auth/sms/requests")
+                        .header("Idempotency-Key", UUID.randomUUID()).contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(new AuthRequests.SmsRequest(localPhone, SmsPurpose.SIGNUP))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("PHONE_NUMBER_ALREADY_REGISTERED"));
+        assertEquals(0, requests.countSentSince(phone, initial.minusSeconds(1)));
+        assertEquals(0, jdbc.queryForObject("select count(*) from sms_request_gates where phone_number = ?", Integer.class, phone));
+        assertNotNull(request(phone, SmsPurpose.PIN_RESET));
+    }
+
     @Test void apiReturnsUtcMetadataAndIssuesOnlyHashedGrantAfterVerification() throws Exception {
         String phone = phone();
         String body = json.writeValueAsString(new AuthRequests.SmsRequest(phone, SmsPurpose.SIGNUP));

@@ -381,3 +381,32 @@ test('wrong code stays editable after reload; expired code is replaced; rapid re
   await expect(page.getByLabel('SMS 인증번호')).toBeEnabled();
   expect(requests).toBe(2);
 });
+
+test('existing signup number is blocked before verification and offers login', async ({ page }) => {
+  const writes = await server(page);
+  await page.route('**/api/v1/auth/sms/requests', (route) =>
+    route.fulfill({
+      status: 409,
+      json: {
+        error: {
+          code: 'PHONE_NUMBER_ALREADY_REGISTERED',
+          message: '이미 등록된 전화번호입니다.',
+          retryAt: null,
+        },
+      },
+    }),
+  );
+  await beginSignup(page);
+  await page.getByRole('button', { name: '인증번호 발송', exact: true }).click();
+  const popup = page.getByRole('dialog', { name: '이미 가입된 전화번호예요' });
+  await expect(popup).toBeVisible();
+  await expect(page.getByLabel('SMS 인증번호')).toHaveCount(0);
+  await popup.getByRole('button', { name: '닫기', exact: true }).click();
+  await expect(page.getByLabel('전화번호', { exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: '인증번호 발송', exact: true }).click();
+  await popup.getByRole('button', { name: '로그인하기', exact: true }).click();
+  await expect(page).toHaveURL(/\/mobile\/login$/);
+  expect(
+    writes.some((x) => x.path.endsWith('/sms/verifications') || x.path.endsWith('/signup')),
+  ).toBe(false);
+});

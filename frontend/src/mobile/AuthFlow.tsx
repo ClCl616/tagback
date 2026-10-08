@@ -52,6 +52,7 @@ export default function AuthFlow({
   const [occupation, setOccupation] = useState('');
   const [step, setStep] = useState<Step>('boot');
   const [smsRestart, setSmsRestart] = useState(false);
+  const [existingAccount, setExistingAccount] = useState(false);
   const [showPinPolicy, setShowPinPolicy] = useState(false);
   const policyShown = useRef(false);
   useEffect(() => {
@@ -200,6 +201,18 @@ export default function AuthFlow({
       if (!alive.current) return;
       setError(e);
       if (e instanceof ServiceError) {
+        if (mode === 'signup' && e.code === 'PHONE_NUMBER_ALREADY_REGISTERED') {
+          setError(undefined);
+          setExistingAccount(true);
+          setChallenge(undefined);
+          setVerification(undefined);
+          setSms('');
+          setPin('');
+          setFirstPin('');
+          setRetryAt(0);
+          setStep('phone');
+          clearDraft('sms.' + mode + '.' + phoneKey(phone));
+        }
         if (e.retryAt) setRetryAt(e.retryAt);
         if (e.code === 'PIN_LOCKED') setLocked(true);
         if (e.code === 'UNKNOWN' && operationId.current) setUnknown(operationId.current);
@@ -797,6 +810,24 @@ export default function AuthFlow({
         <p className="auth-notice" role="status">
           {notice}
         </p>
+      )}
+      {existingAccount && (
+        <MessagePopup
+          title="이미 가입된 전화번호예요"
+          onClose={() => setExistingAccount(false)}
+          action={{
+            label: '로그인하기',
+            onClick: () => {
+              clearDraft(mode);
+              nav('/mobile/login', { replace: true });
+            },
+          }}
+        >
+          <p>
+            기존 계정으로 로그인해 주세요. PIN이 기억나지 않으면 로그인 화면에서 PIN 찾기를 이용해
+            주세요.
+          </p>
+        </MessagePopup>
       )}
     </div>
   );
