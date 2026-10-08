@@ -1,3 +1,4 @@
+import { HTTP_AUTH, COOKIE_SESSION } from '../shared/authMode';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Delete, LockKeyhole, Smartphone, ShieldCheck } from 'lucide-react';
@@ -18,7 +19,7 @@ type Step =
   | 'blocked'
   | 'change-confirm'
   | 'done';
-const PENDING = 'tagback.mobile.pending-auth';
+const PENDING = HTTP_AUTH ? 'tagback.http.pending-auth' : 'tagback.mobile.pending-auth';
 export default function AuthFlow({
   mode,
   token,
@@ -42,6 +43,7 @@ export default function AuthFlow({
   const [name, setName] = useState('');
   const [occupation, setOccupation] = useState('');
   const [step, setStep] = useState<Step>('boot');
+  const [smsRestart, setSmsRestart] = useState(false);
   const [phone, setPhone] = useState(''),
     [sms, setSms] = useState('');
   const [pin, setPin] = useState(''),
@@ -98,7 +100,7 @@ export default function AuthFlow({
               setStep('pin');
             }
           } else if (mode === 'access') {
-            const value = localStorage.getItem(REGISTRATION_KEY) || '';
+            const value = HTTP_AUTH ? COOKIE_SESSION : localStorage.getItem(REGISTRATION_KEY) || '';
             const reg = value ? await authApi.registration(value) : null;
             if (!alive.current) return;
             if (reg) {
@@ -146,8 +148,16 @@ export default function AuthFlow({
       if (e instanceof ServiceError) {
         if (e.retryAt) setRetryAt(e.retryAt);
         if (e.code === 'PIN_LOCKED') setLocked(true);
-        if (e.code === 'UNKNOWN') setUnknown(operationId.current);
-        else if (!unknown) sessionStorage.removeItem(PENDING);
+        if (e.code === 'UNKNOWN' && operationId.current) setUnknown(operationId.current);
+        else if (!unknown) {
+          sessionStorage.removeItem(PENDING);
+          if (HTTP_AUTH) operationId.current = '';
+        }
+        if (e.code === 'SMS_RESTART') {
+          setSms('');
+          setVerification(undefined);
+          setSmsRestart(true);
+        }
       } else if (!unknown) sessionStorage.removeItem(PENDING);
     } finally {
       running.current = false;
@@ -161,9 +171,9 @@ export default function AuthFlow({
     setPin('');
     setFirstPin('');
     if ('token' in result) {
-      localStorage.setItem(REGISTRATION_KEY, result.registration);
+      if (!HTTP_AUTH) localStorage.setItem(REGISTRATION_KEY, result.registration);
       onLogin(result.token);
-      nav(mode === 'access' ? '/mobile' : destination, { replace: true });
+      nav(HTTP_AUTH || mode === 'access' ? '/mobile' : destination, { replace: true });
     } else {
       localStorage.removeItem(REGISTRATION_KEY);
       onClear();
@@ -205,6 +215,7 @@ export default function AuthFlow({
       const c = await authApi.requestSms(phone, purpose, source, reauth);
       if (!alive.current) return;
       setChallenge(c);
+      setSmsRestart(false);
       setSms('');
       setVerification(undefined);
       setNow(Date.now());
@@ -220,7 +231,8 @@ export default function AuthFlow({
       setMask(v.maskedPhone);
       setPin('');
       setNotice('');
-      if (mode === 'reset') setStep(v.existing ? 'setup' : 'blocked');
+      if (HTTP_AUTH) setStep('setup');
+      else if (mode === 'reset') setStep(v.existing ? 'setup' : 'blocked');
       else if (mode === 'change') setStep('change-confirm');
       else if (v.needsPin) {
         setStep('blocked');
@@ -290,6 +302,13 @@ export default function AuthFlow({
     setPin(value.replace(/\D/g, '').slice(0, 6));
     operationId.current = '';
   }
+  if (HTTP_AUTH && mode === 'change')
+    return (
+      <div className="page-content">
+        <p>전화번호 변경은 아직 지원하지 않습니다.</p>
+        <Link to="/mobile/account">마이페이지로</Link>
+      </div>
+    );
   const isPin = ['pin', 'setup', 'confirm'].includes(step);
   const errorMessage = (
     <ErrorBox
@@ -352,7 +371,11 @@ export default function AuthFlow({
                   sessionStorage.removeItem(PENDING);
                   setUnknown('');
                   startPhone();
-                  setNotice('저장된 결과가 없습니다. 인증부터 다시 진행해 주세요.');
+                  setNotice(
+                    HTTP_AUTH
+                      ? '로그인 세션을 확인하지 못했습니다. 이미 가입했다면 로그인해 주세요.'
+                      : '저장된 결과가 없습니다. 인증부터 다시 진행해 주세요.',
+                  );
                 }
               })
             }
@@ -645,7 +668,7 @@ export default function AuthFlow({
                           maxLength={6}
                           placeholder="6자리 인증번호"
                           value={sms}
-                          disabled={busy || remaining === 0}
+                          disabled={busy || smsRestart || remaining === 0}
                           onChange={(e) => setSms(e.target.value.replace(/\D/g, ''))}
                         />
                       </div>
@@ -655,7 +678,7 @@ export default function AuthFlow({
                       <button
                         className="primary full"
                         type="submit"
-                        disabled={busy || sms.length !== 6 || !remaining || wait > 0}
+                        disabled={busy || smsRestart || sms.length !== 6 || !remaining || wait > 0}
                       >
                         인증번호 확인
                       </button>

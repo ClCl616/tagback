@@ -1,6 +1,6 @@
 # 모바일 프론트 ↔ 인증 API 계약
 
-기준: `feat/auth`의 현재 `sms-mock` 서버 API와 `frontend/src/shared/auth.ts`의 브라우저 mock. 프론트는 아직 HTTP 인증 API를 호출하지 않는다. 이 문서는 HTTP 어댑터가 따를 필드·오류·재시도 규칙과 현재 연결할 수 없는 흐름을 정한다. 서버의 인증 컨트롤러는 `sms-mock` 프로필에서만 활성화되며 운영 SMS 공급자는 연결되지 않았다.
+기준: `develop`의 `sms-mock` 서버 API와 `frontend/src/shared/httpAuth.ts`의 HTTP 어댑터. `VITE_AUTH_MODE=http`에서 아래 인증 API를 호출하며, 미설정 시 기존 브라우저 Mock을 사용한다. 이 문서는 필드·오류·재시도 규칙과 아직 연결하지 않은 흐름을 정한다. 서버의 인증 컨트롤러는 `sms-mock` 프로필에서만 활성화되며 운영 SMS 공급자는 연결되지 않았다.
 
 ## SMS 용도와 화면
 
@@ -83,4 +83,28 @@
 
 ## 현재 연결 경계
 
-연결 가능한 서버 흐름은 가입 SMS 확인, PIN 복구 SMS 확인·재설정, 전화번호+PIN 및 등록 브라우저 로그인, 프로필을 포함한 가입, 세션·브라우저 상태와 로그아웃이다. 전화번호 변경과 운영 SMS 발송은 아직 서버 계약/구현이 없다. 프론트의 HTTP 어댑터 전환 시 쿠키 기반 세션과 서버 오류 코드를 사용해야 한다.
+`VITE_AUTH_MODE=http`는 가입·로그인·PIN 재설정·세션·로그아웃에만 적용한다. 물품 조회는 기존 Mock이며, 서버 계정으로 Mock 대여 코드/대여 이력을 조회하지 않도록 해당 기능은 연동 준비 중으로 처리한다. 전화번호 변경은 HTTP 모드에서 제공하지 않는다.
+
+### 개발 실행
+
+백엔드는 PostgreSQL과 `TAGBACK_DB_PASSWORD`를 준비하고 `sms-mock` 프로필로 실행한다. 프론트는 별도 PowerShell에서 다음 환경 변수를 설정한 뒤 실행한다. 인증 쿠키의 `Secure` 조건을 위해 신뢰할 수 있는 로컬 HTTPS 인증서를 사용한다.
+
+```powershell
+$env:VITE_AUTH_MODE='http'
+$env:TAGBACK_API_TARGET='http://localhost:8080'
+$env:TAGBACK_HTTPS_CERT='C:\certs\localhost.pem'
+$env:TAGBACK_HTTPS_KEY='C:\certs\localhost-key.pem'
+npm run dev -- --host localhost
+```
+
+브라우저는 `https://localhost:5173`으로 접속한다. 서버의 `tagback.auth.allowed-origins`에도 이 정확한 Origin을 허용한다. Vite 프록시는 Origin을 유지하며 `/api`를 지정한 서버로 전달한다. 인증서·개인키·DB 비밀번호는 저장소에 커밋하지 않는다. 환경 변수 미설정 시 기존 Mock 인증으로 실행된다.
+
+### 구현 및 검증 범위
+
+- PIN·SMS 코드·인증 토큰과 재시도 본문은 메모리에서만 보관한다. 세션/브라우저 인증은 HttpOnly 쿠키를 사용한다. sessionStorage에는 복구용 작업 ID와 화면 종류만 저장한다.
+- 응답 유실 시 같은 키/본문을 재전송한다. 명확한 입력 오류 후 수정한 요청에는 새 키를 사용한다. 새로고침으로 본문이 사라지면 `/session`을 확인하며, 세션 부재만으로 가입 실패를 단정하지 않는다.
+- SMS 확인 응답이 유실되면 확인 버튼을 막고 재발송 후 새 인증을 진행한다. 세션 조회는 30초 간격이고, 활동 연장은 로그인된 상태의 실제 입력에 한해 최대 분당 한 번 호출한다.
+- `npm test`: HTTP 어댑터 계약, 응답 유실, 오류 및 기존 Mock 단위 테스트. `npm run test:http`: HTTP 응답 대체 기반 가입·두 로그인 방식·새로고침·로그아웃·재시도·중복 제출 브라우저 테스트.
+- 이 작업에서는 실제 Spring 서버/PostgreSQL과의 통합 실행은 검증하지 않았다. 배포/통합 환경에서 HTTPS 쿠키 발급·재발급, Origin 허용, DB 저장, SMS 공급자 연결을 추가 검증해야 한다. HTTP 테스트의 응답 대체는 실제 쿠키 보안 동작을 보증하지 않는다.
+
+연결 가능한 서버 흐름은 가입 SMS 확인, PIN 복구 SMS 확인·재설정, 전화번호+PIN 및 등록 브라우저 로그인, 프로필을 포함한 가입, 세션·브라우저 상태와 로그아웃이다. 전화번호 변경과 운영 SMS 발송은 아직 서버 계약/구현이 없다. HTTP 어댑터는 쿠키 기반 세션과 서버 오류 코드를 사용한다.

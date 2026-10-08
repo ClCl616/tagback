@@ -1,3 +1,5 @@
+import { HTTP_AUTH, COOKIE_SESSION } from '../shared/authMode';
+import { serverSession } from '../shared/httpAuth';
 import { createContext, useContext, useEffect, useState } from 'react';
 import {
   Link,
@@ -441,7 +443,7 @@ function Rentals({ history = false }: { history?: boolean }) {
     [token],
     true,
   );
-  const rows = r.data?.rentals.filter((r) => (history ? !!r.returnedAt : !r.returnedAt)) || [];
+  const rows = r.data?.rentals?.filter((r) => (history ? !!r.returnedAt : !r.returnedAt)) || [];
   return (
     <div className="page-content">
       <div className="eyebrow">{history ? 'YOUR SHARED MOMENTS' : 'WITH YOU NOW'}</div>
@@ -519,7 +521,10 @@ function Rentals({ history = false }: { history?: boolean }) {
 function Account() {
   const { token, setToken } = useAuth();
   const r = useResource(
-    async () => ({ ...(await api.me(token)), rentals: await api.rentals(token) }),
+    async () => ({
+      ...(await api.me(token)),
+      rentals: HTTP_AUTH ? null : await api.rentals(token),
+    }),
     [token],
     true,
   );
@@ -562,11 +567,15 @@ function Account() {
           </section>
           <section className="account-summary" aria-label="대여 현황">
             <Link to="/mobile/rentals">
-              <strong>{r.data?.rentals.filter((x) => !x.returnedAt).length ?? 0}</strong>
+              <strong>
+                {r.data?.rentals?.filter((x) => !x.returnedAt).length ?? (HTTP_AUTH ? '—' : 0)}
+              </strong>
               <span>대여 중</span>
             </Link>
             <Link to="/mobile/history">
-              <strong>{r.data?.rentals.filter((x) => !!x.returnedAt).length ?? 0}</strong>
+              <strong>
+                {r.data?.rentals?.filter((x) => !!x.returnedAt).length ?? (HTTP_AUTH ? '—' : 0)}
+              </strong>
               <span>이용 기록</span>
             </Link>
           </section>
@@ -580,10 +589,12 @@ function Account() {
           </Link>
           <section className="account-settings">
             <h2>계정 관리</h2>
-            <Link to="/mobile/change-phone">
-              <span>전화번호 변경</span>
-              <ChevronRight size={18} />
-            </Link>
+            {!HTTP_AUTH && (
+              <Link to="/mobile/change-phone">
+                <span>전화번호 변경</span>
+                <ChevronRight size={18} />
+              </Link>
+            )}
             <Link to="/mobile/recover">
               <span>PIN 재설정</span>
               <ChevronRight size={18} />
@@ -599,18 +610,52 @@ function Account() {
   );
 }
 export default function MobileApp() {
-  const [token, setTokenState] = useState(() => localStorage.getItem(MOBILE_TOKEN_KEY) || '');
+  const [token, setTokenState] = useState(() =>
+    HTTP_AUTH ? '' : localStorage.getItem(MOBILE_TOKEN_KEY) || '',
+  );
   const setToken = (v: string) => {
     setTokenState(v);
+    if (HTTP_AUTH) {
+      window.dispatchEvent(new Event('tagback-session'));
+      return;
+    }
     if (v) localStorage.setItem(MOBILE_TOKEN_KEY, v);
     else localStorage.removeItem(MOBILE_TOKEN_KEY);
     window.dispatchEvent(new Event('tagback-session'));
   };
   const [sessionNotice, setSessionNotice] = useState('');
+  const [sessionReady, setSessionReady] = useState(!HTTP_AUTH);
+  const [bootError, setBootError] = useState<unknown>();
   useEffect(() => {
     let active = true;
     let checking = false;
+    let authenticated = false;
     const sync = async () => {
+      if (HTTP_AUTH) {
+        if (checking) return;
+        checking = true;
+        try {
+          await serverSession();
+          authenticated = true;
+          if (active) {
+            setTokenState(COOKIE_SESSION);
+            setBootError(undefined);
+            setSessionReady(true);
+          }
+        } catch (e) {
+          if (active) {
+            if (e instanceof ServiceError && e.code === 'AUTH') {
+              authenticated = false;
+              setTokenState('');
+              setBootError(undefined);
+              setSessionReady(true);
+            } else setBootError(e);
+          }
+        } finally {
+          checking = false;
+        }
+        return;
+      }
       const current = localStorage.getItem(MOBILE_TOKEN_KEY) || '';
       if (active) setTokenState(current);
       if (!current || checking) return;
@@ -641,9 +686,19 @@ export default function MobileApp() {
     window.addEventListener('tagback-change', sync);
     window.addEventListener('focus', sync);
     const timer = setInterval(sync, 30_000);
+    let lastActivity = 0;
+    const activity = () => {
+      if (!HTTP_AUTH || !authenticated || Date.now() - lastActivity < 60000) return;
+      lastActivity = Date.now();
+      void serverSession(true).catch(() => void sync());
+    };
+    window.addEventListener('pointerdown', activity);
+    window.addEventListener('keydown', activity);
     return () => {
       active = false;
       clearInterval(timer);
+      window.removeEventListener('pointerdown', activity);
+      window.removeEventListener('keydown', activity);
       window.removeEventListener('storage', storage);
       window.removeEventListener('tagback-session', sync);
       window.removeEventListener('tagback-change', sync);
@@ -654,6 +709,15 @@ export default function MobileApp() {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [location.pathname]);
+  if (!sessionReady)
+    return bootError ? (
+      <ErrorBox
+        error={bootError}
+        retry={() => window.dispatchEvent(new Event('tagback-session'))}
+      />
+    ) : (
+      <Loading />
+    );
   return (
     <Auth.Provider value={{ token, setToken }}>
       {sessionNotice && (

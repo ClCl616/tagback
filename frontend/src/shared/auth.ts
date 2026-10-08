@@ -1,3 +1,5 @@
+import { HTTP_AUTH } from './authMode';
+import { httpAuthApi } from './httpAuth';
 import {
   before,
   transaction,
@@ -183,7 +185,7 @@ async function operation(
     );
   return result;
 }
-export const authApi: AuthAdapter = {
+const mockAuthApi: AuthAdapter = {
   async requestSms(phone, purpose, source, reauth) {
     await before(false, 'auth');
     if (!phoneValid(phone) || !source || !['access', 'reset', 'change'].includes(purpose))
@@ -421,3 +423,5 @@ export async function simulateOtherBrowser() {
   const source = 'simulated-other-browser';
   return authApi.loginWithPhone(crypto.randomUUID(), MOCK.demoPhone, D.pin, source);
 }
+
+export const authApi: AuthAdapter = HTTP_AUTH ? httpAuthApi : mockAuthApi;
