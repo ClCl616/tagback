@@ -2,6 +2,7 @@ package com.tagback.controller;
 
 import com.tagback.config.AdminOnly;
 import com.tagback.config.AuthOriginGuard;
+import com.tagback.config.AuthenticatedUser;
 import com.tagback.dto.item.ItemRequests;
 import com.tagback.dto.item.ItemResponses;
 import com.tagback.domain.entity.ItemStatus;
@@ -41,6 +42,18 @@ public class ItemController {
             @PathVariable @Pattern(regexp = "[1-9][0-9]{0,18}")
             @DecimalMax("9223372036854775807") String itemId) {
         return service.detail(Long.parseLong(itemId));
+    }
+
+    @AdminOnly
+    @PatchMapping("/{itemId}/status")
+    public ItemResponses.Detail changeStatus(
+            @PathVariable @Pattern(regexp = "[1-9][0-9]{0,18}")
+            @DecimalMax("9223372036854775807") String itemId,
+            @Valid @RequestBody ItemRequests.StatusChange body,
+            @RequestAttribute(AuthenticatedUser.ATTRIBUTE) AuthenticatedUser user,
+            HttpServletRequest request) {
+        origins.check(request);
+        return service.changeStatus(Long.parseLong(itemId), body, user.userId());
     }
 
     @AdminOnly

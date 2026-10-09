@@ -67,4 +67,42 @@ public final class ItemRequests {
                     && (!itemTypeIdProvided || (itemTypeId != null && !itemTypeId.isBlank()));
         }
     }
+
+    /** Status writes are isolated from the general item PATCH contract. */
+    public static final class StatusChange {
+        @NotBlank
+        @Pattern(regexp = "AVAILABLE|INSPECTION|REPAIR")
+        @JsonDeserialize(using = StrictStringDeserializer.class)
+        private String status;
+
+        @Size(max = 500)
+        @JsonDeserialize(using = StrictStringDeserializer.class)
+        private String reason;
+
+        private boolean statusProvided;
+        private boolean reasonProvided;
+
+        public String getStatus() { return status; }
+        public String getReason() { return reason; }
+
+        public void setStatus(String status) {
+            statusProvided = true;
+            this.status = status;
+        }
+
+        public void setReason(String reason) {
+            reasonProvided = true;
+            this.reason = reason == null ? null : reason.strip();
+        }
+
+        @JsonAnySetter
+        public void rejectUnknownField(String name, Object value) {
+            throw new IllegalArgumentException("Unknown item status field");
+        }
+
+        @AssertTrue(message = "status is required and supplied reason must not be null")
+        public boolean isValidStatusChange() {
+            return statusProvided && (!reasonProvided || reason != null);
+        }
+    }
 }

@@ -50,6 +50,7 @@ class TagRegistrationIntegrationTest {
     void cleanup() {
         for (Long itemId : itemIds) {
             jdbcTemplate.update("UPDATE items SET status = 'TAG_PENDING' WHERE item_id = ?", itemId);
+            jdbcTemplate.update("DELETE FROM item_status_history WHERE item_id = ?", itemId);
             jdbcTemplate.update("DELETE FROM nfc_tags WHERE item_id = ?", itemId);
             jdbcTemplate.update("DELETE FROM items WHERE item_id = ?", itemId);
         }
@@ -75,6 +76,9 @@ class TagRegistrationIntegrationTest {
         assertEquals("ACTIVE", response.tag().status());
         assertNotNull(response.tag().createdAt());
         assertEquals(ItemStatus.AVAILABLE, itemRepository.findById(item.getId()).orElseThrow().getStatus());
+        assertEquals(1L, jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM item_status_history WHERE item_id = ? AND from_status = 'TAG_PENDING' "
+                        + "AND to_status = 'AVAILABLE' AND source = 'TAG_REGISTRATION'", Long.class, item.getId()));
     }
 
     @Test
@@ -90,6 +94,8 @@ class TagRegistrationIntegrationTest {
         assertEquals(false, retried.created());
         assertEquals(created.response().tag().tagId(), retried.response().tag().tagId());
         assertEquals(created.response().tag().createdAt(), retried.response().tag().createdAt());
+        assertEquals(1L, jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM item_status_history WHERE item_id = ?", Long.class, item.getId()));
         assertEquals(1L, jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM nfc_tags WHERE item_id = ?", Long.class, item.getId()));
     }

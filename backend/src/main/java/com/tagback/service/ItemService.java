@@ -2,13 +2,17 @@ package com.tagback.service;
 
 import com.tagback.domain.entity.Item;
 import com.tagback.domain.entity.ItemStatus;
+import com.tagback.domain.entity.ItemStatusChangeSource;
+import com.tagback.domain.entity.ItemStatusHistory;
 import com.tagback.domain.repository.ItemRepository;
+import com.tagback.domain.repository.ItemStatusHistoryRepository;
 import com.tagback.domain.repository.ItemTypeRepository;
+import com.tagback.domain.repository.NfcTagRepository;
 import com.tagback.dto.item.ItemRequests;
 import com.tagback.dto.item.ItemResponses;
-import com.tagback.exception.ItemException;
 import com.tagback.exception.AuthException;
 import com.tagback.exception.AuthErrorCode;
+import com.tagback.exception.ItemException;
 import jakarta.persistence.EntityManager;
 import java.util.Set;
 import org.hibernate.exception.ConstraintViolationException;
@@ -22,11 +26,16 @@ import org.springframework.transaction.annotation.Transactional;
 public class ItemService {
     private final ItemRepository items;
     private final ItemTypeRepository types;
+    private final NfcTagRepository tags;
+    private final ItemStatusHistoryRepository statusHistory;
     private final EntityManager entityManager;
 
-    public ItemService(ItemRepository items, ItemTypeRepository types, EntityManager entityManager) {
+    public ItemService(ItemRepository items, ItemTypeRepository types, NfcTagRepository tags,
+                       ItemStatusHistoryRepository statusHistory, EntityManager entityManager) {
         this.items = items;
         this.types = types;
+        this.tags = tags;
+        this.statusHistory = statusHistory;
         this.entityManager = entityManager;
     }
 
@@ -60,6 +69,33 @@ public class ItemService {
         return ItemResponses.Detail.from(item);
     }
 
+    @Transactional
+    public ItemResponses.Detail changeStatus(long itemId, ItemRequests.StatusChange request, long actorUserId) {
+        var item = items.findForUpdate(itemId).orElseThrow(ItemException::itemNotFound);
+        var targetStatus = ItemStatus.valueOf(request.getStatus());
+        var previousStatus = item.getStatus();
+
+        if (previousStatus == targetStatus) return ItemResponses.Detail.from(item);
+        if (!isManuallyManagedStatus(previousStatus) || !isManuallyManagedStatus(targetStatus)
+                || items.hasActiveRental(itemId)
+                || (targetStatus == ItemStatus.AVAILABLE
+                    && !tags.existsByItem_Id(itemId))) {
+            throw ItemException.statusChangeConflict();
+        }
+
+        item.updateStatus(targetStatus);
+        statusHistory.save(new ItemStatusHistory(itemId, previousStatus, targetStatus,
+                ItemStatusChangeSource.ADMIN_API, actorUserId, request.getReason()));
+        try {
+            items.flush();
+            statusHistory.flush();
+        } catch (DataIntegrityViolationException exception) {
+            if (isAvailableWithoutTagViolation(exception)) throw ItemException.statusChangeConflict();
+            throw exception;
+        }
+        return ItemResponses.Detail.from(item);
+    }
+
     @Transactional(readOnly = true)
     public ItemResponses.ItemPage list(int page, int size, Long itemTypeId, ItemStatus status) {
         // JPA setFirstResult only accepts an int even though PageRequest uses a long offset.
@@ -87,12 +123,26 @@ public class ItemService {
     }
 
     private boolean isItemReferenceViolation(Throwable exception) {
-        var constraints = Set.of("fk_nfc_tags_item", "fk_rentals_item", "fk_inspections_item");
+        var constraints = Set.of("fk_nfc_tags_item", "fk_rentals_item", "fk_inspections_item",
+                "fk_item_status_history_item");
         for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
             if (cause instanceof ConstraintViolationException violation
                     && "23503".equals(violation.getSQLState())
                     && violation.getConstraintName() != null
                     && constraints.contains(violation.getConstraintName())) return true;
+        }
+        return false;
+    }
+
+    private boolean isManuallyManagedStatus(ItemStatus status) {
+        return status == ItemStatus.AVAILABLE || status == ItemStatus.INSPECTION || status == ItemStatus.REPAIR;
+    }
+
+    private boolean isAvailableWithoutTagViolation(Throwable exception) {
+        for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
+            if (cause instanceof ConstraintViolationException violation
+                    && "23514".equals(violation.getSQLState())
+                    && "chk_available_item_has_tag".equals(violation.getConstraintName())) return true;
         }
         return false;
     }

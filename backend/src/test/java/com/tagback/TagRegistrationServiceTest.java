@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -44,7 +45,7 @@ class TagRegistrationServiceTest {
         Item item = mock(Item.class);
         OffsetDateTime createdAt = OffsetDateTime.parse("2026-10-06T12:00:00+09:00");
         when(itemRepository.findById(12L)).thenReturn(Optional.of(item));
-        when(writer.create(12L, "04A23B1C5D6E80")).thenReturn(new TagRegistrationResponse.Tag(
+        when(writer.create(12L, "04A23B1C5D6E80", null)).thenReturn(new TagRegistrationResponse.Tag(
                 1L, "04A23B1C5D6E80", 12L, "ACTIVE", createdAt));
 
         TagRegistrationService.RegistrationResult result = service.register(12L, "04:a2:3b:1c:5d:6e:80");
@@ -63,7 +64,7 @@ class TagRegistrationServiceTest {
         TagRegistrationException exception = assertThrows(TagRegistrationException.class,
                 () -> service.register(404L, "04A23B1C5D6E80"));
         assertEquals("ITEM_NOT_FOUND", exception.code());
-        verify(writer, never()).create(anyLong(), anyString());
+        verify(writer, never()).create(anyLong(), anyString(), any());
     }
 
     @Test
@@ -80,8 +81,8 @@ class TagRegistrationServiceTest {
         assertEquals(false, result.created());
         assertEquals(1L, result.response().tag().tagId());
         assertEquals("04A23B1C5D6E80", result.response().tag().uid());
-        verify(writer, never()).create(anyLong(), anyString());
-        verify(writer).makeAvailableIfTagged(12L);
+        verify(writer, never()).create(anyLong(), anyString(), any());
+        verify(writer).makeAvailableIfTagged(12L, null);
     }
 
     @Test
@@ -97,7 +98,7 @@ class TagRegistrationServiceTest {
         when(existing.getUid()).thenReturn("04A23B1C5D6E80");
         assertEquals("ITEM_ALREADY_TAGGED", assertThrows(TagRegistrationException.class,
                 () -> service.register(12L, "04A23B1C5D6E81")).code());
-        verify(writer, never()).create(anyLong(), anyString());
+        verify(writer, never()).create(anyLong(), anyString(), any());
     }
 
     @Test
@@ -105,7 +106,7 @@ class TagRegistrationServiceTest {
         Item item = mock(Item.class);
         when(itemRepository.findById(12L)).thenReturn(Optional.of(item));
         ConstraintViolationException violation = mock(ConstraintViolationException.class);
-        when(writer.create(anyLong(), anyString()))
+        when(writer.create(anyLong(), anyString(), any()))
                 .thenThrow(new DataIntegrityViolationException("duplicate", violation));
 
         when(violation.getConstraintName()).thenReturn("nfc_tags_tag_uid_key");
@@ -128,13 +129,13 @@ class TagRegistrationServiceTest {
         when(winner.getUid()).thenReturn("04A23B1C5D6E80");
         when(winner.getId()).thenReturn(1L);
         when(violation.getConstraintName()).thenReturn("nfc_tags_item_id_key");
-        when(writer.create(12L, "04A23B1C5D6E80"))
+        when(writer.create(12L, "04A23B1C5D6E80", null))
                 .thenThrow(new DataIntegrityViolationException("duplicate", violation));
 
         TagRegistrationService.RegistrationResult result = service.register(12L, "04A23B1C5D6E80");
 
         assertEquals(false, result.created());
         assertEquals(1L, result.response().tag().tagId());
-        verify(writer).makeAvailableIfTagged(12L);
+        verify(writer).makeAvailableIfTagged(12L, null);
     }
 }

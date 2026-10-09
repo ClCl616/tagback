@@ -17,7 +17,8 @@ import static org.mockito.Mockito.*;
 class ItemUpdateServiceTest {
     private final ItemRepository items = mock(ItemRepository.class);
     private final ItemTypeRepository types = mock(ItemTypeRepository.class);
-    private final ItemService service = new ItemService(items, types, mock(EntityManager.class));
+    private final ItemService service = new ItemService(items, types, mock(NfcTagRepository.class),
+            mock(ItemStatusHistoryRepository.class), mock(EntityManager.class));
     private Item item;
     private ItemType original;
 

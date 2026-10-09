@@ -26,6 +26,10 @@ public class TagRegistrationService {
     }
 
     public RegistrationResult register(Long itemId, String rawUid) {
+        return register(itemId, rawUid, null);
+    }
+
+    public RegistrationResult register(Long itemId, String rawUid, Long actorUserId) {
         String uid = TagUidNormalizer.normalize(rawUid);
         if (itemRepository.findById(itemId).isEmpty()) {
             throw new TagRegistrationException(HttpStatus.NOT_FOUND, "ITEM_NOT_FOUND", "물품을 찾을 수 없습니다.");
@@ -34,7 +38,7 @@ public class TagRegistrationService {
         Optional<NfcTag> attached = tagRepository.findByItem_Id(itemId);
         if (attached.isPresent()) {
             RegistrationResult result = existingOrConflict(attached.get(), itemId, uid);
-            writer.makeAvailableIfTagged(itemId);
+            writer.makeAvailableIfTagged(itemId, actorUserId);
             return result;
         }
         if (tagRepository.findByUid(uid).isPresent()) {
@@ -42,7 +46,7 @@ public class TagRegistrationService {
         }
 
         try {
-            return new RegistrationResult(new TagRegistrationResponse(writer.create(itemId, uid)), true);
+            return new RegistrationResult(new TagRegistrationResponse(writer.create(itemId, uid, actorUserId)), true);
         } catch (DataIntegrityViolationException exception) {
             String constraint = constraintName(exception);
             if (!isKnownUniqueConstraint(constraint) && !hasUniqueSqlState(exception)) {
@@ -54,7 +58,7 @@ public class TagRegistrationService {
             Optional<NfcTag> winner = tagRepository.findByItem_Id(itemId);
             if (winner.isPresent() && uid.equals(winner.get().getUid())) {
                 RegistrationResult result = existingOrConflict(winner.get(), itemId, uid);
-                writer.makeAvailableIfTagged(itemId);
+                writer.makeAvailableIfTagged(itemId, actorUserId);
                 return result;
             }
             if ("nfc_tags_tag_uid_key".equals(constraint)) {

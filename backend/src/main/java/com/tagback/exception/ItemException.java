@@ -34,4 +34,8 @@ public class ItemException extends RuntimeException {
         return new ItemException("ITEM_DELETE_CONFLICT", "태그·대여·점검 기록이 연결된 물품은 삭제할 수 없습니다.", 409);
     }
 
+    public static ItemException statusChangeConflict() {
+        return new ItemException("ITEM_STATUS_CHANGE_CONFLICT", "현재 대여·태그·물품 상태에서는 상태를 변경할 수 없습니다.", 409);
+    }
+
 }

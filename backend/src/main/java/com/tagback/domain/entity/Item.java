@@ -60,6 +60,10 @@ public class Item {
         this.status = ItemStatus.AVAILABLE;
     }
 
+    public void updateStatus(ItemStatus status) {
+        this.status = java.util.Objects.requireNonNull(status, "status");
+    }
+
     /** The service checks permissions and history before changing the item type. */
     public void updateDetails(String itemName, ItemType itemType) {
         String normalizedName = java.util.Objects.requireNonNull(itemName, "itemName").strip();

@@ -32,7 +32,8 @@ class ItemRegistrationServiceTest {
         doAnswer(invocation -> { when(saved.getCreatedAt()).thenReturn(timestamp); return null; })
                 .when(em).refresh(saved);
         when(items.saveAndFlush(any())).thenReturn(saved);
-        var response = new ItemService(items, types, em).create(new ItemRequests.Create(" 우산 ", "1"));
+        var response = new ItemService(items, types, mock(NfcTagRepository.class),
+                mock(ItemStatusHistoryRepository.class), em).create(new ItemRequests.Create(" 우산 ", "1"));
         var captured = ArgumentCaptor.forClass(Item.class);
         verify(items).saveAndFlush(captured.capture());
         assertEquals("우산", captured.getValue().getItemName());
@@ -47,7 +48,8 @@ class ItemRegistrationServiceTest {
         var types = mock(ItemTypeRepository.class);
         var em = mock(EntityManager.class);
         when(types.findById(99L)).thenReturn(Optional.empty());
-        assertThrows(ItemException.class, () -> new ItemService(items, types, em)
+        assertThrows(ItemException.class, () -> new ItemService(items, types, mock(NfcTagRepository.class),
+                mock(ItemStatusHistoryRepository.class), em)
                 .create(new ItemRequests.Create("우산", "99")));
         verifyNoInteractions(items, em);
     }

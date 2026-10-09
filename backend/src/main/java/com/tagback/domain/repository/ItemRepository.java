@@ -22,9 +22,14 @@ public interface ItemRepository extends JpaRepository<Item, Long> {
             + "or exists(select 1 from inspections where item_id = :id)", nativeQuery = true)
     boolean hasUsageHistory(@Param("id") Long id);
 
+    @Query(value = "select exists(select 1 from rentals where item_id = :id and returned_at is null)",
+            nativeQuery = true)
+    boolean hasActiveRental(@Param("id") Long id);
+
     @Query(value = "select exists(select 1 from nfc_tags where item_id = :id) "
             + "or exists(select 1 from rentals where item_id = :id) "
-            + "or exists(select 1 from inspections where item_id = :id)", nativeQuery = true)
+            + "or exists(select 1 from inspections where item_id = :id) "
+            + "or exists(select 1 from item_status_history where item_id = :id)", nativeQuery = true)
     boolean hasDeletionReferences(@Param("id") Long id);
 
     @Override

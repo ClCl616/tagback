@@ -32,7 +32,7 @@ try {
     $env:TAGBACK_ITEM_DB_PORT = $Port.ToString()
     Push-Location $taskBackend
     try {
-        & .\gradlew.bat test --tests 'com.tagback.Item*Test' --tests 'com.tagback.TagRegistrationIntegrationTest' --tests 'com.tagback.TagRegistrationControllerTest' --tests 'com.tagback.TagRegistrationServiceTest' --tests 'com.tagback.TagUidNormalizerTest' --offline --rerun-tasks
+        & .\gradlew.bat test --tests 'com.tagback.Item*Test' --tests 'com.tagback.NfcTagRepositoryIntegrationTest' --tests 'com.tagback.TagRegistrationIntegrationTest' --tests 'com.tagback.TagRegistrationControllerTest' --tests 'com.tagback.TagRegistrationServiceTest' --tests 'com.tagback.TagUidNormalizerTest' --offline --rerun-tasks
         if ($LASTEXITCODE -ne 0) { throw 'Item PostgreSQL integration tests failed.' }
     } finally { Pop-Location }
 } finally {

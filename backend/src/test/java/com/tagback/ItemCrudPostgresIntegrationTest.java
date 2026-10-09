@@ -120,6 +120,55 @@ class ItemCrudPostgresIntegrationTest {
                 "delete from nfc_tags where item_id = ?", Long.valueOf(id)));
     }
 
+    @Test void statusApiChangesItemLogsActorAndIsVisibleToQueries() throws Exception {
+        String id = create("상태 변경 물품", typeId);
+        markAvailable(id, "04A23B1C5D6E81");
+        mvc.perform(patch("/api/v1/items/" + id + "/status").cookie(admin).contentType("application/json")
+                        .content("{\"status\":\"INSPECTION\",\"reason\":\"현장 점검\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("INSPECTION"));
+        em.clear();
+        mvc.perform(get("/api/v1/items/" + id).cookie(member)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("INSPECTION"));
+        mvc.perform(get("/api/v1/items").cookie(member).param("status", "INSPECTION"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1));
+        assertEquals(1L, jdbc.queryForObject("select count(*) from item_status_history where item_id = ?",
+                Long.class, Long.valueOf(id)));
+        assertEquals(1L, jdbc.queryForObject("select count(*) from item_status_history where item_id = ? "
+                        + "and from_status = 'AVAILABLE' and to_status = 'INSPECTION' and source = 'ADMIN_API' "
+                        + "and changed_by_user_id = ? and reason = '현장 점검'", Long.class, Long.valueOf(id), adminId));
+        mvc.perform(delete("/api/v1/items/" + id).cookie(admin)).andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("ITEM_DELETE_CONFLICT"));
+    }
+
+    @Test void statusApiRejectsAnActiveOverdueRental() throws Exception {
+        String id = create("연체 중 물품", typeId);
+        markAvailable(id, "04A23B1C5D6E82");
+        jdbc.update("insert into rentals(user_id, item_id, due_at, status) "
+                        + "values (?, ?, current_timestamp - interval '1 day', 'OVERDUE')",
+                adminId, Long.valueOf(id));
+        mvc.perform(patch("/api/v1/items/" + id + "/status").cookie(admin).contentType("application/json")
+                        .content("{\"status\":\"INSPECTION\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("ITEM_STATUS_CHANGE_CONFLICT"));
+        assertEquals(0L, jdbc.queryForObject("select count(*) from item_status_history where item_id = ? "
+                + "and to_status = 'INSPECTION'", Long.class, Long.valueOf(id)));
+    }
+
+    @Test void statusApiRejectsAvailableWithoutTagBeforeDatabaseTrigger() throws Exception {
+        String id = create("태그 없는 점검 물품", typeId);
+        jdbc.update("update items set status = 'INSPECTION' where item_id = ?", Long.valueOf(id));
+        mvc.perform(patch("/api/v1/items/" + id + "/status").cookie(admin).contentType("application/json")
+                        .content("{\"status\":\"AVAILABLE\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("ITEM_STATUS_CHANGE_CONFLICT"));
+    }
+
+    private void markAvailable(String itemId, String uid) {
+        jdbc.update("insert into nfc_tags(item_id, tag_uid) values (?, ?)", Long.valueOf(itemId), uid);
+        jdbc.update("update items set status = 'AVAILABLE' where item_id = ?", Long.valueOf(itemId));
+        em.clear();
+    }
+
     @Test void realQueriesHandleFiltersSortingPagingAndEmptyResults() throws Exception {
         String first = create("우산 01", typeId);
         String second = create("우산 02", typeId);
