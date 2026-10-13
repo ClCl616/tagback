@@ -1,6 +1,7 @@
 package com.tagback.controller;
 
 import com.tagback.config.AdminOnly;
+import com.tagback.config.AuthenticatedUser;
 import com.tagback.dto.ApiErrorResponse;
 import java.util.Map;
 import com.tagback.dto.tag.TagRegistrationResponse;
@@ -16,6 +17,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -30,7 +32,8 @@ public class TagLifecycleController {
     @AdminOnly
     @PutMapping("/{itemId}/tag")
     public ResponseEntity<TagRegistrationResponse> replace(@PathVariable Long itemId,
-                                                            @RequestBody(required = false) Map<String, Object> request) {
+                                                            @RequestBody(required = false) Map<String, Object> request,
+                                                            @RequestAttribute(AuthenticatedUser.ATTRIBUTE) AuthenticatedUser user) {
         if (request == null || !(request.get("uid") instanceof String uid)
                 || !request.containsKey("expectedUid")
                 || (request.get("expectedUid") != null && !(request.get("expectedUid") instanceof String))) {
@@ -39,14 +42,15 @@ public class TagLifecycleController {
         }
         String expectedUid = (String) request.get("expectedUid");
         TagRegistrationService.RegistrationResult result = lifecycle.replace(
-                itemId, uid, expectedUid);
+                itemId, uid, expectedUid, user.userId());
         return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(result.response());
     }
 
     @AdminOnly
     @DeleteMapping("/{itemId}/tag")
-    public ResponseEntity<Void> deactivate(@PathVariable Long itemId) {
-        lifecycle.deactivate(itemId);
+    public ResponseEntity<Void> deactivate(@PathVariable Long itemId,
+                                           @RequestAttribute(AuthenticatedUser.ATTRIBUTE) AuthenticatedUser user) {
+        lifecycle.deactivate(itemId, user.userId());
         return ResponseEntity.noContent().build();
     }
 

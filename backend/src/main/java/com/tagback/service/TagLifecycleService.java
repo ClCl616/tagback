@@ -2,8 +2,11 @@ package com.tagback.service;
 
 import com.tagback.domain.entity.Item;
 import com.tagback.domain.entity.ItemStatus;
+import com.tagback.domain.entity.ItemStatusChangeSource;
+import com.tagback.domain.entity.ItemStatusHistory;
 import com.tagback.domain.entity.NfcTag;
 import com.tagback.domain.repository.ItemRepository;
+import com.tagback.domain.repository.ItemStatusHistoryRepository;
 import com.tagback.domain.repository.NfcTagRepository;
 import com.tagback.dto.tag.TagLookupResponse;
 import com.tagback.dto.tag.TagRegistrationResponse;
@@ -20,16 +23,20 @@ import org.springframework.transaction.annotation.Transactional;
 public class TagLifecycleService {
     private final ItemRepository items;
     private final NfcTagRepository tags;
+    private final ItemStatusHistoryRepository statusHistory;
     private final EntityManager entityManager;
 
-    public TagLifecycleService(ItemRepository items, NfcTagRepository tags, EntityManager entityManager) {
+    public TagLifecycleService(ItemRepository items, NfcTagRepository tags,
+                               ItemStatusHistoryRepository statusHistory, EntityManager entityManager) {
         this.items = items;
         this.tags = tags;
+        this.statusHistory = statusHistory;
         this.entityManager = entityManager;
     }
 
     @Transactional
-    public TagRegistrationService.RegistrationResult replace(Long itemId, String rawUid, String rawExpectedUid) {
+    public TagRegistrationService.RegistrationResult replace(Long itemId, String rawUid, String rawExpectedUid,
+                                                              Long actorUserId) {
         Item item = items.findForUpdate(itemId).orElseThrow(() ->
                 new TagRegistrationException(HttpStatus.NOT_FOUND, "ITEM_NOT_FOUND", "물품을 찾을 수 없습니다."));
         String uid = TagUidNormalizer.normalize(rawUid);
@@ -55,15 +62,16 @@ public class TagLifecycleService {
             active.deactivate();
             tags.flush(); // Release the partial unique index before reactivating or inserting.
         }
+        NfcTag connected;
         try {
             if (previous != null) {
                 previous.reactivate();
                 tags.flush();
-                return new TagRegistrationService.RegistrationResult(response(previous, itemId), true);
+                connected = previous;
+            } else {
+                connected = tags.saveAndFlush(new NfcTag(uid, item));
+                entityManager.refresh(connected);
             }
-            NfcTag created = tags.saveAndFlush(new NfcTag(uid, item));
-            entityManager.refresh(created);
-            return new TagRegistrationService.RegistrationResult(response(created, itemId), true);
         } catch (DataIntegrityViolationException exception) {
             for (Throwable cause = exception; cause != null; cause = cause.getCause()) {
                 if (cause instanceof ConstraintViolationException violation && "23505".equals(violation.getSQLState())) {
@@ -77,16 +85,30 @@ public class TagLifecycleService {
             }
             throw exception;
         }
+        if (item.getStatus() == ItemStatus.TAG_PENDING) {
+            item.markAvailable();
+            statusHistory.saveAndFlush(new ItemStatusHistory(itemId, ItemStatus.TAG_PENDING, ItemStatus.AVAILABLE,
+                    ItemStatusChangeSource.TAG_REGISTRATION, actorUserId, null));
+            items.flush();
+        }
+        return new TagRegistrationService.RegistrationResult(response(connected, itemId), true);
     }
 
     @Transactional
-    public void deactivate(Long itemId) {
+    public void deactivate(Long itemId, Long actorUserId) {
         Item item = items.findForUpdate(itemId).orElseThrow(() ->
                 new TagRegistrationException(HttpStatus.NOT_FOUND, "ITEM_NOT_FOUND", "물품을 찾을 수 없습니다."));
         NfcTag active = tags.findByItem_Id(itemId).orElse(null);
         if (active == null) return;
         rejectIfRented(item);
         active.deactivate();
+        tags.flush();
+        if (item.getStatus() == ItemStatus.AVAILABLE) {
+            item.updateStatus(ItemStatus.TAG_PENDING);
+            statusHistory.saveAndFlush(new ItemStatusHistory(itemId, ItemStatus.AVAILABLE, ItemStatus.TAG_PENDING,
+                    ItemStatusChangeSource.TAG_REGISTRATION, actorUserId, null));
+            items.flush();
+        }
     }
 
     private void rejectIfRented(Item item) {
