@@ -9,9 +9,35 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.MissingRequestHeaderException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.core.annotation.Order;
 
 @RestControllerAdvice
+@Order(0)
 public class ApiExceptionHandler {
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiErrorResponse> handleMediaType(HttpMediaTypeNotSupportedException exception) {
+        return ResponseEntity.status(415).body(new ApiErrorResponse(
+                new ApiErrorResponse.Error("UNSUPPORTED_MEDIA_TYPE", "지원하지 않는 요청 형식입니다.", null)));
+    }
+
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiErrorResponse> handleMethod(HttpRequestMethodNotSupportedException exception) {
+        var response = ResponseEntity.status(405);
+        if (exception.getSupportedMethods() != null) {
+            response.header("Allow", String.join(", ", exception.getSupportedMethods()));
+        }
+        return response.body(new ApiErrorResponse(
+                new ApiErrorResponse.Error("METHOD_NOT_ALLOWED", "지원하지 않는 요청 메서드입니다.", null)));
+    }
+
+    @ExceptionHandler(ItemException.class)
+    public ResponseEntity<ApiErrorResponse> handleItem(ItemException exception) {
+        return ResponseEntity.status(exception.status()).body(new ApiErrorResponse(
+                new ApiErrorResponse.Error(exception.code(), exception.getMessage(), null)));
+    }
+
     @ExceptionHandler(AuthException.class)
     public ResponseEntity<ApiErrorResponse> handleAuth(AuthException exception) {
         return ResponseEntity.status(exception.code().status()).body(new ApiErrorResponse(
