@@ -514,6 +514,20 @@ test('태그 미등록 물품 재개·중복 UID 실패·새 창 연결 완료',
     );
   });
   await page.getByRole('dialog').getByRole('button', { name: '태그 연결', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('같은 물품과 UID');
+  await expect(page.getByRole('dialog').getByLabel('태그 ID', { exact: true })).toBeDisabled();
+  await page.evaluate(() => {
+    const channel = new BroadcastChannel('tagback-nfc');
+    channel.postMessage({ tag: '04000098' });
+    channel.close();
+  });
+  await expect(page.getByRole('dialog').getByLabel('태그 ID', { exact: true })).toHaveValue(
+    '04000077',
+  );
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: '태그 연결 재시도', exact: true })
+    .click();
   await expect(page.getByRole('dialog')).not.toBeVisible();
   await expect(detail).toContainText('04000077');
   expect(

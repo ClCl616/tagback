@@ -1,16 +1,14 @@
 import { ServiceError } from '../shared/api';
 import type { Item } from '../shared/types';
 import type { ItemDraft } from './adminApi';
-
 import { normalizeUid } from '../shared/nfcUid';
 export { normalizeUid } from '../shared/nfcUid';
 
-// Application interface, NOT an HTTP contract. Only the mock implements lookup
-// until create response, reconciliation and tag-query contracts are agreed.
+// Application interface, not an HTTP contract. findCreated is mock-only;
+// real creation reconciliation needs a separately agreed contract.
 export interface RegistrationGateway {
   save(operationId: string, draft: ItemDraft, original?: Item): Promise<Item>;
   findCreated(operationId: string): Promise<Item | undefined>;
-  getItem(id: string): Promise<Item | undefined>;
   attachTag(id: string, uid: string): Promise<Item>;
 }
 const uncertain = (e: unknown) =>
@@ -18,8 +16,12 @@ const uncertain = (e: unknown) =>
 
 export class ItemRegistration {
   item?: Item;
-  checking: 'create' | 'tag' | undefined;
-  private uid = '';
+  checking: 'create' | undefined;
+  // An ambiguous tag write must be retried with exactly the same pair.
+  private pendingTag?: { itemId: string; uid: string };
+  get retryingTag() {
+    return !!this.pendingTag;
+  }
   private running = false;
   constructor(
     private gateway: RegistrationGateway,
@@ -34,17 +36,14 @@ export class ItemRegistration {
     if (this.running) return;
     this.running = true;
     try {
+      if (this.pendingTag) return await this.connect(this.pendingTag.itemId, this.pendingTag.uid);
       if (this.checking) {
-        const stage = this.checking;
-        const result = await this.reconcile();
+        await this.reconcileCreation();
         changed();
-        if (stage === 'tag' && result?.tag) return this.confirm(result);
       }
       const uid = original?.tag || (draft.tag ? normalizeUid(draft.tag) : '');
-
       if (!this.item) {
         try {
-          // Tag attachment is a separate operation; never include a new UID in creation.
           this.item = await this.gateway.save(
             this.operationId,
             { ...draft, tag: original?.tag || '' },
@@ -54,64 +53,49 @@ export class ItemRegistration {
           if (!original && uncertain(e)) {
             this.checking = 'create';
             changed();
-            await this.reconcile();
+            await this.reconcileCreation();
           }
           if (!this.item) throw e;
         }
         changed();
       }
       if (original?.tag || !uid) return this.item;
-      this.uid = uid;
-      // Re-read on every attempt: another administrator may have attached a tag.
-      this.checking = 'tag';
-      const current = await this.reconcile();
-      changed();
-      if (!current)
-        throw new ServiceError('ITEM_NOT_FOUND', '물품을 찾을 수 없습니다. 목록을 확인해 주세요.');
-      if (current.tag) return this.confirm(current);
-      try {
-        const result = await this.gateway.attachTag(current.id, uid);
-        return this.confirm(result);
-      } catch (e) {
-        if (
-          uncertain(e) ||
-          (e instanceof ServiceError &&
-            ['TAG_ALREADY_REGISTERED', 'ITEM_ALREADY_TAGGED'].includes(e.code))
-        ) {
-          this.checking = 'tag';
-          changed();
-          const result = await this.reconcile();
-          if (result?.tag) return this.confirm(result);
-        }
-        throw e;
-      }
+      return await this.connect(this.item.id, uid);
     } finally {
       this.running = false;
       changed();
     }
   }
-  private confirm(item: Item) {
-    if (item.tag !== this.uid)
-      throw new ServiceError(
-        'ITEM_ALREADY_TAGGED',
-        '이 물품에는 다른 태그가 연결되어 있습니다. 창을 닫고 상세 정보를 확인해 주세요.',
-      );
-    this.item = item;
-    return item;
-  }
-  private async reconcile() {
+  private async connect(itemId: string, uid: string) {
     try {
-      const result =
-        this.checking === 'create'
-          ? await this.gateway.findCreated(this.operationId)
-          : await this.gateway.getItem(this.item!.id);
+      const result = await this.gateway.attachTag(itemId, uid);
+      if (result.id !== itemId || result.tag !== uid || !result.active)
+        throw new ServiceError('UNKNOWN', '태그 연결 응답이 올바르지 않습니다.');
+      this.pendingTag = undefined;
+      this.item = result;
+      return result;
+    } catch (e) {
+      if (uncertain(e)) {
+        this.pendingTag = { itemId, uid };
+        throw new ServiceError(
+          'UNKNOWN',
+          '태그 연결 결과를 확인하지 못했습니다. 다시 시도하면 같은 물품과 UID로 연결을 확인합니다.',
+        );
+      }
+      this.pendingTag = undefined;
+      throw e;
+    }
+  }
+  private async reconcileCreation() {
+    try {
+      const result = await this.gateway.findCreated(this.operationId);
       this.checking = undefined;
       if (result) this.item = result;
       return result;
     } catch {
       throw new ServiceError(
         'CHECK_REQUIRED',
-        '처리 결과를 확인하지 못했습니다. 연결을 확인한 뒤 결과 확인을 눌러 주세요. 확인 전에는 다시 등록하지 않습니다.',
+        '물품 생성 결과를 확인하지 못했습니다. 연결을 확인한 뒤 결과 확인을 눌러 주세요. 확인 전에는 물품을 다시 생성하지 않습니다.',
       );
     }
   }

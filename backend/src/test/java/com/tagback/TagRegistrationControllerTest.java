@@ -1,6 +1,8 @@
 package com.tagback;
 
 import com.tagback.controller.TagRegistrationController;
+import com.tagback.config.AuthenticatedUser;
+import com.tagback.domain.entity.UserRole;
 import com.tagback.dto.tag.TagRegistrationResponse;
 import com.tagback.exception.TagRegistrationException;
 import com.tagback.service.TagRegistrationService;
@@ -34,11 +36,12 @@ class TagRegistrationControllerTest {
     void returnsCreatedTagWithItemConnection() throws Exception {
         TagRegistrationResponse response = new TagRegistrationResponse(
                 new TagRegistrationResponse.Tag(1L, "04A23B1C5D6E80", 12L, "ACTIVE", null));
-        when(service.register(eq(12L), eq("04:a2:3b:1c:5d:6e:80")))
+        when(service.register(eq(12L), eq("04:a2:3b:1c:5d:6e:80"), eq(8L)))
                 .thenReturn(new TagRegistrationService.RegistrationResult(response, true));
 
         mvc.perform(post("/api/items/12/tag")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .requestAttr(AuthenticatedUser.ATTRIBUTE, new AuthenticatedUser(8L, UserRole.ADMIN))
                         .content("{\"uid\":\"04:a2:3b:1c:5d:6e:80\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.tag.uid").value("04A23B1C5D6E80"))
@@ -49,11 +52,12 @@ class TagRegistrationControllerTest {
     void returnsOkWithSameTagOnRetry() throws Exception {
         TagRegistrationResponse response = new TagRegistrationResponse(
                 new TagRegistrationResponse.Tag(1L, "04A23B1C5D6E80", 12L, "ACTIVE", null));
-        when(service.register(12L, "04:a2:3b:1c:5d:6e:80"))
+        when(service.register(12L, "04:a2:3b:1c:5d:6e:80", 8L))
                 .thenReturn(new TagRegistrationService.RegistrationResult(response, false));
 
         mvc.perform(post("/api/items/12/tag")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .requestAttr(AuthenticatedUser.ATTRIBUTE, new AuthenticatedUser(8L, UserRole.ADMIN))
                         .content("{\"uid\":\"04:a2:3b:1c:5d:6e:80\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tag.tagId").value(1))
@@ -62,11 +66,13 @@ class TagRegistrationControllerTest {
 
     @Test
     void returnsValidationForMissingBodyOrUid() throws Exception {
-        mvc.perform(post("/api/items/12/tag").contentType(MediaType.APPLICATION_JSON))
+        mvc.perform(post("/api/items/12/tag").contentType(MediaType.APPLICATION_JSON)
+                        .requestAttr(AuthenticatedUser.ATTRIBUTE, new AuthenticatedUser(8L, UserRole.ADMIN)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION"));
         mvc.perform(post("/api/items/12/tag")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .requestAttr(AuthenticatedUser.ATTRIBUTE, new AuthenticatedUser(8L, UserRole.ADMIN))
                         .content("{}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION"));
@@ -76,6 +82,7 @@ class TagRegistrationControllerTest {
     void returnsValidationForMalformedJson() throws Exception {
         mvc.perform(post("/api/items/12/tag")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .requestAttr(AuthenticatedUser.ATTRIBUTE, new AuthenticatedUser(8L, UserRole.ADMIN))
                         .content("{\"uid\":"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION"))
@@ -85,12 +92,13 @@ class TagRegistrationControllerTest {
 
     @Test
     void returnsConflictWithoutExposingDatabaseDetails() throws Exception {
-        when(service.register(eq(12L), eq("04A23B1C5D6E80")))
+        when(service.register(eq(12L), eq("04A23B1C5D6E80"), eq(8L)))
                 .thenThrow(new TagRegistrationException(HttpStatus.CONFLICT,
                         "TAG_ALREADY_REGISTERED", "이미 등록된 태그입니다."));
 
         mvc.perform(post("/api/items/12/tag")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .requestAttr(AuthenticatedUser.ATTRIBUTE, new AuthenticatedUser(8L, UserRole.ADMIN))
                         .content("{\"uid\":\"04A23B1C5D6E80\"}"))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("TAG_ALREADY_REGISTERED"));
