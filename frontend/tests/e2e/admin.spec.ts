@@ -515,6 +515,10 @@ test('태그 미등록 물품 재개·중복 UID 실패·새 창 연결 완료',
   });
   await page.getByRole('dialog').getByRole('button', { name: '태그 연결', exact: true }).click();
   await expect(page.getByRole('dialog').getByRole('alert')).toContainText('같은 물품과 UID');
+  // Dismiss the blocking error popup before interacting with the item editor.
+  const errorPopup = page.getByRole('dialog', { name: '확인해 주세요', exact: true });
+  await errorPopup.getByRole('button', { name: '확인', exact: true }).click();
+  await expect(errorPopup).not.toBeVisible();
   await expect(page.getByRole('dialog').getByLabel('태그 ID', { exact: true })).toBeDisabled();
   await page.evaluate(() => {
     const channel = new BroadcastChannel('tagback-nfc');
