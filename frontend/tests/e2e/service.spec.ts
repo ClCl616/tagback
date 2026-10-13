@@ -45,6 +45,10 @@ test('중복 태그·버튼 연타와 이미 사용한 코드 거절', async ({ 
   await kiosk.getByLabel('일회성 대여 코드').fill(code);
   await kiosk.getByRole('button', { name: '코드 확인', exact: true }).click();
   await expect(kiosk.getByRole('alert')).toContainText('이미 사용한 코드');
+  await kiosk
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   const rows = await page.evaluate(() =>
     JSON.parse(localStorage.getItem('tagback.mock.v1')!).rentals.filter(
       (r: any) => r.itemId === 'calc-1',
@@ -139,7 +143,7 @@ test('가입 후 원래 목적지 복귀와 개인 기록', async ({ page }) => 
   await enterProfile(page);
   await smsVerify(page, '01099998888');
   await page.getByLabel('PIN 번호').fill('048259');
-  await page.getByRole('button', { name: '계속', exact: true }).click();
+  await page.getByRole('button', { name: '다음', exact: true }).click();
   await page.getByLabel('PIN 번호').fill('048259');
   await page.getByRole('button', { name: '가입 완료', exact: true }).click();
   await expect(page).toHaveURL(/history/);
@@ -197,6 +201,10 @@ test('잘못된 코드, 미등록/비활성/불일치 태그, 저장 실패와 �
   await kiosk.getByLabel('일회성 대여 코드').fill(code === '999999' ? '000000' : '999999');
   await kiosk.getByRole('button', { name: '코드 확인', exact: true }).click();
   await expect(kiosk.getByRole('alert')).toContainText('코드가 일치하지');
+  await kiosk
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   await kiosk.getByLabel('일회성 대여 코드').fill(code);
   await kiosk.getByRole('button', { name: '코드 확인', exact: true }).click();
   await expect(
@@ -210,17 +218,29 @@ test('잘못된 코드, 미등록/비활성/불일치 태그, 저장 실패와 �
   ]) {
     await scan(page, tag);
     await expect(kiosk.getByRole('alert')).toContainText(message);
+    await kiosk
+      .getByRole('dialog', { name: '확인해 주세요', exact: true })
+      .getByRole('button', { name: '확인', exact: true })
+      .click();
   }
   await scan(page, 'CALC-1');
   await expect(kiosk.getByRole('heading', { name: '대여 정보를 확인해 주세요' })).toBeVisible();
   await fault(page, 'save');
   await kiosk.getByRole('button', { name: '대여 확정', exact: true }).click();
   await expect(kiosk.getByRole('alert')).toContainText('저장하지 못했습니다');
+  await kiosk
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   await expect(kiosk.getByRole('heading', { name: '대여가 완료되었습니다' })).not.toBeVisible();
   await fault(page, 'unknown');
   await kiosk.getByRole('button', { name: '대여 확정', exact: true }).click();
   await expect(kiosk.getByRole('button', { name: '처리 결과 다시 확인' })).toBeVisible();
   await expect(kiosk.getByRole('heading', { name: '대여가 완료되었습니다' })).not.toBeVisible();
+  await kiosk
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   await kiosk.getByRole('button', { name: '처리 결과 다시 확인' }).click();
   await expect(kiosk.getByRole('heading', { name: '대여가 완료되었습니다' })).toBeVisible();
   const count = await page.evaluate(
@@ -265,6 +285,10 @@ test('만료 코드, 재고 충돌, 연결 끊김, 요청 시간 초과 복구',
   await fault(page, 'conflict');
   await kiosk.getByRole('button', { name: '대여 확정', exact: true }).click();
   await expect(kiosk.getByRole('button', { name: '물품 선택부터 다시 진행' })).toBeVisible();
+  await kiosk
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   await kiosk.getByRole('button', { name: '물품 선택부터 다시 진행' }).click();
   await page.evaluate(() => {
     const db = JSON.parse(localStorage.getItem('tagback.mock.v1')!);
@@ -275,6 +299,10 @@ test('만료 코드, 재고 충돌, 연결 끊김, 요청 시간 초과 복구',
   await kiosk.getByLabel('일회성 대여 코드').fill(code);
   await kiosk.getByRole('button', { name: '코드 확인', exact: true }).click();
   await expect(kiosk.getByRole('alert')).toContainText('만료된 코드');
+  await kiosk
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   await page.reload();
   await expect(page.locator('.code-number')).toHaveText(/\d{6}/);
   await expect(page.locator('.code-number')).toHaveText(/\d{6}/);
@@ -283,6 +311,10 @@ test('만료 코드, 재고 충돌, 연결 끊김, 요청 시간 초과 복구',
   await fault(page, 'timeout');
   await kiosk.getByRole('button', { name: '코드 확인', exact: true }).click();
   await expect(kiosk.getByRole('alert')).toContainText('시간이 초과');
+  await kiosk
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   await kiosk.getByRole('button', { name: '코드 확인', exact: true }).click();
   await expect(
     kiosk.getByRole('heading', { name: '물품의 NFC 태그를 인식해 주세요' }),
@@ -294,6 +326,10 @@ test('만료 코드, 재고 충돌, 연결 끊김, 요청 시간 초과 복구',
     ),
   );
   await expect(kiosk.getByRole('alert')).toContainText('인식기 연결 복구');
+  await kiosk
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   await page.evaluate(() =>
     localStorage.setItem(
       'tagback.mock.controls',

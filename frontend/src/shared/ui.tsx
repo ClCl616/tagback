@@ -62,11 +62,16 @@ export function MessagePopup({
         {children}
       </div>
       <div className="message-popup-actions">
-        <button autoFocus className={action ? 'secondary' : 'primary'} onClick={onClose}>
+        <button
+          type="button"
+          autoFocus
+          className={action ? 'secondary' : 'primary'}
+          onClick={onClose}
+        >
           {action ? '닫기' : '확인'}
         </button>
         {action && (
-          <button className="primary" onClick={action.onClick}>
+          <button type="button" className="primary" onClick={action.onClick}>
             {action.label}
           </button>
         )}

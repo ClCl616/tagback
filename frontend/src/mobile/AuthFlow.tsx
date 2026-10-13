@@ -232,7 +232,8 @@ export default function AuthFlow({
         }
         if (e.retryAt) setRetryAt(e.retryAt);
         if (e.code === 'PIN_LOCKED') setLocked(true);
-        if (e.code === 'UNKNOWN' && operationId.current) setUnknown(operationId.current);
+        if ((e.code === 'UNKNOWN' && operationId.current) || (e.code === 'NETWORK' && unknown))
+          setUnknown(unknown || operationId.current);
         else {
           sessionStorage.removeItem(PENDING);
           if (unknown) {

@@ -249,14 +249,11 @@ export function createHttpAuth(): AuthAdapter {
           throw e;
         }
       }
-      // No invented result lookup. Reload loses credentials; session is authoritative.
-      try {
-        await serverSession();
-        return { token: COOKIE_SESSION, registration: COOKIE_SESSION };
-      } catch (e) {
-        if (e instanceof ServiceError && e.code === 'AUTH') return null;
-        throw e;
-      }
+      // A session may predate this operation and cannot prove its outcome.
+      throw new ServiceError(
+        'RECOVERY_UNCONFIRMED',
+        '이전 요청의 완료 여부를 확인할 수 없습니다. 가입했다면 로그인하고, PIN을 변경했다면 새 PIN으로 로그인해 주세요.',
+      );
     },
     async logout() {
       await authRequest('/logout', 'POST', undefined, undefined, 204);

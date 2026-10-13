@@ -7,21 +7,22 @@ test('PIN 정책·재입력·등록 자동화·로그아웃 후 PIN 진입', asy
   await enterProfile(page);
   await smsVerify(page, '01077776666');
   await page.getByLabel('PIN 번호').fill('123456');
-  await page.getByRole('button', { name: '계속', exact: true }).click();
+  await page.getByRole('button', { name: '다음', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('전체가 연속');
   await expect(page.getByRole('alert')).not.toContainText('3번');
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
   await page.getByLabel('PIN 번호').fill('041888');
-  await page.getByRole('button', { name: '계속', exact: true }).click();
+  await page.getByRole('button', { name: '다음', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('같은 숫자를 3번');
   await expect(page.getByRole('alert')).not.toContainText('6자리 전체');
   await page.screenshot({ path: 'test-results/pin-policy-320.png', fullPage: true });
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
   await page.getByLabel('PIN 번호').fill('048259');
-  await page.getByRole('button', { name: '계속', exact: true }).click();
+  await page.getByRole('button', { name: '다음', exact: true }).click();
   await page.getByLabel('PIN 번호').fill('246802');
   await page.getByRole('button', { name: '가입 완료', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('일치하지');
-  await page.getByLabel('PIN 번호').fill('048259');
-  await page.getByRole('button', { name: '계속', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
   await page.getByLabel('PIN 번호').fill('048259');
   await page.getByRole('button', { name: '가입 완료', exact: true }).click();
   await expect(page.getByRole('heading', { name: '마이페이지' })).toBeVisible();
@@ -49,16 +50,16 @@ test('SMS 오류·만료·번호 변경, 기존 회원 가입 경로는 PIN 로�
   await page.getByLabel('SMS 인증번호').fill('000000');
   await page.getByRole('button', { name: '인증번호 확인', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('일치하지');
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
   await page.clock.fastForward(301000);
-  await expect(
-    page.getByText('인증번호가 만료되었습니다. 다시 발송해 주세요.', { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByLabel('SMS 인증번호')).toBeDisabled();
+  await expect(page.getByText('남은 시간 0:00')).toBeVisible();
   await page.getByRole('button', { name: '인증번호 재발송', exact: true }).click();
   await page.getByLabel('전화번호', { exact: true }).fill('01088887777');
   await expect(page.getByLabel('SMS 인증번호')).toHaveCount(0);
   await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
-  await page.clock.fastForward(61000);
-  await page.getByRole('button', { name: '인증번호 발송', exact: true }).click();
+  await page.clock.fastForward(31000);
+  await page.getByRole('button', { name: '인증번호 재발송', exact: true }).click();
   await page.getByLabel('SMS 인증번호').fill('123456');
   await page.getByRole('button', { name: '인증번호 확인', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'PIN 번호를 입력해 주세요.' })).toBeVisible();
@@ -71,16 +72,16 @@ test('PIN 5회 대기·새로고침 제한 유지·성공 복구', async ({ page
   await page.getByRole('button', { name: '로그아웃', exact: true }).click();
   for (let i = 0; i < 5; i++) {
     await page.getByLabel('PIN 번호').fill('246802');
-    await page.getByRole('button', { name: '로그인', exact: true }).click();
     await expect(page.getByRole('alert')).toBeVisible();
     await expect(page.getByRole('button', { name: '확인 중…', exact: true })).toHaveCount(0);
+    if (i < 4)
+      await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
   }
-  await expect(page.getByRole('alert')).toContainText('남은 시간:');
+  await expect(page.getByRole('alert')).toContainText('잠시 후');
   await page.reload();
-  await expect(page.getByRole('button', { name: '로그인', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: /초 후 다시 시도/ })).toBeDisabled();
   await page.clock.fastForward(31000);
   await page.getByLabel('PIN 번호').fill('048259');
-  await page.getByRole('button', { name: '로그인', exact: true }).click();
   await expect(page).toHaveURL(/\/mobile$/);
 });
 
@@ -96,13 +97,18 @@ test('다른 브라우저 로그인 시뮬레이션으로 세션·등록 폐기'
   await sim.goto('/dev/simulator');
   await sim.getByRole('button', { name: '다른 브라우저 로그인 시연 (기본 계정)' }).click();
   await expect(page.getByRole('alert')).toContainText('다른 브라우저');
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '로그인이 필요해요' })).toBeVisible();
+  await page.getByRole('link', { name: '로그인', exact: true }).click();
   await expect(page.getByLabel('전화번호', { exact: true })).toBeVisible();
 });
 
 test('문자 인증 후 PIN 복구, 자동 로그인 없음', async ({ page }) => {
   await page.goto('/mobile/recover');
   await smsVerify(page);
-  await expect(page.getByRole('heading', { name: '사용할 PIN 번호를 설정해 주세요.' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: '변경할 PIN 번호를 입력해 주세요.' }),
+  ).toBeVisible();
   await page.getByLabel('PIN 번호').fill('246802');
   await page.getByRole('button', { name: '계속', exact: true }).click();
   await page.getByLabel('PIN 번호').fill('246802');
@@ -113,7 +119,6 @@ test('문자 인증 후 PIN 복구, 자동 로그인 없음', async ({ page }) =
   await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
   await page.getByRole('button', { name: '다음', exact: true }).click();
   await page.getByLabel('PIN 번호', { exact: true }).fill('246802');
-  await page.getByRole('button', { name: '로그인', exact: true }).click();
   await expect(page).toHaveURL(/\/mobile$/);
 });
 
@@ -135,7 +140,7 @@ test('가입 저장 실패 및 응답 유실은 확인 전 완료 금지', async
   await enterProfile(page);
   await smsVerify(page, '01077778888');
   await page.getByLabel('PIN 번호').fill('048259');
-  await page.getByRole('button', { name: '계속', exact: true }).click();
+  await page.getByRole('button', { name: '다음', exact: true }).click();
   await page.getByLabel('PIN 번호').fill('048259');
   await page.evaluate(() =>
     localStorage.setItem(
@@ -145,6 +150,7 @@ test('가입 저장 실패 및 응답 유실은 확인 전 완료 금지', async
   );
   await page.getByRole('button', { name: '가입 완료', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('저장하지 못');
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
   await page.evaluate(() =>
     localStorage.setItem(
       'tagback.mock.controls',
@@ -190,17 +196,13 @@ test('로그인 SMS 생략과 가입 SMS 배치·오류 안의 재발송 타이�
   const confirm = await page
     .getByRole('button', { name: '인증번호 확인', exact: true })
     .boundingBox();
-  const resend = await page
-    .getByRole('button', { name: '인증번호 재발송', exact: true })
-    .boundingBox();
+  const resend = page.getByRole('button', { name: /재발송까지/ });
+  const resendBox = await resend.boundingBox();
   expect(sms!.y).toBeLessThan(confirm!.y);
-  expect(confirm!.y).toBeLessThan(resend!.y);
-  await page.getByRole('button', { name: '인증번호 재발송', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText(
-    '인증번호 재발송을 잠시 기다려 주세요. 남은 시간:',
-  );
-  await page.clock.fastForward(61000);
-  await expect(page.getByRole('alert')).toContainText('남은 시간: 0초');
+  expect(confirm!.y).toBeLessThan(resendBox!.y);
+  await expect(resend).toBeDisabled();
+  await page.clock.fastForward(31000);
+  await expect(page.getByRole('button', { name: '인증번호 재발송', exact: true })).toBeEnabled();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await expect(page.getByText(/시연 인증번호가|모의 인증|로그인하면 현재 브라우저/)).toHaveCount(0);
   await page.screenshot({ path: 'test-results/signup-sms-320.png', fullPage: true });
@@ -211,13 +213,14 @@ test('개인정보 필수 입력과 가입 후 마이페이지 이름·직업 �
   await page.goto('/mobile/signup?next=%2Fmobile%2Faccount');
   await page.getByRole('button', { name: '다음', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('이름과 직업');
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
   await page.getByLabel('이름', { exact: true }).fill('홍길동');
   await page.getByLabel('직업', { exact: true }).selectOption('학생');
   await page.screenshot({ path: 'test-results/signup-profile-320.png', fullPage: true });
   await page.getByRole('button', { name: '다음', exact: true }).click();
   await smsVerify(page, '01044443333');
   await page.getByLabel('PIN 번호').fill('048259');
-  await page.getByRole('button', { name: '계속', exact: true }).click();
+  await page.getByRole('button', { name: '다음', exact: true }).click();
   await page.getByLabel('PIN 번호').fill('048259');
   await page.getByRole('button', { name: '가입 완료', exact: true }).click();
   await expect(page.getByRole('heading', { name: '홍길동님' })).toBeVisible();

@@ -7,7 +7,7 @@ test('시뮬레이터 UID 인식 → 관리자 등록 및 중복 태그 안내',
   const panel = simulator.getByRole('region', { name: 'NFC 인식 테스트' });
   const uid = panel.getByLabel('테스트 태그 UID');
   const send = panel.getByRole('button', { name: 'NFC 태그 인식시키기' });
-  const dialog = page.getByRole('dialog');
+  const dialog = page.getByRole('dialog', { name: /물품 등록|물품 수정/ });
   async function openItem(number: string) {
     await page.getByRole('button', { name: '물품 등록', exact: true }).click();
     await dialog.getByLabel('카테고리', { exact: true }).fill('학습 용품');
@@ -21,6 +21,10 @@ test('시뮬레이터 UID 인식 → 관리자 등록 및 중복 태그 안내',
   await uid.fill('잘못된 UID');
   await send.click();
   await expect(panel.getByRole('alert')).toContainText('16진수');
+  await simulator
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   await expect(dialog.getByLabel('태그 ID', { exact: true })).toHaveValue('');
   await uid.fill('04:a2-3b 1c:5d:6e:80');
   await send.click();
@@ -36,6 +40,10 @@ test('시뮬레이터 UID 인식 → 관리자 등록 및 중복 태그 안내',
   await expect(dialog.getByLabel('태그 ID', { exact: true })).toHaveValue('04A23B1C5D6E80');
   await dialog.getByRole('button', { name: '등록하기', exact: true }).click();
   await expect(dialog.getByRole('alert')).toContainText('이미 등록된 태그');
+  await page
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   await panel.getByRole('button', { name: '새 테스트 UID 만들기' }).click();
   const newUid = await uid.inputValue();
   expect(newUid).toMatch(/^04[0-9A-F]{12}$/);

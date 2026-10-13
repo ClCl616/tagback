@@ -47,6 +47,8 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
       - name: Test browser flows
         run: pnpm test:e2e
+      - name: Test HTTP authentication flows
+        run: pnpm test:http
       - name: Upload browser test results
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

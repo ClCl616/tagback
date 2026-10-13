@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test';
 export default defineConfig({
   testDir: './tests/http-e2e',
+  outputDir: './test-results/http',
   timeout: 30000,
   workers: 1,
   use: { baseURL: 'http://localhost:5175', headless: true, screenshot: 'only-on-failure' },

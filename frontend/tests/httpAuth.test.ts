@@ -122,16 +122,13 @@ it('malformed success and rejected cookies never complete login', async () => {
     code: 'UNKNOWN',
   });
 });
-it('refresh recovery only checks session and never replays missing credentials', async () => {
-  const fetch = vi
-    .fn()
-    .mockResolvedValue(
-      json({ error: { code: 'SESSION_REQUIRED', message: '로그인 필요', retryAt: null } }, 401),
-    );
+it('reload cannot infer operation completion from an unrelated existing session', async () => {
+  const fetch = vi.fn().mockResolvedValue(json(session));
   vi.stubGlobal('fetch', fetch);
-  expect(await createHttpAuth().result('lost-memory')).toBeNull();
-  expect(fetch.mock.calls[0][0]).toBe('/api/v1/auth/session');
-  expect(fetch.mock.calls[0][1].method).toBe('GET');
+  await expect(createHttpAuth().result('lost-memory')).rejects.toMatchObject({
+    code: 'RECOVERY_UNCONFIRMED',
+  });
+  expect(fetch).not.toHaveBeenCalled();
 });
 it('polling reads session, activity is an explicit POST and logout accepts 204', async () => {
   const fetch = vi

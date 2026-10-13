@@ -1,6 +1,6 @@
 import { HTTP_AUTH, COOKIE_SESSION } from '../shared/authMode';
 import { serverSession } from '../shared/httpAuth';
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
   Link,
   NavLink,
@@ -637,7 +637,9 @@ export default function MobileApp() {
   const [token, setTokenState] = useState(() =>
     HTTP_AUTH ? '' : localStorage.getItem(MOBILE_TOKEN_KEY) || '',
   );
+  const sessionRevision = useRef(0);
   const setToken = (v: string) => {
+    sessionRevision.current++;
     setTokenState(v);
     if (HTTP_AUTH) {
       window.dispatchEvent(new Event('tagback-session'));
@@ -658,8 +660,10 @@ export default function MobileApp() {
       if (HTTP_AUTH) {
         if (checking) return;
         checking = true;
+        const revision = sessionRevision.current;
         try {
           await serverSession();
+          if (!active || revision !== sessionRevision.current) return;
           authenticated = true;
           if (active) {
             setTokenState(COOKIE_SESSION);
@@ -667,7 +671,7 @@ export default function MobileApp() {
             setSessionReady(true);
           }
         } catch (e) {
-          if (active) {
+          if (active && revision === sessionRevision.current) {
             if (e instanceof ServiceError && e.code === 'AUTH') {
               authenticated = false;
               setTokenState('');
@@ -677,6 +681,7 @@ export default function MobileApp() {
           }
         } finally {
           checking = false;
+          if (active && revision !== sessionRevision.current) void sync();
         }
         return;
       }
@@ -735,10 +740,20 @@ export default function MobileApp() {
   }, [location.pathname]);
   if (!sessionReady)
     return bootError ? (
-      <ErrorBox
-        error={bootError}
-        retry={() => window.dispatchEvent(new Event('tagback-session'))}
-      />
+      <div className="page-content empty">
+        <h1>서비스에 연결하지 못했어요</h1>
+        <p>연결 상태를 확인한 뒤 다시 시도해 주세요.</p>
+        <button
+          className="primary"
+          onClick={() => {
+            setBootError(undefined);
+            window.dispatchEvent(new Event('tagback-session'));
+          }}
+        >
+          다시 시도
+        </button>
+        <ErrorBox error={bootError} />
+      </div>
     ) : (
       <Loading />
     );
