@@ -1,18 +1,13 @@
+import { HTTP_AUTH } from './authMode';
+import { serverSession } from './httpAuth';
 import { CONTROL_KEY, DB_KEY, MOCK } from './config';
 import { seed, type Database } from './seed';
 import { authApi, requireSession } from './auth';
 import { AUTH_DEMO } from './authPolicy';
 import type { DemoControls, Fault, ServiceApi, Receipt } from './types';
 
-export class ServiceError extends Error {
-  constructor(
-    public code: string,
-    message: string,
-    public retryAt?: number,
-  ) {
-    super(message);
-  }
-}
+import { ServiceError } from './serviceError';
+export { ServiceError } from './serviceError';
 export const fail = (code: string, message: string): never => {
   throw new ServiceError(code, message);
 };
@@ -170,6 +165,14 @@ export const api: ServiceApi = {
   },
   logout: (token) => authApi.logout(token),
   async me(token) {
+    if (HTTP_AUTH) {
+      const { user } = await serverSession();
+      return {
+        phone: user.maskedPhoneNumber,
+        name: user.name || '회원',
+        occupation: user.occupation || '',
+      };
+    }
     await before();
     return transaction((db) => {
       const user = db.users.find((u) => u.id === userId(db, token))!;
@@ -181,6 +184,7 @@ export const api: ServiceApi = {
     });
   },
   async code(token, renew = false) {
+    if (HTTP_AUTH) throw new ServiceError('UNSUPPORTED', '이 기능은 서버 연동 준비 중입니다.');
     await before();
     return transaction((db) => {
       const uid = userId(db, token);
@@ -201,6 +205,7 @@ export const api: ServiceApi = {
     });
   },
   async rentals(token) {
+    if (HTTP_AUTH) throw new ServiceError('UNSUPPORTED', '이 기능은 서버 연동 준비 중입니다.');
     await before();
     return transaction((db) =>
       db.rentals

@@ -1,3 +1,12 @@
+import {
+  readDraft,
+  writeDraft,
+  clearDraft,
+  readSmsDraft,
+  writeSmsDraft,
+  phoneKey,
+} from '../shared/authDraft';
+import { HTTP_AUTH, COOKIE_SESSION } from '../shared/authMode';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Delete, LockKeyhole, Smartphone, ShieldCheck } from 'lucide-react';
@@ -5,7 +14,7 @@ import { authApi } from '../shared/auth';
 import { api, phoneValid, ServiceError } from '../shared/api';
 import { browserSource, pinError, REGISTRATION_KEY } from '../shared/authPolicy';
 import type { AuthResult, Challenge, Purpose, Verification } from '../shared/authTypes';
-import { ErrorBox, Loading } from '../shared/ui';
+import { ErrorBox, Loading, MessagePopup } from '../shared/ui';
 
 type Mode = 'access' | 'signup' | 'reset' | 'change';
 type Step =
@@ -18,7 +27,7 @@ type Step =
   | 'blocked'
   | 'change-confirm'
   | 'done';
-const PENDING = 'tagback.mobile.pending-auth';
+const PENDING = HTTP_AUTH ? 'tagback.http.pending-auth' : 'tagback.mobile.pending-auth';
 export default function AuthFlow({
   mode,
   token,
@@ -42,6 +51,17 @@ export default function AuthFlow({
   const [name, setName] = useState('');
   const [occupation, setOccupation] = useState('');
   const [step, setStep] = useState<Step>('boot');
+  const [smsRestart, setSmsRestart] = useState(false);
+  const [existingAccount, setExistingAccount] = useState(false);
+  const [missingAccount, setMissingAccount] = useState(false);
+  const [showPinPolicy, setShowPinPolicy] = useState(false);
+  const policyShown = useRef(false);
+  useEffect(() => {
+    if (mode === 'signup' && step === 'setup' && !policyShown.current) {
+      policyShown.current = true;
+      setShowPinPolicy(true);
+    }
+  }, [mode, step]);
   const [phone, setPhone] = useState(''),
     [sms, setSms] = useState('');
   const [pin, setPin] = useState(''),
@@ -62,6 +82,18 @@ export default function AuthFlow({
   const alive = useRef(true),
     running = useRef(false),
     operationId = useRef('');
+  const resumable = mode === 'signup' || mode === 'reset';
+  const restoreSms = (number: string) => {
+    const saved = readSmsDraft(mode, number);
+    setChallenge(saved.challenge);
+    setSmsRestart(saved.restart);
+    setRetryAt(saved.retryAt);
+  };
+  useEffect(() => {
+    if (!resumable || step === 'boot' || step === 'done' || unknown) return;
+    writeDraft(mode, { name, occupation, phone, policyShown: policyShown.current });
+    writeSmsDraft(mode, phone, { challenge, restart: smsRestart || !!verification, retryAt });
+  }, [mode, step, name, occupation, phone, challenge, smsRestart, verification, retryAt, unknown]);
   const purpose: Purpose = mode === 'reset' ? 'reset' : mode === 'change' ? 'change' : 'access';
   useEffect(() => {
     alive.current = true;
@@ -98,7 +130,7 @@ export default function AuthFlow({
               setStep('pin');
             }
           } else if (mode === 'access') {
-            const value = localStorage.getItem(REGISTRATION_KEY) || '';
+            const value = HTTP_AUTH ? COOKIE_SESSION : localStorage.getItem(REGISTRATION_KEY) || '';
             const reg = value ? await authApi.registration(value) : null;
             if (!alive.current) return;
             if (reg) {
@@ -111,7 +143,33 @@ export default function AuthFlow({
               localStorage.removeItem(REGISTRATION_KEY);
               setStep('phone');
             }
-          } else setStep(mode === 'signup' ? 'profile' : 'phone');
+          } else {
+            const draft = resumable
+              ? readDraft<{
+                  name: string;
+                  occupation: string;
+                  phone: string;
+                  policyShown?: boolean;
+                }>(mode)
+              : undefined;
+            if (
+              draft &&
+              typeof draft.name === 'string' &&
+              typeof draft.occupation === 'string' &&
+              typeof draft.phone === 'string'
+            ) {
+              setName(draft.name);
+              setOccupation(draft.occupation);
+              setPhone(draft.phone);
+              policyShown.current = draft.policyShown === true;
+              restoreSms(draft.phone);
+              setStep(
+                mode === 'signup' && (!draft.name.trim() || !draft.occupation.trim())
+                  ? 'profile'
+                  : 'phone',
+              );
+            } else setStep(mode === 'signup' ? 'profile' : 'phone');
+          }
         } catch (e) {
           if (alive.current) {
             if (mode === 'change' && e instanceof ServiceError && e.code === 'AUTH') {
@@ -144,10 +202,65 @@ export default function AuthFlow({
       if (!alive.current) return;
       setError(e);
       if (e instanceof ServiceError) {
+        if (
+          [
+            'PIN',
+            'PIN_INVALID',
+            'PIN_MISMATCH',
+            'PIN_WAIT',
+            'PIN_RETRY_WAIT',
+            'PIN_LOCKED',
+            'ACCOUNT_NOT_FOUND',
+          ].includes(e.code)
+        )
+          setPin('');
+        if (mode === 'access' && e.code === 'ACCOUNT_NOT_FOUND') {
+          setError(undefined);
+          setMissingAccount(true);
+        }
+        if (mode === 'signup' && e.code === 'PHONE_NUMBER_ALREADY_REGISTERED') {
+          setError(undefined);
+          setExistingAccount(true);
+          setChallenge(undefined);
+          setVerification(undefined);
+          setSms('');
+          setPin('');
+          setFirstPin('');
+          setRetryAt(0);
+          setStep('phone');
+          clearDraft('sms.' + mode + '.' + phoneKey(phone));
+        }
         if (e.retryAt) setRetryAt(e.retryAt);
         if (e.code === 'PIN_LOCKED') setLocked(true);
-        if (e.code === 'UNKNOWN') setUnknown(operationId.current);
-        else if (!unknown) sessionStorage.removeItem(PENDING);
+        if ((e.code === 'UNKNOWN' && operationId.current) || (e.code === 'NETWORK' && unknown))
+          setUnknown(unknown || operationId.current);
+        else {
+          sessionStorage.removeItem(PENDING);
+          if (unknown) {
+            setUnknown('');
+            startPhone();
+            setError(e);
+          }
+          if (HTTP_AUTH) operationId.current = '';
+        }
+        if (
+          [
+            'SMS_RESTART',
+            'SMS_ALREADY_VERIFIED',
+            'SMS_CODE_EXPIRED',
+            'SMS_ATTEMPTS_EXCEEDED',
+            'SMS_REQUEST_INVALIDATED',
+            'SMS_USED',
+            'SMS_EXPIRED',
+            'SMS_LIMIT',
+          ].includes(e.code)
+        ) {
+          setSms('');
+          setVerification(undefined);
+          setSmsRestart(true);
+        } else if (['SMS_CODE_MISMATCH', 'SMS_MISMATCH', 'SMS_INVALID'].includes(e.code)) {
+          writeSmsDraft(mode, phone, { challenge, restart: false, retryAt });
+        }
       } else if (!unknown) sessionStorage.removeItem(PENDING);
     } finally {
       running.current = false;
@@ -157,13 +270,15 @@ export default function AuthFlow({
   function complete(result: AuthResult) {
     if (!alive.current) return;
     sessionStorage.removeItem(PENDING);
+    clearDraft(mode);
+    clearDraft('sms.' + mode + '.' + phoneKey(phone));
     setUnknown('');
     setPin('');
     setFirstPin('');
     if ('token' in result) {
-      localStorage.setItem(REGISTRATION_KEY, result.registration);
+      if (!HTTP_AUTH) localStorage.setItem(REGISTRATION_KEY, result.registration);
       onLogin(result.token);
-      nav(mode === 'access' ? '/mobile' : destination, { replace: true });
+      nav(HTTP_AUTH || mode === 'access' ? '/mobile' : destination, { replace: true });
     } else {
       localStorage.removeItem(REGISTRATION_KEY);
       onClear();
@@ -187,16 +302,18 @@ export default function AuthFlow({
     setPin('');
     setFirstPin('');
     setVerification(undefined);
-    setChallenge(undefined);
+    if (resumable) restoreSms(phone);
+    else setChallenge(undefined);
     setSms('');
     setRegistration('');
     setError(undefined);
     setNotice('');
-    setRetryAt(0);
+    if (!resumable) setRetryAt(0);
     setLocked(false);
     operationId.current = '';
   }
   async function send() {
+    if (busy || wait > 0 || resend > 0) return;
     if (!phoneValid(phone)) {
       setError(new Error('010으로 시작하는 11자리 전화번호를 입력해 주세요.'));
       return;
@@ -205,6 +322,9 @@ export default function AuthFlow({
       const c = await authApi.requestSms(phone, purpose, source, reauth);
       if (!alive.current) return;
       setChallenge(c);
+      setRetryAt(0);
+      writeSmsDraft(mode, phone, { challenge: c, restart: false, retryAt: 0 });
+      setSmsRestart(false);
       setSms('');
       setVerification(undefined);
       setNow(Date.now());
@@ -213,14 +333,17 @@ export default function AuthFlow({
   }
   async function verify() {
     await task(async () => {
-      if (!challenge) return;
+      if (!challenge || smsRestart || remaining === 0 || sms.length !== 6) return;
+      writeSmsDraft(mode, phone, { challenge, restart: true, retryAt });
       const v = await authApi.verifySms(challenge.id, phone, sms, purpose, source);
       if (!alive.current) return;
       setVerification(v);
+      setRetryAt(0);
       setMask(v.maskedPhone);
       setPin('');
       setNotice('');
-      if (mode === 'reset') setStep(v.existing ? 'setup' : 'blocked');
+      if (HTTP_AUTH) setStep('setup');
+      else if (mode === 'reset') setStep(v.existing ? 'setup' : 'blocked');
       else if (mode === 'change') setStep('change-confirm');
       else if (v.needsPin) {
         setStep('blocked');
@@ -231,16 +354,18 @@ export default function AuthFlow({
       }
     });
   }
-  async function submitPin(e: React.FormEvent) {
-    e.preventDefault();
+  async function submitPin(e?: React.FormEvent) {
+    e?.preventDefault();
     if (busy || unknown || wait || locked) return;
     if (!/^\d{6}$/.test(pin)) {
+      setPin('');
       setError(new Error('숫자 6자리를 입력해 주세요.'));
       return;
     }
     if (step === 'setup') {
       const problem = pinError(pin);
       if (problem) {
+        setPin('');
         setError(new Error(problem));
         return;
       }
@@ -252,9 +377,7 @@ export default function AuthFlow({
     }
     if (step === 'confirm' && pin !== firstPin) {
       setPin('');
-      setFirstPin('');
-      setStep('setup');
-      setError(new Error('PIN이 일치하지 않습니다. 다시 설정해 주세요.'));
+      setError(new Error('처음 입력한 PIN과 일치하지 않습니다. 다시 입력해 주세요.'));
       return;
     }
     await task(async () => {
@@ -290,40 +413,53 @@ export default function AuthFlow({
     setPin(value.replace(/\D/g, '').slice(0, 6));
     operationId.current = '';
   }
+  useEffect(() => {
+    if (mode === 'access' && step === 'pin' && pin.length === 6) void submitPin();
+  }, [pin, step, mode]);
+  function previousSignupStep() {
+    setError(undefined);
+    if (step === 'confirm') {
+      setPin('');
+      setFirstPin('');
+      setStep('setup');
+    } else if (step === 'setup') startPhone();
+    else if (step === 'phone') {
+      startPhone();
+      setStep('profile');
+    } else nav('/mobile/login');
+  }
+  if (HTTP_AUTH && mode === 'change')
+    return (
+      <div className="page-content">
+        <p>전화번호 변경은 아직 지원하지 않습니다.</p>
+        <Link to="/mobile/account">마이페이지로</Link>
+      </div>
+    );
   const isPin = ['pin', 'setup', 'confirm'].includes(step);
-  const errorMessage = (
-    <ErrorBox
-      error={
-        error instanceof ServiceError && error.retryAt
-          ? new Error(error.message + ' 남은 시간: ' + wait + '초')
-          : error ||
-            (wait > 0
-              ? new Error('PIN 입력을 잠시 기다려 주세요. 남은 시간: ' + wait + '초')
-              : undefined)
-      }
-    />
-  );
   return (
     <div className="page-content auth-flow">
       <div className="auth-topline">
-        <button
-          className="text-button"
-          disabled={busy || !!unknown}
-          onClick={() => {
-            if (step === 'confirm') {
-              setStep('setup');
-              setPin('');
-              setFirstPin('');
-            } else if (step === 'phone' && mode === 'signup') {
-              startPhone();
-              setStep('profile');
-            } else if (isPin && mode !== 'change') startPhone();
-            else nav('/mobile');
-          }}
-          aria-label="이전"
-        >
-          <ArrowLeft size={20} />
-        </button>
+        {mode !== 'signup' && (
+          <button
+            className="text-button"
+            disabled={busy || !!unknown}
+            onClick={() => {
+              if (mode === 'reset') {
+                nav('/mobile/account');
+                return;
+              }
+              if (step === 'confirm') {
+                setStep('setup');
+                setPin('');
+                setFirstPin('');
+              } else if (isPin && mode !== 'change') startPhone();
+              else nav('/mobile');
+            }}
+            aria-label="이전"
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
         <span>
           {mode === 'reset'
             ? 'PIN 재설정'
@@ -352,7 +488,11 @@ export default function AuthFlow({
                   sessionStorage.removeItem(PENDING);
                   setUnknown('');
                   startPhone();
-                  setNotice('저장된 결과가 없습니다. 인증부터 다시 진행해 주세요.');
+                  setNotice(
+                    HTTP_AUTH
+                      ? '로그인 세션을 확인하지 못했습니다. 이미 가입했다면 로그인해 주세요.'
+                      : '저장된 결과가 없습니다. 인증부터 다시 진행해 주세요.',
+                  );
                 }
               })
             }
@@ -367,11 +507,13 @@ export default function AuthFlow({
               setUnknown('');
               startPhone();
               setNotice(
-                '결과 확인을 중단했습니다. 기존 처리가 완료되었을 수 있으므로 전화번호 인증으로 계정을 다시 확인하세요.',
+                mode === 'access'
+                  ? '전화번호와 PIN으로 다시 로그인해 주세요.'
+                  : '이전 요청이 완료되었을 수 있습니다. 가입했다면 로그인하고, PIN을 변경했다면 새 PIN으로 로그인해 주세요.',
               );
             }}
           >
-            전화번호 인증으로 안전하게 재진입
+            {mode === 'access' ? '로그인 다시 시작' : '전화번호 인증 다시 시작'}
           </button>
         </>
       ) : step === 'boot' ? (
@@ -425,10 +567,15 @@ export default function AuthFlow({
                 ))}
               </select>
             </label>
-            <button className="primary full" type="submit">
-              다음
-              <ArrowRight size={18} />
-            </button>
+            <div className="signup-actions">
+              <button className="secondary" type="button" onClick={previousSignupStep}>
+                이전
+              </button>
+              <button className="primary full" type="submit">
+                다음
+                <ArrowRight size={18} />
+              </button>
+            </div>
           </form>
         </>
       ) : step === 'done' ? (
@@ -436,8 +583,9 @@ export default function AuthFlow({
           <ShieldCheck className="auth-symbol" />
           <h1>{mode === 'change' ? '전화번호가 변경되었습니다.' : 'PIN이 재설정되었습니다.'}</h1>
           <p>
-            기존 로그인과 브라우저 등록이 모두 해제되었습니다. 전화번호와 PIN으로 다시 로그인해
-            주세요.
+            {mode === 'change'
+              ? '변경한 전화번호로 다시 로그인해 주세요.'
+              : '새 PIN으로 다시 로그인해 주세요.'}
           </p>
           <Link className="primary full" to="/mobile/login">
             로그인으로
@@ -450,14 +598,20 @@ export default function AuthFlow({
           <p>
             {verification?.needsPin
               ? 'PIN 찾기에서 등록된 전화번호로 문자를 인증한 뒤 새 PIN을 설정해 주세요.'
-              : '등록된 전화번호로 다시 확인해 주세요. 기존 전화번호를 사용할 수 없다면 현재 자동 복구를 진행할 수 없습니다.'}
+              : '등록된 전화번호를 확인한 뒤 다시 인증해 주세요.'}
           </p>
           <Link className="primary full" to="/mobile/login">
             로그인으로 돌아가기
           </Link>
-          <Link className="text-link" to="/mobile/recover">
-            PIN 찾기로
-          </Link>
+          {mode === 'reset' ? (
+            <button className="text-button" onClick={startPhone}>
+              전화번호 다시 입력
+            </button>
+          ) : (
+            <Link className="text-link" to="/mobile/recover">
+              PIN 찾기로
+            </Link>
+          )}
         </>
       ) : step === 'change-confirm' ? (
         <>
@@ -480,23 +634,14 @@ export default function AuthFlow({
             <LockKeyhole className="auth-symbol" />
             <h1>
               {step === 'setup'
-                ? '사용할 PIN 번호를 설정해 주세요.'
+                ? mode === 'reset'
+                  ? '변경할 PIN 번호를 입력해 주세요.'
+                  : '사용할 PIN 번호를 설정해 주세요.'
                 : step === 'confirm'
                   ? 'PIN 번호를 한 번 더 입력해 주세요.'
                   : 'PIN 번호를 입력해 주세요.'}
             </h1>
             <p className="auth-mask">{mask}</p>
-            {step === 'setup' && (
-              <ul className="pin-guidance">
-                <li>숫자 6자리</li>
-                <li>
-                  6자리 연속 숫자 제외 <span>123456 · 789012 등</span>
-                </li>
-                <li>
-                  같은 숫자 3번 연속 제외 <span>000 · 888 등</span>
-                </li>
-              </ul>
-            )}
             <form onSubmit={submitPin} aria-busy={busy}>
               <div className="pin-field">
                 <div className="pin-dots" aria-hidden="true">
@@ -542,32 +687,43 @@ export default function AuthFlow({
                   ),
                 )}
               </div>
-              <button
-                className="primary full"
-                type="submit"
-                disabled={busy || wait > 0 || locked || proofExpired}
-              >
-                {busy
-                  ? '확인 중…'
-                  : step === 'setup'
-                    ? '계속'
-                    : step === 'confirm'
-                      ? mode === 'reset'
-                        ? 'PIN 재설정'
-                        : '가입 완료'
-                      : mode === 'change'
-                        ? '계정 확인'
-                        : '로그인'}
-                <ArrowRight size={18} />
-              </button>
+              <div className={mode === 'signup' ? 'signup-actions' : undefined}>
+                {mode === 'signup' && (
+                  <button
+                    className="secondary"
+                    type="button"
+                    disabled={busy || !!unknown}
+                    onClick={previousSignupStep}
+                  >
+                    이전
+                  </button>
+                )}
+                <button
+                  className="primary full"
+                  type="submit"
+                  disabled={busy || wait > 0 || locked || proofExpired}
+                >
+                  {busy
+                    ? '확인 중…'
+                    : wait > 0
+                      ? `${wait}초 후 다시 시도`
+                      : step === 'setup'
+                        ? mode === 'signup'
+                          ? '다음'
+                          : '계속'
+                        : step === 'confirm'
+                          ? mode === 'reset'
+                            ? 'PIN 재설정'
+                            : '가입 완료'
+                          : mode === 'change'
+                            ? '계정 확인'
+                            : '로그인'}
+                  <ArrowRight size={18} />
+                </button>
+              </div>
             </form>
-            {locked && (
-              <p role="alert">
-                PIN 로그인이 제한되었습니다. PIN 찾기에서 계정 복구를 진행해 주세요.
-              </p>
-            )}
           </section>
-          {errorMessage}
+
           {step === 'pin' && mode !== 'change' && (
             <div className="auth-links">
               <Link to="/mobile/recover">PIN 찾기</Link>
@@ -611,7 +767,8 @@ export default function AuthFlow({
                   disabled={busy}
                   onChange={(e) => {
                     setPhone(e.target.value);
-                    setChallenge(undefined);
+                    if (resumable) restoreSms(e.target.value);
+                    else setChallenge(undefined);
                     setVerification(undefined);
                     setSms('');
                     setPin('');
@@ -628,6 +785,11 @@ export default function AuthFlow({
                 </button>
               ) : (
                 <>
+                  {smsRestart && (
+                    <p className="note-text">
+                      인증을 다시 진행해 주세요. 새 인증번호를 받아 입력해 주세요.
+                    </p>
+                  )}
                   {challenge && (
                     <>
                       <div className="auth-sms-field">
@@ -645,76 +807,135 @@ export default function AuthFlow({
                           maxLength={6}
                           placeholder="6자리 인증번호"
                           value={sms}
-                          disabled={busy || remaining === 0}
+                          disabled={busy || smsRestart || remaining === 0}
                           onChange={(e) => setSms(e.target.value.replace(/\D/g, ''))}
                         />
                       </div>
-                      {!remaining && (
-                        <p className="note-text">인증번호가 만료되었습니다. 다시 발송해 주세요.</p>
-                      )}
-                      <button
-                        className="primary full"
-                        type="submit"
-                        disabled={busy || sms.length !== 6 || !remaining || wait > 0}
-                      >
-                        인증번호 확인
-                      </button>
+                      <div className={mode === 'signup' ? 'signup-actions' : undefined}>
+                        {mode === 'signup' && (
+                          <button
+                            type="button"
+                            className="secondary"
+                            disabled={busy}
+                            onClick={previousSignupStep}
+                          >
+                            이전
+                          </button>
+                        )}
+                        <button
+                          className="primary full"
+                          type="submit"
+                          aria-label="인증번호 확인"
+                          disabled={busy || smsRestart || sms.length !== 6 || !remaining}
+                        >
+                          {mode === 'signup' ? '다음' : '인증번호 확인'}
+                        </button>
+                      </div>
                     </>
                   )}
-                  <button
-                    className="secondary full"
-                    type="button"
-                    disabled={busy || wait > 0}
-                    onClick={() => {
-                      if (resend > 0) {
-                        setRetryAt(challenge!.resendAt);
-                        setError(
-                          new ServiceError(
-                            'SMS_WAIT',
-                            '인증번호 재발송을 잠시 기다려 주세요.',
-                            challenge!.resendAt,
-                          ),
-                        );
-                      } else void send();
-                    }}
-                  >
-                    {challenge ? '인증번호 재발송' : '인증번호 발송'}
-                  </button>
+                  <div className={mode === 'signup' && !challenge ? 'signup-actions' : undefined}>
+                    {mode === 'signup' && !challenge && (
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={busy}
+                        onClick={previousSignupStep}
+                      >
+                        이전
+                      </button>
+                    )}
+                    <button
+                      className={challenge ? 'secondary full' : 'primary full'}
+                      type="button"
+                      disabled={busy || wait > 0 || resend > 0}
+                      onClick={() => void send()}
+                    >
+                      {busy
+                        ? '요청 중…'
+                        : Math.max(wait, resend) > 0
+                          ? `${challenge ? '재발송' : '인증 요청'}까지 ${Math.max(wait, resend)}초`
+                          : challenge
+                            ? '인증번호 재발송'
+                            : '인증번호 발송'}{' '}
+                    </button>
+                  </div>
                 </>
               )}
             </form>
           </section>
-          {errorMessage}
-          <div className="auth-links">
-            <Link to="/mobile/recover">PIN 찾기</Link>
-            <Link to="/mobile/signup">회원가입</Link>
-          </div>
-          {mode === 'reset' && (
-            <button className="text-button" onClick={() => setStep('blocked')}>
-              기존 전화번호를 사용할 수 없어요
-            </button>
+
+          {mode !== 'reset' && (
+            <div className="auth-links">
+              {mode !== 'access' && <Link to="/mobile/login">로그인</Link>}
+              <Link to="/mobile/recover">PIN 찾기</Link>
+              {mode !== 'signup' && <Link to="/mobile/signup">회원가입</Link>}
+            </div>
           )}
         </>
       )}
-      {proofExpired && !unknown && (
-        <p role="alert">
-          인증 결과가 만료되었습니다.{' '}
+      <ErrorBox
+        error={
+          error ||
+          (proofExpired && !unknown
+            ? '인증 결과가 만료되었습니다. 전화번호부터 다시 인증해 주세요.'
+            : challenge && remaining === 0 && step === 'phone'
+              ? '인증번호가 만료되었습니다. 다시 발송해 주세요.'
+              : locked
+                ? 'PIN 로그인이 제한되었습니다. PIN 찾기에서 계정을 복구해 주세요.'
+                : undefined)
+        }
+      />
+      {showPinPolicy && (
+        <MessagePopup title="PIN 설정 안내" onClose={() => setShowPinPolicy(false)}>
+          <ul className="pin-guidance">
+            <li>숫자 6자리로 설정해 주세요.</li>
+            <li>6자리 전체가 연속된 숫자는 사용할 수 없어요.</li>
+            <li>같은 숫자를 3번 연속 사용할 수 없어요.</li>
+          </ul>
+        </MessagePopup>
+      )}{' '}
+      {(proofExpired ||
+        (error instanceof ServiceError &&
+          ['REGISTRATION', 'SMS_REQUIRED', 'AUTH', 'RECOVERY'].includes(error.code))) &&
+        !unknown && (
           <button className="text-button" onClick={startPhone}>
-            전화번호부터 다시 인증
-          </button>
-        </p>
-      )}
-      {!(!unknown && (isPin || step === 'phone')) && errorMessage}
-      {error instanceof ServiceError &&
-        ['REGISTRATION', 'SMS_REQUIRED', 'AUTH', 'RECOVERY'].includes(error.code) && (
-          <button className="text-button" onClick={startPhone}>
-            전화번호 인증부터 다시 시작
+            {mode === 'access' ? '전화번호 다시 입력' : '전화번호 인증 다시 시작'}
           </button>
         )}
       {notice && (
         <p className="auth-notice" role="status">
           {notice}
         </p>
+      )}
+      {existingAccount && (
+        <MessagePopup
+          title="이미 가입된 전화번호예요"
+          onClose={() => setExistingAccount(false)}
+          action={{
+            label: '로그인하기',
+            onClick: () => {
+              clearDraft(mode);
+              nav('/mobile/login', { replace: true });
+            },
+          }}
+        >
+          <p>
+            기존 계정으로 로그인해 주세요. PIN이 기억나지 않으면 로그인 화면에서 PIN 찾기를 이용해
+            주세요.
+          </p>
+        </MessagePopup>
+      )}
+      {missingAccount && (
+        <MessagePopup
+          title="가입되지 않은 전화번호예요"
+          onClose={() => {
+            setMissingAccount(false);
+            startPhone();
+          }}
+          action={{ label: '회원가입', onClick: () => nav('/mobile/signup') }}
+        >
+          <p>전화번호를 다시 확인하거나 회원가입을 진행해 주세요.</p>
+        </MessagePopup>
       )}
     </div>
   );

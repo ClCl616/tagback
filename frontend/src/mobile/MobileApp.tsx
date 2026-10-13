@@ -1,4 +1,6 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { HTTP_AUTH, COOKIE_SESSION } from '../shared/authMode';
+import { serverSession } from '../shared/httpAuth';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
   Link,
   NavLink,
@@ -36,16 +38,25 @@ function useAuth() {
 }
 function MobileLayout() {
   const location = useLocation();
+  const tabPage = [
+    '/mobile',
+    '/mobile/',
+    '/mobile/code',
+    '/mobile/rentals',
+    '/mobile/history',
+  ].includes(location.pathname);
   return (
     <div className="mobile-shell">
-      <header className="mobile-header">
-        <Link to="/mobile" aria-label="TagBack 홈">
-          <Brand />
-        </Link>
-        <Link className="account-icon" to="/mobile/account" aria-label="내 계정">
-          <UserRound size={21} />
-        </Link>
-      </header>
+      {tabPage && (
+        <header className="mobile-header">
+          <Link to="/mobile" aria-label="TagBack 홈">
+            <Brand />
+          </Link>
+          <Link className="account-icon" to="/mobile/account" aria-label="내 계정">
+            <UserRound size={21} />
+          </Link>
+        </header>
+      )}
       <main className="mobile-main">
         <Outlet />
       </main>
@@ -338,6 +349,21 @@ function AuthPage({ mode = 'access' }: { mode?: 'access' | 'signup' | 'reset' | 
   const { token, setToken } = useAuth();
   return <AuthFlow mode={mode} token={token} onLogin={setToken} onClear={() => setToken('')} />;
 }
+function AccountEntry() {
+  const { token } = useAuth();
+  return token ? (
+    <Account />
+  ) : (
+    <div className="page-content">
+      <Back title="마이페이지" />
+      <h1>로그인이 필요해요</h1>
+      <p className="muted">로그인하고 내 계정과 대여 내역을 확인해 주세요.</p>
+      <Link className="primary full" to="/mobile/login">
+        로그인
+      </Link>
+    </div>
+  );
+}
 function Protected({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
   const loc = useLocation();
@@ -441,7 +467,7 @@ function Rentals({ history = false }: { history?: boolean }) {
     [token],
     true,
   );
-  const rows = r.data?.rentals.filter((r) => (history ? !!r.returnedAt : !r.returnedAt)) || [];
+  const rows = r.data?.rentals?.filter((r) => (history ? !!r.returnedAt : !r.returnedAt)) || [];
   return (
     <div className="page-content">
       <div className="eyebrow">{history ? 'YOUR SHARED MOMENTS' : 'WITH YOU NOW'}</div>
@@ -519,7 +545,10 @@ function Rentals({ history = false }: { history?: boolean }) {
 function Account() {
   const { token, setToken } = useAuth();
   const r = useResource(
-    async () => ({ ...(await api.me(token)), rentals: await api.rentals(token) }),
+    async () => ({
+      ...(await api.me(token)),
+      rentals: HTTP_AUTH ? null : await api.rentals(token),
+    }),
     [token],
     true,
   );
@@ -562,11 +591,15 @@ function Account() {
           </section>
           <section className="account-summary" aria-label="대여 현황">
             <Link to="/mobile/rentals">
-              <strong>{r.data?.rentals.filter((x) => !x.returnedAt).length ?? 0}</strong>
+              <strong>
+                {r.data?.rentals?.filter((x) => !x.returnedAt).length ?? (HTTP_AUTH ? '—' : 0)}
+              </strong>
               <span>대여 중</span>
             </Link>
             <Link to="/mobile/history">
-              <strong>{r.data?.rentals.filter((x) => !!x.returnedAt).length ?? 0}</strong>
+              <strong>
+                {r.data?.rentals?.filter((x) => !!x.returnedAt).length ?? (HTTP_AUTH ? '—' : 0)}
+              </strong>
               <span>이용 기록</span>
             </Link>
           </section>
@@ -580,10 +613,12 @@ function Account() {
           </Link>
           <section className="account-settings">
             <h2>계정 관리</h2>
-            <Link to="/mobile/change-phone">
-              <span>전화번호 변경</span>
-              <ChevronRight size={18} />
-            </Link>
+            {!HTTP_AUTH && (
+              <Link to="/mobile/change-phone">
+                <span>전화번호 변경</span>
+                <ChevronRight size={18} />
+              </Link>
+            )}
             <Link to="/mobile/recover">
               <span>PIN 재설정</span>
               <ChevronRight size={18} />
@@ -599,18 +634,57 @@ function Account() {
   );
 }
 export default function MobileApp() {
-  const [token, setTokenState] = useState(() => localStorage.getItem(MOBILE_TOKEN_KEY) || '');
+  const [token, setTokenState] = useState(() =>
+    HTTP_AUTH ? '' : localStorage.getItem(MOBILE_TOKEN_KEY) || '',
+  );
+  const sessionRevision = useRef(0);
   const setToken = (v: string) => {
+    sessionRevision.current++;
     setTokenState(v);
+    if (HTTP_AUTH) {
+      window.dispatchEvent(new Event('tagback-session'));
+      return;
+    }
     if (v) localStorage.setItem(MOBILE_TOKEN_KEY, v);
     else localStorage.removeItem(MOBILE_TOKEN_KEY);
     window.dispatchEvent(new Event('tagback-session'));
   };
   const [sessionNotice, setSessionNotice] = useState('');
+  const [sessionReady, setSessionReady] = useState(!HTTP_AUTH);
+  const [bootError, setBootError] = useState<unknown>();
   useEffect(() => {
     let active = true;
     let checking = false;
+    let authenticated = false;
     const sync = async () => {
+      if (HTTP_AUTH) {
+        if (checking) return;
+        checking = true;
+        const revision = sessionRevision.current;
+        try {
+          await serverSession();
+          if (!active || revision !== sessionRevision.current) return;
+          authenticated = true;
+          if (active) {
+            setTokenState(COOKIE_SESSION);
+            setBootError(undefined);
+            setSessionReady(true);
+          }
+        } catch (e) {
+          if (active && revision === sessionRevision.current) {
+            if (e instanceof ServiceError && e.code === 'AUTH') {
+              authenticated = false;
+              setTokenState('');
+              setBootError(undefined);
+              setSessionReady(true);
+            } else setBootError(e);
+          }
+        } finally {
+          checking = false;
+          if (active && revision !== sessionRevision.current) void sync();
+        }
+        return;
+      }
       const current = localStorage.getItem(MOBILE_TOKEN_KEY) || '';
       if (active) setTokenState(current);
       if (!current || checking) return;
@@ -641,9 +715,19 @@ export default function MobileApp() {
     window.addEventListener('tagback-change', sync);
     window.addEventListener('focus', sync);
     const timer = setInterval(sync, 30_000);
+    let lastActivity = 0;
+    const activity = () => {
+      if (!HTTP_AUTH || !authenticated || Date.now() - lastActivity < 60000) return;
+      lastActivity = Date.now();
+      void serverSession(true).catch(() => void sync());
+    };
+    window.addEventListener('pointerdown', activity);
+    window.addEventListener('keydown', activity);
     return () => {
       active = false;
       clearInterval(timer);
+      window.removeEventListener('pointerdown', activity);
+      window.removeEventListener('keydown', activity);
       window.removeEventListener('storage', storage);
       window.removeEventListener('tagback-session', sync);
       window.removeEventListener('tagback-change', sync);
@@ -654,16 +738,28 @@ export default function MobileApp() {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [location.pathname]);
+  if (!sessionReady)
+    return bootError ? (
+      <div className="page-content empty">
+        <h1>서비스에 연결하지 못했어요</h1>
+        <p>연결 상태를 확인한 뒤 다시 시도해 주세요.</p>
+        <button
+          className="primary"
+          onClick={() => {
+            setBootError(undefined);
+            window.dispatchEvent(new Event('tagback-session'));
+          }}
+        >
+          다시 시도
+        </button>
+        <ErrorBox error={bootError} />
+      </div>
+    ) : (
+      <Loading />
+    );
   return (
     <Auth.Provider value={{ token, setToken }}>
-      {sessionNotice && (
-        <div className="session-notice" role="alert">
-          {sessionNotice}
-          <button className="text-button" onClick={() => setSessionNotice('')}>
-            닫기
-          </button>
-        </div>
-      )}
+      <ErrorBox error={sessionNotice} />
       <Routes>
         <Route element={<MobileLayout />}>
           <Route index element={<Explore />} />
@@ -696,14 +792,7 @@ export default function MobileApp() {
               </Protected>
             }
           />
-          <Route
-            path="account"
-            element={
-              <Protected>
-                <Account />
-              </Protected>
-            }
-          />
+          <Route path="account" element={<AccountEntry />} />
           <Route path="*" element={<Navigate to="/mobile" replace />} />
         </Route>
       </Routes>

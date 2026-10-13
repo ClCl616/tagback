@@ -2,7 +2,7 @@
 export const AUTH_POLICY = {
   pinLength: 6,
   smsTtlMs: 300_000,
-  smsResendMs: 60_000,
+  smsResendMs: 30_000,
   smsAttempts: 5,
   pinWaits: [30_000, 60_000, 300_000],
   pinBlockAt: 20,

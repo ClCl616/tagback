@@ -26,18 +26,30 @@ test('물품 이미지 검증·저장·새로고침·삭제 취소와 필수 검
     buffer: Buffer.from('text'),
   });
   await expect(dialog.getByRole('alert')).toContainText('JPG, PNG, WEBP');
+  await page
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   await input.setInputFiles({
     name: 'broken.png',
     mimeType: 'image/png',
     buffer: Buffer.from('broken'),
   });
   await expect(dialog.getByRole('alert')).toContainText('읽을 수 없습니다');
+  await page
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   await input.setInputFiles({
     name: 'large.png',
     mimeType: 'image/png',
     buffer: Buffer.alloc(5 * 1024 * 1024 + 1),
   });
   await expect(dialog.getByRole('alert')).toContainText('5MB 이하');
+  await page
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   await input.setInputFiles('public/images/admin-reference.png');
   await expect(dialog.getByAltText('선택한 물품 이미지 미리보기')).toBeVisible();
   await expect(dialog.getByRole('alert')).toHaveCount(0);
@@ -57,6 +69,10 @@ test('물품 이미지 검증·저장·새로고침·삭제 취소와 필수 검
   await dialog.getByRole('button', { name: '이미지 삭제' }).click();
   await dialog.getByRole('button', { name: '변경사항 저장' }).click();
   await expect(dialog.getByRole('alert')).toContainText('물품 이미지를 등록해 주세요');
+  await page
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   await dialog.getByRole('button', { name: '취소', exact: true }).click();
   await expect(detail.getByAltText('계산기 001 이미지')).toBeVisible();
 });
@@ -83,6 +99,10 @@ test('관리자 등록·중복 태그·수정·모바일 재고 연동', async (
   await scan(page, '04A23B1C');
   await dialog.getByRole('button', { name: '등록하기' }).click();
   await expect(dialog.getByRole('alert')).toContainText('이미 등록된 태그');
+  await page
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   await expect(dialog.getByLabel('물품명', { exact: true })).toBeDisabled();
   await scan(page, '04000099');
   await dialog.getByRole('button', { name: '태그 연결 재시도' }).click();
@@ -134,6 +154,10 @@ test('관리자 저장 실패 입력 유지·검색·모바일 레이아웃', as
   );
   await dialog.getByRole('button', { name: '등록하기' }).click();
   await expect(dialog.getByRole('alert')).toContainText('저장하지 못했습니다');
+  await page
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   await expect(dialog.getByLabel('물품명', { exact: true })).toHaveValue('공용 우산');
   await dialog.getByRole('button', { name: '등록하기' }).click();
   await expect(dialog).not.toBeVisible();
@@ -156,6 +180,10 @@ test('다른 탭의 변경을 오래된 편집본으로 덮어쓰지 않음', as
   await page.getByLabel('관리번호', { exact: true }).fill('999');
   await page.getByRole('button', { name: '변경사항 저장' }).click();
   await expect(page.getByRole('alert')).toContainText('다른 화면에서 물품이 변경');
+  await page
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   await page.getByRole('button', { name: '취소', exact: true }).click();
   await page.getByRole('button', { name: '새로고침', exact: true }).click();
   await expect(
@@ -227,6 +255,10 @@ test('이미지 없는 신규 등록 차단 및 불필요한 목록 조작 제�
   await scan(page, '04000399');
   await dialog.getByRole('button', { name: '등록하기' }).click();
   await expect(dialog.getByRole('alert')).toContainText('물품 이미지를 등록해 주세요');
+  await page
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   await expect(dialog).toBeVisible();
 });
 
@@ -252,6 +284,10 @@ test('행 선택·물품 삭제 확인 및 대여 중 삭제 차단', async ({ p
   await page.getByRole('button', { name: '삭제', exact: true }).click();
   await confirm.getByRole('button', { name: '삭제', exact: true }).click();
   await expect(confirm.getByRole('alert')).toContainText('대여 중');
+  await page
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
 });
 
 test('카테고리 편집 전용·삭제 보호·반응형 편집창·드롭 이미지', async ({ page }) => {
@@ -281,6 +317,10 @@ test('카테고리 편집 전용·삭제 보호·반응형 편집창·드롭 이
   await dialog.getByRole('button', { name: '학습 용품 카테고리 삭제' }).click();
   await confirmation.getByRole('button', { name: '삭제', exact: true }).click();
   await expect(confirmation.getByRole('alert')).toContainText('삭제할 수 없습니다');
+  await page
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   await confirmation.getByRole('button', { name: '취소', exact: true }).click();
   const transfer = await page.evaluateHandle(() => {
     const canvas = document.createElement('canvas');
@@ -448,7 +488,13 @@ test('태그 미등록 물품 재개·중복 UID 실패·새 창 연결 완료',
   await detail.getByRole('button', { name: 'NFC 태그 연결 / 물품 수정' }).click();
   await scan(page, '04A23B1C');
   await page.getByRole('dialog').getByRole('button', { name: '태그 연결', exact: true }).click();
-  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('이미 등록된 태그');
+  await expect(
+    page.getByRole('dialog', { name: '확인해 주세요', exact: true }).getByRole('alert'),
+  ).toContainText('이미 등록된 태그');
+  await page
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   await page.getByRole('dialog').getByRole('button', { name: '취소', exact: true }).click();
   await page.reload();
   await expect(detail).toContainText('태그 미등록');
@@ -469,6 +515,10 @@ test('태그 미등록 물품 재개·중복 UID 실패·새 창 연결 완료',
   });
   await page.getByRole('dialog').getByRole('button', { name: '태그 연결', exact: true }).click();
   await expect(page.getByRole('dialog').getByRole('alert')).toContainText('같은 물품과 UID');
+  // Dismiss the blocking error popup before interacting with the item editor.
+  const errorPopup = page.getByRole('dialog', { name: '확인해 주세요', exact: true });
+  await errorPopup.getByRole('button', { name: '확인', exact: true }).click();
+  await expect(errorPopup).not.toBeVisible();
   await expect(page.getByRole('dialog').getByLabel('태그 ID', { exact: true })).toBeDisabled();
   await page.evaluate(() => {
     const channel = new BroadcastChannel('tagback-nfc');
@@ -544,6 +594,10 @@ test('신규 물품 부분 성공 후 창을 닫아도 생성 ID로 연결 재�
   });
   await dialog.getByRole('button', { name: '등록하기' }).click();
   await expect(dialog.getByRole('status')).toContainText('태그 연결은 완료되지 않았습니다');
+  await page
+    .getByRole('dialog', { name: '확인해 주세요', exact: true })
+    .getByRole('button', { name: '확인', exact: true })
+    .click();
   const createdId = await page.evaluate(
     () =>
       JSON.parse(localStorage.getItem('tagback.mock.v1')!).items.find(

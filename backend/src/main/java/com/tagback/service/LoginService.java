@@ -44,7 +44,7 @@ public class LoginService {
         requirePinFormat(input.pin());
         String phone = phones.normalize(input.phoneNumber());
         var user = users.findByPhoneNumberForUpdate(phone)
-                .orElseThrow(() -> new AuthException(AuthErrorCode.PIN_MISMATCH));
+                .orElseThrow(() -> new AuthException(AuthErrorCode.ACCOUNT_NOT_FOUND));
         Instant now = clock.instant();
         String scope = secrets.tokenHash("phone-login:" + user.getId());
         String fingerprint = secrets.keyedHash(scope + ":" + input.pin());
