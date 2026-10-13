@@ -31,6 +31,8 @@ Content-Type: application/json
 
 같은 `itemId`와 정규화된 활성 UID로 다시 요청하면 `200`과 동일한 `tagId`·물품 ID·UID를 반환한다. 동시에 같은 연결을 시도해도 DB 유니크 제약으로 활성 행은 하나만 생성되며, 나머지 요청은 기존 연결을 조회해 성공으로 반환한다.
 
+연결 시 물품 상태가 `TAG_PENDING`이면 같은 트랜잭션에서 `AVAILABLE`로 변경한다. 그 결과는 `GET /api/v1/items/{itemId}`에서 확인할 수 있다. 다른 상태는 태그 연결만으로 변경하지 않는다.
+
 태그 등록 오류와 세션·권한 오류 모두 공용 형식 `{"error":{"code":"...","message":"...","retryAt":null}}`을 사용한다. 태그 등록 오류의 `retryAt`은 `null`이다.
 
 예를 들어 이미 등록된 UID는 `409`와 함께 다음 본문을 반환한다.
@@ -68,9 +70,9 @@ Content-Type: application/json
 
 ## DB와 후속 작업
 
-등록·중복 방지는 V4의 `nfc_tags.tag_uid UNIQUE`와 V12의 `uq_nfc_tags_active_item` 부분 유니크 인덱스를 사용한다. 동시 요청에서 유니크 위반이 나면 삽입 트랜잭션을 롤백한 뒤 해당 물품·UID를 다시 조회한다. 같은 연결이면 기존 태그를 성공으로 반환하고, 다른 연결이면 위 409 오류로 변환한다.
+등록·중복 방지는 V4의 `nfc_tags.tag_uid UNIQUE`와 V13의 `uq_nfc_tags_active_item` 부분 유니크 인덱스를 사용한다. 동시 요청에서 유니크 위반이 나면 삽입 트랜잭션을 롤백한 뒤 해당 물품·UID를 다시 조회한다. 같은 연결이면 기존 태그를 성공으로 반환하고, 다른 연결이면 위 409 오류로 변환한다.
 
-V9는 사용자 프로필, 물품 API 브랜치의 V10·V11은 물품 상태 정책에 사용되므로 NFC 교체 스키마는 V12다. V12는 `nfc_tags_item_id_key`를 제거하고 `deactivated_at TIMESTAMPTZ`와 물품별 활성 태그만 유일하게 만드는 `uq_nfc_tags_active_item`을 추가한다. `tag_uid UNIQUE`는 그대로 둔다. 기존 V1~V9는 수정하지 않는다.
+V9는 사용자 프로필, V10·V11은 물품 상태 정책, V12는 물품 상태 이력에 사용되므로 NFC 교체 스키마는 V13이다. V13은 `nfc_tags_item_id_key`를 제거하고 `deactivated_at TIMESTAMPTZ`와 물품별 활성 태그만 유일하게 만드는 `uq_nfc_tags_active_item`을 추가한다. `tag_uid UNIQUE`는 그대로 둔다. 기존 V1~V12는 수정하지 않는다.
 
 등록 API는 관리자 전용 세션을 요구한다. 현재 세션 발급 기능은 `sms-mock` 프로필에서만 제공되므로 운영 사용 전 실제 인증 연동을 별도로 확인해야 한다.
 

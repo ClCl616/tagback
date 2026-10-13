@@ -30,7 +30,7 @@ public class TagLifecycleService {
 
     @Transactional
     public TagRegistrationService.RegistrationResult replace(Long itemId, String rawUid, String rawExpectedUid) {
-        Item item = items.findByIdForUpdate(itemId).orElseThrow(() ->
+        Item item = items.findForUpdate(itemId).orElseThrow(() ->
                 new TagRegistrationException(HttpStatus.NOT_FOUND, "ITEM_NOT_FOUND", "물품을 찾을 수 없습니다."));
         String uid = TagUidNormalizer.normalize(rawUid);
         NfcTag active = tags.findByItem_Id(itemId).orElse(null);
@@ -81,7 +81,7 @@ public class TagLifecycleService {
 
     @Transactional
     public void deactivate(Long itemId) {
-        Item item = items.findByIdForUpdate(itemId).orElseThrow(() ->
+        Item item = items.findForUpdate(itemId).orElseThrow(() ->
                 new TagRegistrationException(HttpStatus.NOT_FOUND, "ITEM_NOT_FOUND", "물품을 찾을 수 없습니다."));
         NfcTag active = tags.findByItem_Id(itemId).orElse(null);
         if (active == null) return;

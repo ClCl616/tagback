@@ -30,7 +30,6 @@ function setup() {
   const gateway = {
     save: vi.fn(async () => (stored = { ...item })),
     findCreated: vi.fn(async () => stored),
-    getItem: vi.fn(async () => stored),
     attachTag: vi.fn(
       async (id: string, uid: string) => (stored = { ...stored!, id, tag: uid, active: true }),
     ),
@@ -105,14 +104,24 @@ describe('두 단계 물품 등록', () => {
     expect(gateway.findCreated).toHaveBeenCalledTimes(1);
     expect(gateway.save).toHaveBeenCalledTimes(1);
   });
-  it('태그 응답 유실은 조회로 완료를 확인한다', async () => {
+  it('태그 응답 유실은 같은 물품 ID·UID 재요청으로 완료한다', async () => {
     const { flow, gateway, change, set } = setup();
     gateway.attachTag.mockImplementationOnce(async () => {
-      set({ ...item, tag: draft.tag });
+      set({ ...item, tag: draft.tag, active: true });
       throw error('UNKNOWN');
     });
-    expect((await flow.submit(draft, undefined, change))?.tag).toBe(draft.tag);
-    expect(gateway.attachTag).toHaveBeenCalledTimes(1);
+    await expect(flow.submit(draft, undefined, change)).rejects.toMatchObject({ code: 'UNKNOWN' });
+    expect(flow.retryingTag).toBe(true);
+    // Even a changed caller input must not replace the pending UID.
+    expect((await flow.submit({ ...draft, tag: '04000099' }, undefined, change))?.tag).toBe(
+      draft.tag,
+    );
+    expect(gateway.attachTag.mock.calls).toEqual([
+      [item.id, draft.tag],
+      [item.id, draft.tag],
+    ]);
+    expect(gateway.save).toHaveBeenCalledTimes(1);
+    expect(gateway.findCreated).not.toHaveBeenCalled();
   });
   it('생성 결과 조회도 실패하면 재생성을 막고 다음 제출에 조회부터 한다', async () => {
     const { flow, gateway, change, set } = setup();
@@ -121,22 +130,24 @@ describe('두 단계 물품 등록', () => {
       throw error('TIMEOUT');
     });
     gateway.findCreated.mockRejectedValueOnce(error('NETWORK'));
-    await expect(flow.submit(draft, undefined, change)).rejects.toThrow('처리 결과');
+    await expect(flow.submit(draft, undefined, change)).rejects.toThrow('물품 생성 결과');
     expect(flow.checking).toBe('create');
     await flow.submit(draft, undefined, change);
     expect(gateway.save).toHaveBeenCalledTimes(1);
   });
-  it('태그 결과 조회 실패 시에도 중복 연결하지 않는다', async () => {
-    const { flow, gateway, change, set } = setup();
-    gateway.attachTag.mockImplementationOnce(async () => {
-      set({ ...item, tag: draft.tag });
-      gateway.getItem.mockRejectedValueOnce(error('NETWORK'));
-      throw error('UNKNOWN');
+  it('잘못된 연결 응답은 완료하지 않고 같은 요청을 유지한다', async () => {
+    const { flow, gateway, change } = setup();
+    gateway.attachTag.mockResolvedValueOnce({
+      ...item,
+      id: 'wrong-id',
+      tag: draft.tag,
+      active: true,
     });
-    await expect(flow.submit(draft, undefined, change)).rejects.toThrow('처리 결과');
-    expect(flow.checking).toBe('tag');
+    await expect(flow.submit(draft, undefined, change)).rejects.toMatchObject({ code: 'UNKNOWN' });
+    expect(flow.retryingTag).toBe(true);
     await flow.submit(draft, undefined, change);
-    expect(gateway.attachTag).toHaveBeenCalledTimes(1);
+    expect(gateway.save).toHaveBeenCalledTimes(1);
+    expect(gateway.attachTag).toHaveBeenCalledTimes(2);
   });
   it('다른 관리자가 같은 물품에 다른 태그를 연결하면 덮어쓰지 않는다', async () => {
     const { flow, gateway, change, set } = setup();
@@ -144,13 +155,15 @@ describe('두 단계 물품 등록', () => {
       set({ ...item, tag: '04000099' });
       throw error('ITEM_ALREADY_TAGGED');
     });
-    await expect(flow.submit(draft, undefined, change)).rejects.toThrow('다른 태그');
+    await expect(flow.submit(draft, undefined, change)).rejects.toMatchObject({
+      code: 'ITEM_ALREADY_TAGGED',
+    });
     expect(gateway.attachTag).toHaveBeenCalledTimes(1);
   });
-  it('연결되지 않았음이 확인된 통신 실패는 태그만 재시도한다', async () => {
+  it('통신 실패는 조회 없이 태그만 재시도한다', async () => {
     const { flow, gateway, change } = setup();
     gateway.attachTag.mockRejectedValueOnce(error('NETWORK'));
-    await expect(flow.submit(draft, undefined, change)).rejects.toThrow('NETWORK');
+    await expect(flow.submit(draft, undefined, change)).rejects.toMatchObject({ code: 'UNKNOWN' });
     await flow.submit(draft, undefined, change);
     expect(gateway.save).toHaveBeenCalledTimes(1);
     expect(gateway.attachTag).toHaveBeenCalledTimes(2);
@@ -161,7 +174,7 @@ describe('확인된 NFC API 계약', () => {
     expect(normalizeUid('04:a2-3b 1c')).toBe('04A23B1C');
     expect(() => normalizeUid('CALC-1')).toThrow();
   });
-  it('POST 경로, uid 본문, 세션 및 201 응답을 사용한다', async () => {
+  it.each([200, 201])('POST 경로, 정규화 uid, 세션 및 %i 응답을 사용한다', async (status) => {
     const fetch = vi.fn(
       async () =>
         new Response(
@@ -174,11 +187,11 @@ describe('확인된 NFC API 계약', () => {
               createdAt: '2026-10-07',
             },
           }),
-          { status: 201 },
+          { status },
         ),
     );
     vi.stubGlobal('fetch', fetch);
-    await postItemTag(12, draft.tag);
+    await postItemTag(12, '04:a2-3b 1c');
     expect(fetch).toHaveBeenCalledWith(
       '/api/items/12/tag',
       expect.objectContaining({
@@ -195,11 +208,65 @@ describe('확인된 NFC API 계약', () => {
     );
     await expect(postItemTag(12, draft.tag)).rejects.toMatchObject({ code });
   });
-  it('성공 응답이 깨지면 완료로 판단하지 않는다', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response('{}', { status: 201 })),
-    );
-    await expect(postItemTag(12, draft.tag)).rejects.toMatchObject({ code: 'UNKNOWN' });
+  it.each([200, 201])('HTTP %i의 잘못된 성공 본문을 거부한다', async (status) => {
+    for (const tag of [
+      undefined,
+      {},
+      { itemId: 99, uid: draft.tag, status: 'ACTIVE' },
+      { itemId: 12, uid: '04000099', status: 'ACTIVE' },
+      { itemId: 12, uid: draft.tag, status: 'INACTIVE' },
+    ]) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response(JSON.stringify({ tag }), { status })),
+      );
+      await expect(postItemTag(12, draft.tag)).rejects.toMatchObject({ code: 'UNKNOWN' });
+    }
   });
+  it('깨진 JSON 및 계약 밖의 2xx를 완료로 처리하지 않는다', async () => {
+    for (const response of [
+      new Response('broken', { status: 200 }),
+      new Response(JSON.stringify({ tag: { itemId: 12, uid: draft.tag, status: 'ACTIVE' } }), {
+        status: 202,
+      }),
+    ]) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => response),
+      );
+      await expect(postItemTag(12, draft.tag)).rejects.toMatchObject({ code: 'UNKNOWN' });
+    }
+  });
+});
+
+it('HTTP 연결 응답 유실 후 동일 POST의 200으로 완료하고 생성은 한 번만 한다', async () => {
+  const fetch = vi
+    .fn()
+    .mockRejectedValueOnce(new TypeError('response lost'))
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          tag: { tagId: 7, itemId: 12, uid: draft.tag, status: 'ACTIVE', createdAt: '2026-10-07' },
+        }),
+        { status: 200 },
+      ),
+    );
+  vi.stubGlobal('fetch', fetch);
+  const gateway: RegistrationGateway = {
+    save: vi.fn(async () => ({ ...item, id: '12' })),
+    findCreated: vi.fn(async () => {
+      throw new Error('No lookup should be called');
+    }),
+    attachTag: async (id, uid) => {
+      const tag = await postItemTag(Number(id), uid);
+      return { ...item, id: String(tag.itemId), tag: tag.uid, active: tag.status === 'ACTIVE' };
+    },
+  };
+  const flow = new ItemRegistration(gateway, 'new-item');
+  await expect(flow.submit(draft, undefined, () => {})).rejects.toMatchObject({ code: 'UNKNOWN' });
+  expect((await flow.submit(draft, undefined, () => {}))?.tag).toBe(draft.tag);
+  expect(gateway.save).toHaveBeenCalledTimes(1);
+  expect(gateway.findCreated).not.toHaveBeenCalled();
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(fetch.mock.calls[0]).toEqual(fetch.mock.calls[1]);
 });
