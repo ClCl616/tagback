@@ -407,7 +407,7 @@ describe('Mock service contract — not real server verification', () => {
 it('SMS 없는 전화번호 로그인: 오인증 방지, PIN 제한 유지, 새 로그인 후 이전 세션 폐기', async () => {
   const attempt = (phone: string, pin: string) =>
     authApi.loginWithPhone(crypto.randomUUID(), phone, pin, 'phone-test');
-  await expect(attempt('01099998888', AUTH_DEMO.pin)).rejects.toThrow('전화번호 또는 PIN');
+  await expect(attempt('01099998888', AUTH_DEMO.pin)).rejects.toMatchObject({ code: 'ACCOUNT_NOT_FOUND' });
   for (let i = 0; i < 4; i++)
     await expect(attempt(MOCK.demoPhone, '246802')).rejects.toThrow('전화번호 또는 PIN');
   await expect(attempt(MOCK.demoPhone, '246802')).rejects.toMatchObject({ code: 'PIN_WAIT' });

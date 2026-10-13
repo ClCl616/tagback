@@ -38,16 +38,25 @@ function useAuth() {
 }
 function MobileLayout() {
   const location = useLocation();
+  const tabPage = [
+    '/mobile',
+    '/mobile/',
+    '/mobile/code',
+    '/mobile/rentals',
+    '/mobile/history',
+  ].includes(location.pathname);
   return (
     <div className="mobile-shell">
-      <header className="mobile-header">
-        <Link to="/mobile" aria-label="TagBack 홈">
-          <Brand />
-        </Link>
-        <Link className="account-icon" to="/mobile/account" aria-label="내 계정">
-          <UserRound size={21} />
-        </Link>
-      </header>
+      {tabPage && (
+        <header className="mobile-header">
+          <Link to="/mobile" aria-label="TagBack 홈">
+            <Brand />
+          </Link>
+          <Link className="account-icon" to="/mobile/account" aria-label="내 계정">
+            <UserRound size={21} />
+          </Link>
+        </header>
+      )}
       <main className="mobile-main">
         <Outlet />
       </main>
@@ -339,6 +348,21 @@ function Detail() {
 function AuthPage({ mode = 'access' }: { mode?: 'access' | 'signup' | 'reset' | 'change' }) {
   const { token, setToken } = useAuth();
   return <AuthFlow mode={mode} token={token} onLogin={setToken} onClear={() => setToken('')} />;
+}
+function AccountEntry() {
+  const { token } = useAuth();
+  return token ? (
+    <Account />
+  ) : (
+    <div className="page-content">
+      <Back title="마이페이지" />
+      <h1>로그인이 필요해요</h1>
+      <p className="muted">로그인하고 내 계정과 대여 내역을 확인해 주세요.</p>
+      <Link className="primary full" to="/mobile/login">
+        로그인
+      </Link>
+    </div>
+  );
 }
 function Protected({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
@@ -753,14 +777,7 @@ export default function MobileApp() {
               </Protected>
             }
           />
-          <Route
-            path="account"
-            element={
-              <Protected>
-                <Account />
-              </Protected>
-            }
-          />
+          <Route path="account" element={<AccountEntry />} />
           <Route path="*" element={<Navigate to="/mobile" replace />} />
         </Route>
       </Routes>

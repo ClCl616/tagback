@@ -106,7 +106,7 @@ class SmsMockApiIntegrationTest {
                         .header("Idempotency-Key", UUID.randomUUID()).contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isAccepted()).andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.expiresAt").value("2026-10-06T09:05:00Z"))
-                .andExpect(jsonPath("$.resendAvailableAt").value("2026-10-06T09:01:00Z"))
+                .andExpect(jsonPath("$.resendAvailableAt").value("2026-10-06T09:00:30Z"))
                 .andExpect(jsonPath("$.code").doesNotExist()).andReturn().getResponse().getContentAsString();
         UUID id = UUID.fromString(json.readTree(response).get("requestId").asString());
         String code = service.getMockCode(id).code();
@@ -146,17 +146,17 @@ class SmsMockApiIntegrationTest {
         String code = service.getMockCode(old).code();
         var wait = assertThrows(AuthException.class, () -> request(phone, SmsPurpose.SIGNUP));
         assertEquals(AuthErrorCode.SMS_RESEND_WAIT, wait.code());
-        assertEquals(initial.plusSeconds(60), wait.retryAt());
+        assertEquals(initial.plusSeconds(30), wait.retryAt());
         assertNull(requests.findById(old).orElseThrow().getInvalidatedAt());
-        clock.advance(Duration.ofSeconds(60));
+        clock.advance(Duration.ofSeconds(30));
         UUID replacement = request(phone, SmsPurpose.SIGNUP);
         expectError(AuthErrorCode.SMS_REQUEST_INVALIDATED,
                 () -> service.verify(new AuthRequests.SmsVerification(old.toString(), code)));
-        assertEquals(initial.plusSeconds(60), requests.findById(old).orElseThrow().getInvalidatedAt());
+        assertEquals(initial.plusSeconds(30), requests.findById(old).orElseThrow().getInvalidatedAt());
         assertNotEquals(old, replacement);
 
         String replacementCode = service.getMockCode(replacement).code();
-        clock.advance(Duration.ofSeconds(60));
+        clock.advance(Duration.ofSeconds(30));
         UUID newest = request(phone, SmsPurpose.SIGNUP);
         expectError(AuthErrorCode.SMS_REQUEST_INVALIDATED,
                 () -> service.verify(new AuthRequests.SmsVerification(replacement.toString(), replacementCode)));
@@ -172,9 +172,9 @@ class SmsMockApiIntegrationTest {
                 .verificationToken();
         assertNull(grants.findByTokenHash(secrets.tokenHash(token)).orElseThrow().getConsumedAt());
 
-        clock.advance(Duration.ofSeconds(60));
+        clock.advance(Duration.ofSeconds(30));
         UUID replacement = request(phone, SmsPurpose.SIGNUP);
-        assertEquals(initial.plusSeconds(60),
+        assertEquals(initial.plusSeconds(30),
                 grants.findByTokenHash(secrets.tokenHash(token)).orElseThrow().getConsumedAt());
         assertNull(requests.findById(old).orElseThrow().getInvalidatedAt());
         assertEquals(SmsPurpose.SIGNUP,

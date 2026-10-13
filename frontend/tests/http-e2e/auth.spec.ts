@@ -78,7 +78,7 @@ async function signup(page: Page) {
   await expect(page.getByRole('dialog', { name: 'PIN 설정 안내' })).toBeVisible();
   await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
   await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
-  await page.getByRole('button', { name: '계속', exact: true }).click();
+  await page.getByRole('button', { name: '다음', exact: true }).click();
   await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
   await page.getByRole('button', { name: '가입 완료', exact: true }).click();
 }
@@ -112,7 +112,7 @@ test('signup profile, session reload, account and logout use HTTP without storin
   await page.getByRole('button', { name: '로그아웃', exact: true }).click();
   await expect(page.getByLabel('PIN 번호', { exact: true })).toBeVisible();
   await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
-  await page.getByRole('button', { name: '로그인', exact: true }).click();
+
   await expect(page).toHaveURL(/\/mobile$/);
   expect(writes.some((x) => x.path.endsWith('/login/registered'))).toBe(true);
 });
@@ -122,7 +122,7 @@ test('phone PIN login goes to main without requesting SMS', async ({ page }) => 
   await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
   await page.getByRole('button', { name: '다음', exact: true }).click();
   await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
-  await page.getByRole('button', { name: '로그인', exact: true }).click();
+
   await expect(page).toHaveURL(/\/mobile$/);
   expect(writes.some((x) => x.path.endsWith('/login/phone'))).toBe(true);
   expect(writes.some((x) => x.path.includes('/sms/'))).toBe(false);
@@ -202,13 +202,13 @@ test('a corrected PIN uses a new operation and prevents concurrent submissions',
   await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
   await page.getByRole('button', { name: '다음', exact: true }).click();
   await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
-  await page.getByRole('button', { name: '로그인', exact: true }).click();
+
   await expect(page.getByRole('button', { name: '확인 중…', exact: true })).toBeDisabled();
   await expect(page.getByText('PIN이 일치하지 않습니다.', { exact: true })).toBeVisible();
   expect(attempts).toHaveLength(1);
   await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
   await page.getByLabel('PIN 번호', { exact: true }).fill('246802');
-  await page.getByRole('button', { name: '로그인', exact: true }).click();
+
   await expect.poll(() => attempts.length).toBe(2);
   expect(attempts[1].key).not.toBe(attempts[0].key);
   expect(attempts[1].pin).toBe('246802');
@@ -436,8 +436,8 @@ test('recovery navigation, PIN confirmation correction and completion stay on a 
     page.locator('.auth-links').getByRole('link', { name: 'PIN 찾기', exact: true }),
   ).toHaveCount(0);
   await page.getByRole('button', { name: '이전', exact: true }).click();
-  await expect(page).toHaveURL(/\/mobile\/login$/);
-  await page.getByRole('link', { name: 'PIN 찾기', exact: true }).click();
+  await expect(page).toHaveURL(/\/mobile\/account$/);
+  await page.goto('/mobile/recover');
   await expect(page).toHaveURL(/\/mobile\/recover$/);
   await expect(
     page.getByRole('heading', { name: '등록된 전화번호를 확인해 주세요.' }),
@@ -513,4 +513,68 @@ test('a definite retry error leaves unknown-result mode instead of trapping sign
     0,
   );
   await expect(page.getByLabel('전화번호', { exact: true })).toBeVisible();
+});
+
+test('automatic login clears failed PIN and missing account has a signup action', async ({
+  page,
+}) => {
+  await server(page);
+  let requests = 0;
+  await page.route('**/api/v1/auth/login/phone', (route) => {
+    requests++;
+    return route.fulfill({
+      status: 401,
+      json: {
+        error: {
+          code: requests === 1 ? 'PIN_MISMATCH' : 'ACCOUNT_NOT_FOUND',
+          message: '로그인 정보를 확인해 주세요.',
+          retryAt: null,
+        },
+      },
+    });
+  });
+  await page.goto('/mobile/login');
+  await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
+  await page.getByRole('button', { name: '다음', exact: true }).click();
+  await page.getByLabel('PIN 번호', { exact: true }).fill('04825');
+  expect(requests).toBe(0);
+  await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByLabel('PIN 번호', { exact: true })).toHaveValue('');
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
+  await page.getByLabel('PIN 번호', { exact: true }).fill('246802');
+  await expect(page.getByRole('dialog', { name: '가입되지 않은 전화번호예요' })).toBeVisible();
+  expect(requests).toBe(2);
+  await page.getByRole('dialog').getByRole('button', { name: '회원가입', exact: true }).click();
+  await expect(page).toHaveURL(/\/mobile\/signup$/);
+});
+
+test('signup uses lower navigation and clears invalid PIN; auxiliary screens omit logo header', async ({
+  page,
+}) => {
+  await server(page);
+  await beginSignup(page);
+  await expect(page.locator('.mobile-header')).toHaveCount(0);
+  await expect(page.locator('.auth-topline button')).toHaveCount(0);
+  await page.getByRole('button', { name: '인증번호 발송', exact: true }).click();
+  await page.getByLabel('SMS 인증번호').fill('123456');
+  await page.getByRole('button', { name: '인증번호 확인', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
+  await page.getByLabel('PIN 번호', { exact: true }).fill('123456');
+  await page.getByRole('button', { name: '다음', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByLabel('PIN 번호', { exact: true })).toHaveValue('');
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
+  await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
+  await page.getByRole('button', { name: '다음', exact: true }).click();
+  await page.getByRole('button', { name: '이전', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: '사용할 PIN 번호를 설정해 주세요.' }),
+  ).toBeVisible();
+  await page.goto('/mobile/recover');
+  await expect(page.locator('.auth-links')).toHaveCount(0);
+  await page.goto('/mobile/items/calc?station=engineering');
+  await expect(page.locator('.mobile-header')).toHaveCount(0);
+  await page.goto('/mobile');
+  await expect(page.locator('.mobile-header')).toBeVisible();
 });

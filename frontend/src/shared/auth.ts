@@ -300,7 +300,7 @@ const mockAuthApi: AuthAdapter = {
       const user = db.users.find((u) => u.phone === normalizePhone(phone));
       if (!user) {
         rate(authState(db), 'pin:' + source, D.pinRequests);
-        return fail('PIN', '전화번호 또는 PIN이 일치하지 않습니다. 다시 확인해 주세요.');
+        return fail('ACCOUNT_NOT_FOUND', '가입되지 않은 전화번호입니다.');
       }
       try {
         await checkPin(db, user.id, pin, source);

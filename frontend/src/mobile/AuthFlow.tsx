@@ -53,6 +53,7 @@ export default function AuthFlow({
   const [step, setStep] = useState<Step>('boot');
   const [smsRestart, setSmsRestart] = useState(false);
   const [existingAccount, setExistingAccount] = useState(false);
+  const [missingAccount, setMissingAccount] = useState(false);
   const [showPinPolicy, setShowPinPolicy] = useState(false);
   const policyShown = useRef(false);
   useEffect(() => {
@@ -201,6 +202,22 @@ export default function AuthFlow({
       if (!alive.current) return;
       setError(e);
       if (e instanceof ServiceError) {
+        if (
+          [
+            'PIN',
+            'PIN_INVALID',
+            'PIN_MISMATCH',
+            'PIN_WAIT',
+            'PIN_RETRY_WAIT',
+            'PIN_LOCKED',
+            'ACCOUNT_NOT_FOUND',
+          ].includes(e.code)
+        )
+          setPin('');
+        if (mode === 'access' && e.code === 'ACCOUNT_NOT_FOUND') {
+          setError(undefined);
+          setMissingAccount(true);
+        }
         if (mode === 'signup' && e.code === 'PHONE_NUMBER_ALREADY_REGISTERED') {
           setError(undefined);
           setExistingAccount(true);
@@ -336,16 +353,18 @@ export default function AuthFlow({
       }
     });
   }
-  async function submitPin(e: React.FormEvent) {
-    e.preventDefault();
+  async function submitPin(e?: React.FormEvent) {
+    e?.preventDefault();
     if (busy || unknown || wait || locked) return;
     if (!/^\d{6}$/.test(pin)) {
+      setPin('');
       setError(new Error('숫자 6자리를 입력해 주세요.'));
       return;
     }
     if (step === 'setup') {
       const problem = pinError(pin);
       if (problem) {
+        setPin('');
         setError(new Error(problem));
         return;
       }
@@ -393,6 +412,21 @@ export default function AuthFlow({
     setPin(value.replace(/\D/g, '').slice(0, 6));
     operationId.current = '';
   }
+  useEffect(() => {
+    if (mode === 'access' && step === 'pin' && pin.length === 6) void submitPin();
+  }, [pin, step, mode]);
+  function previousSignupStep() {
+    setError(undefined);
+    if (step === 'confirm') {
+      setPin('');
+      setFirstPin('');
+      setStep('setup');
+    } else if (step === 'setup') startPhone();
+    else if (step === 'phone') {
+      startPhone();
+      setStep('profile');
+    } else nav('/mobile/login');
+  }
   if (HTTP_AUTH && mode === 'change')
     return (
       <div className="page-content">
@@ -404,24 +438,27 @@ export default function AuthFlow({
   return (
     <div className="page-content auth-flow">
       <div className="auth-topline">
-        <button
-          className="text-button"
-          disabled={busy || !!unknown}
-          onClick={() => {
-            if (step === 'confirm') {
-              setStep('setup');
-              setPin('');
-              setFirstPin('');
-            } else if (step === 'phone' && mode === 'signup') {
-              startPhone();
-              setStep('profile');
-            } else if (isPin && mode !== 'change') startPhone();
-            else nav(mode === 'signup' || mode === 'reset' ? '/mobile/login' : '/mobile');
-          }}
-          aria-label="이전"
-        >
-          <ArrowLeft size={20} />
-        </button>
+        {mode !== 'signup' && (
+          <button
+            className="text-button"
+            disabled={busy || !!unknown}
+            onClick={() => {
+              if (mode === 'reset') {
+                nav('/mobile/account');
+                return;
+              }
+              if (step === 'confirm') {
+                setStep('setup');
+                setPin('');
+                setFirstPin('');
+              } else if (isPin && mode !== 'change') startPhone();
+              else nav('/mobile');
+            }}
+            aria-label="이전"
+          >
+            <ArrowLeft size={20} />
+          </button>
+        )}
         <span>
           {mode === 'reset'
             ? 'PIN 재설정'
@@ -529,10 +566,15 @@ export default function AuthFlow({
                 ))}
               </select>
             </label>
-            <button className="primary full" type="submit">
-              다음
-              <ArrowRight size={18} />
-            </button>
+            <div className="signup-actions">
+              <button className="secondary" type="button" onClick={previousSignupStep}>
+                이전
+              </button>
+              <button className="primary full" type="submit">
+                다음
+                <ArrowRight size={18} />
+              </button>
+            </div>
           </form>
         </>
       ) : step === 'done' ? (
@@ -644,26 +686,40 @@ export default function AuthFlow({
                   ),
                 )}
               </div>
-              <button
-                className="primary full"
-                type="submit"
-                disabled={busy || wait > 0 || locked || proofExpired}
-              >
-                {busy
-                  ? '확인 중…'
-                  : wait > 0
-                    ? `${wait}초 후 다시 시도`
-                    : step === 'setup'
-                      ? '계속'
-                      : step === 'confirm'
-                        ? mode === 'reset'
-                          ? 'PIN 재설정'
-                          : '가입 완료'
-                        : mode === 'change'
-                          ? '계정 확인'
-                          : '로그인'}
-                <ArrowRight size={18} />
-              </button>
+              <div className={mode === 'signup' ? 'signup-actions' : undefined}>
+                {mode === 'signup' && (
+                  <button
+                    className="secondary"
+                    type="button"
+                    disabled={busy || !!unknown}
+                    onClick={previousSignupStep}
+                  >
+                    이전
+                  </button>
+                )}
+                <button
+                  className="primary full"
+                  type="submit"
+                  disabled={busy || wait > 0 || locked || proofExpired}
+                >
+                  {busy
+                    ? '확인 중…'
+                    : wait > 0
+                      ? `${wait}초 후 다시 시도`
+                      : step === 'setup'
+                        ? mode === 'signup'
+                          ? '다음'
+                          : '계속'
+                        : step === 'confirm'
+                          ? mode === 'reset'
+                            ? 'PIN 재설정'
+                            : '가입 완료'
+                          : mode === 'change'
+                            ? '계정 확인'
+                            : '로그인'}
+                  <ArrowRight size={18} />
+                </button>
+              </div>
             </form>
           </section>
 
@@ -754,39 +810,66 @@ export default function AuthFlow({
                           onChange={(e) => setSms(e.target.value.replace(/\D/g, ''))}
                         />
                       </div>
-                      <button
-                        className="primary full"
-                        type="submit"
-                        disabled={busy || smsRestart || sms.length !== 6 || !remaining}
-                      >
-                        인증번호 확인
-                      </button>
+                      <div className={mode === 'signup' ? 'signup-actions' : undefined}>
+                        {mode === 'signup' && (
+                          <button
+                            type="button"
+                            className="secondary"
+                            disabled={busy}
+                            onClick={previousSignupStep}
+                          >
+                            이전
+                          </button>
+                        )}
+                        <button
+                          className="primary full"
+                          type="submit"
+                          aria-label="인증번호 확인"
+                          disabled={busy || smsRestart || sms.length !== 6 || !remaining}
+                        >
+                          {mode === 'signup' ? '다음' : '인증번호 확인'}
+                        </button>
+                      </div>
                     </>
                   )}
-                  <button
-                    className="secondary full"
-                    type="button"
-                    disabled={busy || wait > 0 || resend > 0}
-                    onClick={() => void send()}
-                  >
-                    {busy
-                      ? '요청 중…'
-                      : Math.max(wait, resend) > 0
-                        ? `${challenge ? '재발송' : '인증 요청'}까지 ${Math.max(wait, resend)}초`
-                        : challenge
-                          ? '인증번호 재발송'
-                          : '인증번호 발송'}{' '}
-                  </button>
+                  <div className={mode === 'signup' && !challenge ? 'signup-actions' : undefined}>
+                    {mode === 'signup' && !challenge && (
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={busy}
+                        onClick={previousSignupStep}
+                      >
+                        이전
+                      </button>
+                    )}
+                    <button
+                      className={challenge ? 'secondary full' : 'primary full'}
+                      type="button"
+                      disabled={busy || wait > 0 || resend > 0}
+                      onClick={() => void send()}
+                    >
+                      {busy
+                        ? '요청 중…'
+                        : Math.max(wait, resend) > 0
+                          ? `${challenge ? '재발송' : '인증 요청'}까지 ${Math.max(wait, resend)}초`
+                          : challenge
+                            ? '인증번호 재발송'
+                            : '인증번호 발송'}{' '}
+                    </button>
+                  </div>
                 </>
               )}
             </form>
           </section>
 
-          <div className="auth-links">
-            {mode !== 'access' && <Link to="/mobile/login">로그인</Link>}
-            {mode !== 'reset' && <Link to="/mobile/recover">PIN 찾기</Link>}
-            {mode !== 'signup' && <Link to="/mobile/signup">회원가입</Link>}
-          </div>
+          {mode !== 'reset' && (
+            <div className="auth-links">
+              {mode !== 'access' && <Link to="/mobile/login">로그인</Link>}
+              <Link to="/mobile/recover">PIN 찾기</Link>
+              {mode !== 'signup' && <Link to="/mobile/signup">회원가입</Link>}
+            </div>
+          )}
         </>
       )}
       <ErrorBox
@@ -839,6 +922,18 @@ export default function AuthFlow({
             기존 계정으로 로그인해 주세요. PIN이 기억나지 않으면 로그인 화면에서 PIN 찾기를 이용해
             주세요.
           </p>
+        </MessagePopup>
+      )}
+      {missingAccount && (
+        <MessagePopup
+          title="가입되지 않은 전화번호예요"
+          onClose={() => {
+            setMissingAccount(false);
+            startPhone();
+          }}
+          action={{ label: '회원가입', onClick: () => nav('/mobile/signup') }}
+        >
+          <p>전화번호를 다시 확인하거나 회원가입을 진행해 주세요.</p>
         </MessagePopup>
       )}
     </div>

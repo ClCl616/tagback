@@ -369,6 +369,15 @@ em {
 .mobile-main {
   padding-bottom: 86px;
 }
+.signup-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 18px;
+}
+.signup-actions > button {
+  flex: 1;
+  width: auto;
+}
 .bottom-nav {
   position: fixed;
   z-index: 20;
