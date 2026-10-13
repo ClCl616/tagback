@@ -26,10 +26,12 @@ export const adminApi = {
     const item = await transaction((db) => {
       const item = db.items.find((i) => i.id === id && !i.deleted);
       if (!item) return fail('ITEM_NOT_FOUND', '물품을 찾을 수 없습니다. 목록을 확인해 주세요.');
+      if (item.tag) {
+        if (item.tag === uid) return item;
+        return fail('ITEM_ALREADY_TAGGED', '이 물품에는 다른 태그가 연결되어 있습니다.');
+      }
       if (db.items.some((i) => i.tag === uid))
         return fail('TAG_ALREADY_REGISTERED', '이미 등록된 태그입니다. 다른 태그를 인식해 주세요.');
-      if (item.tag)
-        return fail('ITEM_ALREADY_TAGGED', '이 물품에는 이미 태그가 연결되어 있습니다.');
       item.tag = uid;
       item.active = true;
       return item;
