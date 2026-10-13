@@ -43,8 +43,8 @@ class TagRegistrationConcurrencyIntegrationTest {
         TestItems data = transactionTemplate.execute(status -> {
             ItemType type = itemTypeRepository.saveAndFlush(
                     new ItemType("경합 테스트 " + UUID.randomUUID(), null));
-            Item first = itemRepository.saveAndFlush(new Item("테스트 A", ItemStatus.AVAILABLE, type));
-            Item second = itemRepository.saveAndFlush(new Item("테스트 B", ItemStatus.AVAILABLE, type));
+            Item first = itemRepository.saveAndFlush(new Item("테스트 A", ItemStatus.TAG_PENDING, type));
+            Item second = itemRepository.saveAndFlush(new Item("테스트 B", ItemStatus.TAG_PENDING, type));
             return new TestItems(type.getId(), first.getId(), second.getId());
         });
         String uid = UUID.randomUUID().toString().replace("-", "").substring(0, 14).toUpperCase();
@@ -63,6 +63,8 @@ class TagRegistrationConcurrencyIntegrationTest {
                     "SELECT COUNT(*) FROM nfc_tags WHERE tag_uid = ?", Long.class, uid));
         } finally {
             workers.shutdownNow();
+            jdbcTemplate.update("UPDATE items SET status = 'TAG_PENDING' WHERE item_id IN (?, ?)", data.firstId(), data.secondId());
+            jdbcTemplate.update("DELETE FROM item_status_history WHERE item_id IN (?, ?)", data.firstId(), data.secondId());
             jdbcTemplate.update("DELETE FROM nfc_tags WHERE item_id IN (?, ?)", data.firstId(), data.secondId());
             jdbcTemplate.update("DELETE FROM items WHERE item_id IN (?, ?)", data.firstId(), data.secondId());
             jdbcTemplate.update("DELETE FROM item_types WHERE item_type_id = ?", data.typeId());
@@ -74,7 +76,7 @@ class TagRegistrationConcurrencyIntegrationTest {
         TestItem data = transactionTemplate.execute(status -> {
             ItemType type = itemTypeRepository.saveAndFlush(
                     new ItemType("동일 물품 재시도 " + UUID.randomUUID(), null));
-            Item item = itemRepository.saveAndFlush(new Item("테스트 물품", ItemStatus.AVAILABLE, type));
+            Item item = itemRepository.saveAndFlush(new Item("테스트 물품", ItemStatus.TAG_PENDING, type));
             return new TestItem(type.getId(), item.getId());
         });
         String uid = UUID.randomUUID().toString().replace("-", "").substring(0, 14).toUpperCase();
@@ -101,6 +103,8 @@ class TagRegistrationConcurrencyIntegrationTest {
                     Long.class, data.itemId(), uid));
         } finally {
             workers.shutdownNow();
+            jdbcTemplate.update("UPDATE items SET status = 'TAG_PENDING' WHERE item_id = ?", data.itemId());
+            jdbcTemplate.update("DELETE FROM item_status_history WHERE item_id = ?", data.itemId());
             jdbcTemplate.update("DELETE FROM nfc_tags WHERE item_id = ?", data.itemId());
             jdbcTemplate.update("DELETE FROM items WHERE item_id = ?", data.itemId());
             jdbcTemplate.update("DELETE FROM item_types WHERE item_type_id = ?", data.typeId());

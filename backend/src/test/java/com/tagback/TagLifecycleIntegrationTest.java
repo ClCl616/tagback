@@ -50,6 +50,8 @@ class TagLifecycleIntegrationTest {
     void cleanup() {
         for (Long id : itemIds) {
             jdbc.update("DELETE FROM rentals WHERE item_id = ?", id);
+            jdbc.update("UPDATE items SET status = 'TAG_PENDING' WHERE item_id = ?", id);
+            jdbc.update("DELETE FROM item_status_history WHERE item_id = ?", id);
             jdbc.update("DELETE FROM nfc_tags WHERE item_id = ?", id);
             jdbc.update("DELETE FROM items WHERE item_id = ?", id);
         }
@@ -310,7 +312,7 @@ class TagLifecycleIntegrationTest {
         String suffix = UUID.randomUUID().toString();
         ItemType type = types.saveAndFlush(new ItemType("교체 테스트 " + suffix, null));
         typeIds.add(type.getId());
-        Item item = items.saveAndFlush(new Item("테스트 물품 " + suffix, ItemStatus.AVAILABLE, type));
+        Item item = items.saveAndFlush(new Item("테스트 물품 " + suffix, ItemStatus.TAG_PENDING, type));
         itemIds.add(item.getId());
         return item;
     }
