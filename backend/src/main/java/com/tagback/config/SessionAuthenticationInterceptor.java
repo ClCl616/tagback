@@ -28,7 +28,8 @@ public class SessionAuthenticationInterceptor implements HandlerInterceptor {
         // A public marker must never override a method or controller's administrator restriction.
         if (!adminOnly && method.hasMethodAnnotation(PublicApi.class)) return true;
         // Rental authentication must already have succeeded in the preceding interceptor.
-        if (!adminOnly && method.hasMethodAnnotation(RentalAuthenticated.class)
+        if (!adminOnly && (method.hasMethodAnnotation(RentalAuthenticated.class)
+                || method.hasMethodAnnotation(SessionOrRentalAuthenticated.class))
                 && request.getAttribute(RentalAuthenticationInterceptor.ATTRIBUTE) != null) return true;
         response.setHeader("Cache-Control", "no-store");
         var service = sessions.getIfAvailable();

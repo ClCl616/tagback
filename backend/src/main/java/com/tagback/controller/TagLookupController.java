@@ -1,5 +1,6 @@
 package com.tagback.controller;
 
+import com.tagback.config.SessionOrRentalAuthenticated;
 import com.tagback.dto.tag.TagLookupResponse;
 import com.tagback.service.TagLifecycleService;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,6 +18,7 @@ public class TagLookupController {
     }
 
     @GetMapping("/{uid}")
+    @SessionOrRentalAuthenticated
     public TagLookupResponse lookup(@PathVariable String uid) {
         return lifecycle.lookup(uid);
     }
