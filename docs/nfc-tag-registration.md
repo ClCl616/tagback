@@ -63,7 +63,7 @@ Content-Type: application/json
 - `PUT`으로 새 활성 태그가 생기거나 같은 물품의 과거 태그를 재활성화하면, 물품 상태가 `TAG_PENDING`일 때만 `AVAILABLE`로 변경한다. 이미 활성화된 같은 UID의 재요청(`200`)이나 `AVAILABLE` 물품의 교체는 상태·이력을 추가로 변경하지 않는다.
 - `DELETE`로 활성 태그를 실제 비활성화하면, 물품 상태가 `AVAILABLE`일 때만 `TAG_PENDING`으로 변경한다. 활성 태그가 없는 멱등 `DELETE`(`204`)는 상태·이력을 변경하지 않는다. `RENTED`, `INSPECTION`, `REPAIR` 상태는 태그 처리로 바꾸지 않는다.
 - 태그 변경과 상태 변경·`item_status_history` 기록은 같은 트랜잭션에서 처리한다. 상태가 실제 바뀐 경우에만 관리자 ID와 `source=TAG_REGISTRATION`, `reason=null`로 이력을 남긴다. `TAG_REGISTRATION`은 V12의 `source` CHECK 제약에 허용된 값이라 PUT·DELETE에서 재사용한다.
-- `GET /api/tags/{uid}`는 로그인한 `USER`와 `ADMIN` 모두 호출할 수 있다. UID는 등록 때와 같이 정규화한다. 응답 예시는 아래와 같다. `rentable`은 현재 물품 상태가 `AVAILABLE`일 때만 `true`다.
+- `GET /api/tags/{uid}`는 로그인한 `USER`·`ADMIN`의 세션 쿠키 또는 키오스크의 유효한 `Authorization: Bearer <반출 전용 토큰>`으로 호출할 수 있다. 토큰 경로는 개발용 `sms-mock`에서만 동작하며 `prod`·`production`에서는 사용할 수 없다. 헤더가 없으면 기존 세션 인증을 사용하고, 헤더가 있으면 토큰을 검증하며 잘못된 토큰을 세션 쿠키로 우회하지 않는다. 세션·토큰 모두 없으면 `401 SESSION_REQUIRED`, 잘못된 토큰은 `401 RENTAL_GRANT_INVALID`, 만료된 토큰은 `410 RENTAL_GRANT_EXPIRED`다. 반출 토큰은 이 조회와 반출 API에만 허용되며 태그 등록·교체·해제나 관리자 API의 권한이 되지 않는다. UID는 등록 때와 같이 정규화한다. 응답 예시는 아래와 같다. `rentable`은 현재 물품 상태가 `AVAILABLE`일 때만 `true`다.
 
 ```json
 {"item":{"itemId":12,"name":"공용 물품","status":"AVAILABLE","rentable":true},"tag":{"uid":"04A23B1C5D6E81","status":"ACTIVE"}}
