@@ -80,11 +80,13 @@ class TagLifecycleAuthorizationTest {
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
 
         when(lifecycle.lookup("04A23B1C5D6E80")).thenReturn(new TagLookupResponse(
-                new TagLookupResponse.Item(12L, "공용 물품", ItemStatus.AVAILABLE, true),
+                new TagLookupResponse.Item(12L, "공용 물품", ItemStatus.AVAILABLE, true, "3", "공용 우산"),
                 new TagLookupResponse.Tag("04A23B1C5D6E80", "ACTIVE")));
         mvc.perform(get("/api/tags/04A23B1C5D6E80").cookie(user))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.item.itemId").value(12))
+                .andExpect(jsonPath("$.item.itemTypeId").value("3"))
+                .andExpect(jsonPath("$.item.itemTypeName").value("공용 우산"))
                 .andExpect(jsonPath("$.item.rentable").value(true))
                 .andExpect(jsonPath("$.tag.status").value("ACTIVE"));
     }
@@ -168,11 +170,13 @@ class TagLifecycleAuthorizationTest {
         when(rentalCodes.authenticate(token)).thenReturn(new Grant(UUID.randomUUID(), UUID.randomUUID(),
                 Instant.now().plusSeconds(60)));
         when(lifecycle.lookup("04A23B1C5D6E80")).thenReturn(new TagLookupResponse(
-                new TagLookupResponse.Item(12L, "공용 물품", ItemStatus.AVAILABLE, true),
+                new TagLookupResponse.Item(12L, "공용 물품", ItemStatus.AVAILABLE, true, "3", "공용 우산"),
                 new TagLookupResponse.Tag("04A23B1C5D6E80", "ACTIVE")));
         mvc.perform(get("/api/tags/04A23B1C5D6E80").header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.item.itemId").value(12))
+                .andExpect(jsonPath("$.item.itemTypeId").value("3"))
+                .andExpect(jsonPath("$.item.itemTypeName").value("공용 우산"))
                 .andExpect(jsonPath("$.tag.status").value("ACTIVE"));
         verifyNoInteractions(sessions);
     }

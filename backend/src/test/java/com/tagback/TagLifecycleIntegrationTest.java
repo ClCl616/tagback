@@ -189,6 +189,8 @@ class TagLifecycleIntegrationTest {
         TagLookupResponse result = lifecycle.lookup(uid.toLowerCase());
         assertEquals(item.getId(), result.item().itemId());
         assertEquals(item.getItemName(), result.item().name());
+        assertEquals(item.getItemType().getId().toString(), result.item().itemTypeId());
+        assertEquals(item.getItemType().getName(), result.item().itemTypeName());
         assertEquals(ItemStatus.AVAILABLE, result.item().status());
         assertTrue(result.item().rentable());
         assertEquals("ACTIVE", result.tag().status());
