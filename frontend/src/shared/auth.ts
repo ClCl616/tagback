@@ -1,3 +1,5 @@
+import { HTTP_AUTH } from './authMode';
+import { httpAuthApi } from './httpAuth';
 import {
   before,
   transaction,
@@ -183,7 +185,7 @@ async function operation(
     );
   return result;
 }
-export const authApi: AuthAdapter = {
+const mockAuthApi: AuthAdapter = {
   async requestSms(phone, purpose, source, reauth) {
     await before(false, 'auth');
     if (!phoneValid(phone) || !source || !['access', 'reset', 'change'].includes(purpose))
@@ -298,7 +300,7 @@ export const authApi: AuthAdapter = {
       const user = db.users.find((u) => u.phone === normalizePhone(phone));
       if (!user) {
         rate(authState(db), 'pin:' + source, D.pinRequests);
-        return fail('PIN', '전화번호 또는 PIN이 일치하지 않습니다. 다시 확인해 주세요.');
+        return fail('ACCOUNT_NOT_FOUND', '가입되지 않은 전화번호입니다.');
       }
       try {
         await checkPin(db, user.id, pin, source);
@@ -421,3 +423,5 @@ export async function simulateOtherBrowser() {
   const source = 'simulated-other-browser';
   return authApi.loginWithPhone(crypto.randomUUID(), MOCK.demoPhone, D.pin, source);
 }
+
+export const authApi: AuthAdapter = HTTP_AUTH ? httpAuthApi : mockAuthApi;

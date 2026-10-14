@@ -52,6 +52,8 @@ public class SmsAuthService {
     @Transactional
     public AuthResponses.SmsRequested request(AuthRequests.SmsRequest input, UUID idempotencyKey) {
         String phone = phones.normalize(input.phoneNumber());
+        if (input.purpose() == SmsPurpose.SIGNUP && users.existsByPhoneNumber(phone))
+            throw new AuthException(AuthErrorCode.PHONE_NUMBER_ALREADY_REGISTERED);
         if (input.purpose() == SmsPurpose.PIN_RESET && !users.existsByPhoneNumber(phone))
             throw new AuthException(AuthErrorCode.ACCOUNT_NOT_FOUND);
         if (input.purpose() == SmsPurpose.PHONE_CHANGE)

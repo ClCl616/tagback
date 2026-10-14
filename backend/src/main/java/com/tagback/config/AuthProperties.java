@@ -13,7 +13,7 @@ import jakarta.validation.constraints.AssertTrue;
 @ConfigurationProperties("tagback.auth")
 public record AuthProperties(
         @DefaultValue("5m") @NotNull Duration smsCodeTtl,
-        @DefaultValue("1m") @NotNull Duration smsResendInterval,
+        @DefaultValue("30s") @NotNull Duration smsResendInterval,
         @DefaultValue("5") @Min(1) @Max(5) int smsMaxAttempts,
         @DefaultValue("24h") @NotNull Duration smsRequestWindow,
         @DefaultValue("10") @Min(1) int smsMaxRequests,

@@ -85,6 +85,20 @@ class SmsMockApiIntegrationTest {
         assertEquals(code, assertThrows(AuthException.class, action::run).code());
     }
 
+    @Test void registeredNumberIsRejectedBeforeSignupSmsButCanResetPin() throws Exception {
+        String phone = phone();
+        users.saveAndFlush(new User(phone, "unused-pin-hash", initial));
+        String localPhone = "0" + phone.substring(3);
+        mvc.perform(post("/api/v1/auth/sms/requests")
+                        .header("Idempotency-Key", UUID.randomUUID()).contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(new AuthRequests.SmsRequest(localPhone, SmsPurpose.SIGNUP))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("PHONE_NUMBER_ALREADY_REGISTERED"));
+        assertEquals(0, requests.countSentSince(phone, initial.minusSeconds(1)));
+        assertEquals(0, jdbc.queryForObject("select count(*) from sms_request_gates where phone_number = ?", Integer.class, phone));
+        assertNotNull(request(phone, SmsPurpose.PIN_RESET));
+    }
+
     @Test void apiReturnsUtcMetadataAndIssuesOnlyHashedGrantAfterVerification() throws Exception {
         String phone = phone();
         String body = json.writeValueAsString(new AuthRequests.SmsRequest(phone, SmsPurpose.SIGNUP));
@@ -92,7 +106,7 @@ class SmsMockApiIntegrationTest {
                         .header("Idempotency-Key", UUID.randomUUID()).contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isAccepted()).andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.expiresAt").value("2026-10-06T09:05:00Z"))
-                .andExpect(jsonPath("$.resendAvailableAt").value("2026-10-06T09:01:00Z"))
+                .andExpect(jsonPath("$.resendAvailableAt").value("2026-10-06T09:00:30Z"))
                 .andExpect(jsonPath("$.code").doesNotExist()).andReturn().getResponse().getContentAsString();
         UUID id = UUID.fromString(json.readTree(response).get("requestId").asString());
         String code = service.getMockCode(id).code();
@@ -132,17 +146,17 @@ class SmsMockApiIntegrationTest {
         String code = service.getMockCode(old).code();
         var wait = assertThrows(AuthException.class, () -> request(phone, SmsPurpose.SIGNUP));
         assertEquals(AuthErrorCode.SMS_RESEND_WAIT, wait.code());
-        assertEquals(initial.plusSeconds(60), wait.retryAt());
+        assertEquals(initial.plusSeconds(30), wait.retryAt());
         assertNull(requests.findById(old).orElseThrow().getInvalidatedAt());
-        clock.advance(Duration.ofSeconds(60));
+        clock.advance(Duration.ofSeconds(30));
         UUID replacement = request(phone, SmsPurpose.SIGNUP);
         expectError(AuthErrorCode.SMS_REQUEST_INVALIDATED,
                 () -> service.verify(new AuthRequests.SmsVerification(old.toString(), code)));
-        assertEquals(initial.plusSeconds(60), requests.findById(old).orElseThrow().getInvalidatedAt());
+        assertEquals(initial.plusSeconds(30), requests.findById(old).orElseThrow().getInvalidatedAt());
         assertNotEquals(old, replacement);
 
         String replacementCode = service.getMockCode(replacement).code();
-        clock.advance(Duration.ofSeconds(60));
+        clock.advance(Duration.ofSeconds(30));
         UUID newest = request(phone, SmsPurpose.SIGNUP);
         expectError(AuthErrorCode.SMS_REQUEST_INVALIDATED,
                 () -> service.verify(new AuthRequests.SmsVerification(replacement.toString(), replacementCode)));
@@ -158,9 +172,9 @@ class SmsMockApiIntegrationTest {
                 .verificationToken();
         assertNull(grants.findByTokenHash(secrets.tokenHash(token)).orElseThrow().getConsumedAt());
 
-        clock.advance(Duration.ofSeconds(60));
+        clock.advance(Duration.ofSeconds(30));
         UUID replacement = request(phone, SmsPurpose.SIGNUP);
-        assertEquals(initial.plusSeconds(60),
+        assertEquals(initial.plusSeconds(30),
                 grants.findByTokenHash(secrets.tokenHash(token)).orElseThrow().getConsumedAt());
         assertNull(requests.findById(old).orElseThrow().getInvalidatedAt());
         assertEquals(SmsPurpose.SIGNUP,
