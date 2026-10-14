@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -49,8 +50,13 @@ public class TagLifecycleController {
     @AdminOnly
     @DeleteMapping("/{itemId}/tag")
     public ResponseEntity<Void> deactivate(@PathVariable Long itemId,
+                                           @RequestParam Map<String, String> parameters,
                                            @RequestAttribute(AuthenticatedUser.ATTRIBUTE) AuthenticatedUser user) {
-        lifecycle.deactivate(itemId, user.userId());
+        if (!parameters.containsKey("expectedUid")) {
+            throw new TagRegistrationException(HttpStatus.BAD_REQUEST, "VALIDATION",
+                    "expectedUid가 필요합니다.");
+        }
+        lifecycle.deactivate(itemId, parameters.get("expectedUid"), user.userId());
         return ResponseEntity.noContent().build();
     }
 

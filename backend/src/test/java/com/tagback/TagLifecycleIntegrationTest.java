@@ -111,11 +111,11 @@ class TagLifecycleIntegrationTest {
         assertEquals(ItemStatus.AVAILABLE, status(item.getId()));
         assertEquals(before + 1, historyCount(item.getId()));
         assertLatestHistory(item.getId(), ItemStatus.TAG_PENDING, ItemStatus.AVAILABLE);
-        lifecycle.deactivate(item.getId(), actorUserId);
+        lifecycle.deactivate(item.getId(), uid, actorUserId);
         assertEquals(ItemStatus.TAG_PENDING, status(item.getId()));
         assertEquals(before + 2, historyCount(item.getId()));
         assertLatestHistory(item.getId(), ItemStatus.AVAILABLE, ItemStatus.TAG_PENDING);
-        lifecycle.deactivate(item.getId(), actorUserId);
+        lifecycle.deactivate(item.getId(), "", actorUserId);
         assertEquals(ItemStatus.TAG_PENDING, status(item.getId()));
         assertEquals(before + 2, historyCount(item.getId()));
 
@@ -135,7 +135,7 @@ class TagLifecycleIntegrationTest {
         String uid = uid();
         var original = registration.register(item.getId(), uid);
 
-        lifecycle.deactivate(item.getId(), actorUserId);
+        lifecycle.deactivate(item.getId(), uid, actorUserId);
         assertEquals(0L, countActive(item.getId()));
         assertEquals(ItemStatus.TAG_PENDING, status(item.getId()));
         long before = historyCount(item.getId());
@@ -157,7 +157,7 @@ class TagLifecycleIntegrationTest {
         Item second = item();
         String uid = uid();
         registration.register(first.getId(), uid);
-        lifecycle.deactivate(first.getId(), actorUserId);
+        lifecycle.deactivate(first.getId(), uid, actorUserId);
 
         assertEquals("TAG_ALREADY_REGISTERED", assertThrows(TagRegistrationException.class,
                 () -> registration.register(second.getId(), uid)).code());
@@ -174,7 +174,7 @@ class TagLifecycleIntegrationTest {
         assertEquals("ITEM_NOT_FOUND", assertThrows(TagRegistrationException.class,
                 () -> lifecycle.replace(Long.MAX_VALUE, uid(), null, actorUserId)).code());
         assertEquals("ITEM_NOT_FOUND", assertThrows(TagRegistrationException.class,
-                () -> lifecycle.deactivate(Long.MAX_VALUE, actorUserId)).code());
+                () -> lifecycle.deactivate(Long.MAX_VALUE, "", actorUserId)).code());
     }
 
     @Test
@@ -192,7 +192,7 @@ class TagLifecycleIntegrationTest {
         assertEquals("TAG_NOT_FOUND", assertThrows(TagRegistrationException.class,
                 () -> lifecycle.lookup(uid())).code());
 
-        lifecycle.deactivate(item.getId(), actorUserId);
+        lifecycle.deactivate(item.getId(), uid, actorUserId);
         assertEquals("TAG_INACTIVE", assertThrows(TagRegistrationException.class,
                 () -> lifecycle.lookup(uid)).code());
     }
@@ -274,7 +274,7 @@ class TagLifecycleIntegrationTest {
             assertEquals(state, status(item.getId()));
             assertEquals(before, historyCount(item.getId()));
 
-            lifecycle.deactivate(item.getId(), actorUserId);
+            lifecycle.deactivate(item.getId(), tags.findByItem_Id(item.getId()).orElseThrow().getUid(), actorUserId);
             assertEquals(state, status(item.getId()));
             assertEquals(before, historyCount(item.getId()));
         }
@@ -285,10 +285,34 @@ class TagLifecycleIntegrationTest {
         Item item = item();
         long before = historyCount(item.getId());
 
-        lifecycle.deactivate(item.getId(), actorUserId);
+        lifecycle.deactivate(item.getId(), "", actorUserId);
 
         assertEquals(ItemStatus.TAG_PENDING, status(item.getId()));
         assertEquals(before, historyCount(item.getId()));
+    }
+
+    @Test
+    void deleteExpectedUidMustMatchCurrentActiveTag() {
+        Item item = item();
+        String uid = uid();
+        registration.register(item.getId(), uid);
+        long before = historyCount(item.getId());
+
+        assertEquals("TAG_CHANGED", assertThrows(TagRegistrationException.class,
+                () -> lifecycle.deactivate(item.getId(), "", actorUserId)).code());
+        assertEquals("TAG_CHANGED", assertThrows(TagRegistrationException.class,
+                () -> lifecycle.deactivate(item.getId(), uid(), actorUserId)).code());
+        assertEquals(1L, countActive(item.getId()));
+        assertEquals(before, historyCount(item.getId()));
+
+        lifecycle.deactivate(item.getId(), uid.toLowerCase(), actorUserId);
+        assertEquals(0L, countActive(item.getId()));
+        assertEquals("TAG_CHANGED", assertThrows(TagRegistrationException.class,
+                () -> lifecycle.deactivate(item.getId(), uid, actorUserId)).code());
+        lifecycle.deactivate(item.getId(), "", actorUserId);
+        assertEquals("TAG_CHANGED", assertThrows(TagRegistrationException.class,
+                () -> lifecycle.deactivate(item.getId(), uid, actorUserId)).code());
+        assertEquals(ItemStatus.TAG_PENDING, status(item.getId()));
     }
 
     @Test
@@ -298,7 +322,7 @@ class TagLifecycleIntegrationTest {
         registration.register(item.getId(), oldUid);
         jdbc.update("UPDATE items SET status = 'RENTED' WHERE item_id = ?", item.getId());
         assertRentedTagUnchanged(item, oldUid);
-        lifecycle.deactivate(itemWithoutTagAndRentedStatus().getId(), actorUserId);
+        lifecycle.deactivate(itemWithoutTagAndRentedStatus().getId(), "", actorUserId);
     }
 
     @Test
@@ -318,7 +342,7 @@ class TagLifecycleIntegrationTest {
         registration.register(item.getId(), oldUid);
         addRental(item, true);
         assertTrue(lifecycle.replace(item.getId(), newUid, oldUid, actorUserId).created());
-        lifecycle.deactivate(item.getId(), actorUserId);
+        lifecycle.deactivate(item.getId(), newUid, actorUserId);
         assertEquals(0L, countActive(item.getId()));
     }
 
@@ -327,7 +351,7 @@ class TagLifecycleIntegrationTest {
         assertEquals("ITEM_RENTED", assertThrows(TagRegistrationException.class,
                 () -> lifecycle.replace(item.getId(), uid(), oldUid, actorUserId)).code());
         assertEquals("ITEM_RENTED", assertThrows(TagRegistrationException.class,
-                () -> lifecycle.deactivate(item.getId(), actorUserId)).code());
+                () -> lifecycle.deactivate(item.getId(), oldUid, actorUserId)).code());
         assertEquals(oldUid, tags.findByItem_Id(item.getId()).orElseThrow().getUid());
         assertEquals(1L, countActive(item.getId()));
         assertEquals(before, historyCount(item.getId()));

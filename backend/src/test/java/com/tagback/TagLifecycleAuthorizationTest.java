@@ -49,7 +49,7 @@ class TagLifecycleAuthorizationTest {
                         .content("{\"uid\":\"04A23B1C5D6E80\",\"expectedUid\":null}"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("SESSION_REQUIRED"));
-        mvc.perform(delete("/api/items/12/tag"))
+        mvc.perform(delete("/api/items/12/tag").param("expectedUid", "04A23B1C5D6E80"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("SESSION_REQUIRED"));
         mvc.perform(get("/api/tags/04A23B1C5D6E80"))
@@ -65,7 +65,7 @@ class TagLifecycleAuthorizationTest {
                         .content("{\"uid\":\"04A23B1C5D6E80\",\"expectedUid\":null}"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
-        mvc.perform(delete("/api/items/12/tag").cookie(user))
+        mvc.perform(delete("/api/items/12/tag").cookie(user).param("expectedUid", "04A23B1C5D6E80"))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
 
@@ -94,8 +94,9 @@ class TagLifecycleAuthorizationTest {
                     .andExpect(i == 0 ? status().isCreated() : status().isOk())
                     .andExpect(jsonPath("$.tag.tagId").value(1));
         }
-        mvc.perform(delete("/api/items/12/tag").cookie(admin)).andExpect(status().isNoContent());
-        verify(lifecycle).deactivate(12L, 8L);
+        mvc.perform(delete("/api/items/12/tag").cookie(admin).param("expectedUid", "04A23B1C5D6E80"))
+                .andExpect(status().isNoContent());
+        verify(lifecycle).deactivate(12L, "04A23B1C5D6E80", 8L);
     }
 
     @Test
@@ -106,7 +107,13 @@ class TagLifecycleAuthorizationTest {
                         .content("{\"uid\":\"04A23B1C5D6E80\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("VALIDATION"));
+        mvc.perform(delete("/api/items/12/tag").cookie(admin))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("VALIDATION"));
         verifyNoInteractions(lifecycle);
+        mvc.perform(delete("/api/items/12/tag").cookie(admin).param("expectedUid", ""))
+                .andExpect(status().isNoContent());
+        verify(lifecycle).deactivate(12L, "", 8L);
     }
 
     @Test

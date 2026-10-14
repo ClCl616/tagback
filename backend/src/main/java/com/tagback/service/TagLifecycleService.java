@@ -95,10 +95,17 @@ public class TagLifecycleService {
     }
 
     @Transactional
-    public void deactivate(Long itemId, Long actorUserId) {
+    public void deactivate(Long itemId, String rawExpectedUid, Long actorUserId) {
         Item item = items.findForUpdate(itemId).orElseThrow(() ->
                 new TagRegistrationException(HttpStatus.NOT_FOUND, "ITEM_NOT_FOUND", "물품을 찾을 수 없습니다."));
         NfcTag active = tags.findByItem_Id(itemId).orElse(null);
+        if (rawExpectedUid == null) {
+            throw new TagRegistrationException(HttpStatus.BAD_REQUEST, "VALIDATION", "expectedUid가 필요합니다.");
+        }
+        String expectedUid = rawExpectedUid.isEmpty() ? null : TagUidNormalizer.normalize(rawExpectedUid);
+        if (!java.util.Objects.equals(expectedUid, active == null ? null : active.getUid())) {
+            throw new TagRegistrationException(HttpStatus.CONFLICT, "TAG_CHANGED", "활성 태그가 변경되었습니다.");
+        }
         if (active == null) return;
         rejectIfRented(item);
         active.deactivate();

@@ -58,7 +58,7 @@ Content-Type: application/json
 
 - `PUT /api/items/{itemId}/tag`의 본문은 `{"uid":"04A23B1C5D6E81","expectedUid":"04A23B1C5D6E80"}`이다. `expectedUid` 키는 필수이며, 활성 태그가 없다고 기대하면 `null`을 보낸다. 키를 생략하면 `400 VALIDATION`이다. 두 UID 문자열은 서버에서 정규화한다.
 - 물품 행 잠금 안에서 요청 UID가 이미 활성이라면 `expectedUid`가 달라도 기존 태그 정보와 `200`을 반환한다. 그렇지 않으면 정규화한 `expectedUid`와 현재 활성 UID를 비교해 다르면 `409 TAG_CHANGED`다. 이어서 물품 상태가 `RENTED`이거나 미반납 대여 기록(`rentals.returned_at IS NULL`)이 있으면 `409 ITEM_RENTED`다. 통과하면 기존 활성 태그를 비활성화하고 새 태그를 만든다. 같은 물품의 과거 비활성 UID라면 기존 행의 `deactivated_at`을 `NULL`로 바꿔 재활성화한다. 변경은 한 트랜잭션이며 새 연결·재활성화는 `201`이다. 같은 `expectedUid`를 보낸 서로 다른 UID의 동시 교체 중 하나만 성공하고 다른 요청은 `409 TAG_CHANGED`다.
-- `DELETE /api/items/{itemId}/tag`는 활성 태그를 비활성화하고 `204`를 반환한다. 활성 태그가 없으면 대여 중이어도 변경 없이 `204`다. 활성 태그가 있는데 대여 중이면 `409 ITEM_RENTED`다. 존재하지 않는 물품은 `404 ITEM_NOT_FOUND`다.
+- `DELETE /api/items/{itemId}/tag?expectedUid=<UID>`는 현재 활성 UID가 일치할 때만 태그를 비활성화하고 `204`를 반환한다. `?expectedUid=`(빈 값)은 활성 태그가 없다고 기대한다는 뜻으로, 실제로 없으면 대여 중이어도 변경 없이 `204`다. 기대 UID와 실제 활성 UID가 다르면 `409 TAG_CHANGED`, 파라미터를 생략하면 `400 VALIDATION`이다. 활성 태그가 있는데 대여 중이면 UID 일치 확인 후 `409 ITEM_RENTED`다. 존재하지 않는 물품은 `404 ITEM_NOT_FOUND`다. 따라서 성공한 DELETE를 옛 UID로 재시도하면 더 이상 `204`가 아니라 `409 TAG_CHANGED`이며, 태그가 없는 상태를 확인한 뒤 빈 값을 보내야 한다.
 - `PUT`과 `DELETE`는 관리자 세션 전용이며 교체·해제 시 물품 행을 잠가 같은 물품에 대한 동시 요청을 직렬화한다. `POST` 등록 계약은 바뀌지 않는다.
 - `PUT`으로 새 활성 태그가 생기거나 같은 물품의 과거 태그를 재활성화하면, 물품 상태가 `TAG_PENDING`일 때만 `AVAILABLE`로 변경한다. 이미 활성화된 같은 UID의 재요청(`200`)이나 `AVAILABLE` 물품의 교체는 상태·이력을 추가로 변경하지 않는다.
 - `DELETE`로 활성 태그를 실제 비활성화하면, 물품 상태가 `AVAILABLE`일 때만 `TAG_PENDING`으로 변경한다. 활성 태그가 없는 멱등 `DELETE`(`204`)는 상태·이력을 변경하지 않는다. `RENTED`, `INSPECTION`, `REPAIR` 상태는 태그 처리로 바꾸지 않는다.
