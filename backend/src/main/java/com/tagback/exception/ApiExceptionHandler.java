@@ -16,6 +16,12 @@ import org.springframework.core.annotation.Order;
 @RestControllerAdvice
 @Order(0)
 public class ApiExceptionHandler {
+    @ExceptionHandler(RentalException.class)
+    public ResponseEntity<ApiErrorResponse> handleRental(RentalException exception) {
+        return ResponseEntity.status(exception.status()).header("Cache-Control", "no-store").body(new ApiErrorResponse(
+                new ApiErrorResponse.Error(exception.code(), exception.getMessage(), exception.retryAt())));
+    }
+
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
     public ResponseEntity<ApiErrorResponse> handleMediaType(HttpMediaTypeNotSupportedException exception) {
         return ResponseEntity.status(415).body(new ApiErrorResponse(
