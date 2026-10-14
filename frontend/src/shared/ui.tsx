@@ -1,5 +1,5 @@
-import { ArrowUpRight, Box, Check, CircleAlert, LoaderCircle, Radio } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { ArrowUpRight, Box, Check, CircleAlert, Info, LoaderCircle, Radio } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { ServiceError } from './api';
 export const date = (n: number) =>
   new Intl.DateTimeFormat('ko-KR', {
@@ -19,20 +19,95 @@ export function Brand() {
     </span>
   );
 }
-export function ErrorBox({ error, retry }: { error: unknown; retry?: () => void }) {
-  if (!error) return null;
+export function MessagePopup({
+  title,
+  children,
+  onClose,
+  icon,
+  action,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+  icon?: React.ReactNode;
+  action?: { label: string; onClick: () => void };
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+  useEffect(() => {
+    dialog.current?.showModal();
+    return () => dialog.current?.close();
+  }, []);
   return (
-    <div className="error-box" role="alert">
-      <CircleAlert size={20} />
-      <div>
-        {error instanceof Error ? error.message : String(error)}
-        {retry && (
-          <button className="text-button" onClick={retry}>
-            다시 시도
+    <dialog
+      ref={dialog}
+      className="message-popup"
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+    >
+      <div className="message-popup-heading">
+        {icon && (
+          <span className="message-popup-icon" aria-hidden="true">
+            {icon}
+          </span>
+        )}
+        <h2 id={titleId}>{title}</h2>
+      </div>
+      <div id={descriptionId} className="message-popup-content">
+        {children}
+      </div>
+      <div className="message-popup-actions">
+        <button
+          type="button"
+          autoFocus
+          className={action ? 'secondary' : 'primary'}
+          onClick={onClose}
+        >
+          {action ? '닫기' : '확인'}
+        </button>
+        {action && (
+          <button type="button" className="primary" onClick={action.onClick}>
+            {action.label}
           </button>
         )}
       </div>
-    </div>
+    </dialog>
+  );
+}
+export function ErrorBox({ error, retry }: { error: unknown; retry?: () => void }) {
+  const [dismissed, setDismissed] = useState<unknown>();
+  if (!error || dismissed === error) return null;
+  const unavailable = error instanceof ServiceError && error.code === 'UNSUPPORTED';
+  const message = error instanceof Error ? error.message : String(error);
+  const preparing = message === '이 기능은 서버 연동 준비 중입니다.';
+  return (
+    <MessagePopup
+      title={preparing ? '서비스 준비 중이에요' : '확인해 주세요'}
+      icon={unavailable ? <Info size={21} /> : <CircleAlert size={21} />}
+      onClose={() => setDismissed(error)}
+      action={
+        retry && !unavailable
+          ? {
+              label: '다시 시도',
+              onClick: () => {
+                setDismissed(error);
+                retry();
+              },
+            }
+          : undefined
+      }
+    >
+      <div role="alert">
+        <p>
+          {preparing ? '아직 이용할 수 없는 기능이에요. 준비가 완료되면 이용해 주세요.' : message}
+        </p>
+      </div>
+    </MessagePopup>
   );
 }
 export function Loading({ text = '불러오는 중이에요' }: { text?: string }) {

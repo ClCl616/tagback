@@ -58,7 +58,7 @@ class TagRegistrationAuthorizationTest {
     @Test
     void adminCanRegisterTag() throws Exception {
         when(sessions.authenticate("admin-session")).thenReturn(new AuthenticatedUser(8L, UserRole.ADMIN));
-        when(registrationService.register(12L, "04A23B1C5D6E80")).thenReturn(
+        when(registrationService.register(12L, "04A23B1C5D6E80", 8L)).thenReturn(
                 new TagRegistrationService.RegistrationResult(new TagRegistrationResponse(
                         new TagRegistrationResponse.Tag(1L, "04A23B1C5D6E80", 12L, "ACTIVE", null)), true));
 

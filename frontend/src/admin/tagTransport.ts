@@ -1,5 +1,5 @@
 import { ServiceError } from '../shared/api';
-import { normalizeUid } from './itemRegistration';
+import { normalizeUid } from '../shared/nfcUid';
 
 // Verified against PR #10. Not wired to the mock's UUID item IDs.
 // Enabling the real gateway also requires agreed create/read/auth contracts.
@@ -16,7 +16,7 @@ export async function postItemTag(itemId: number, value: string) {
     });
   } catch (e) {
     if (e instanceof ServiceError) throw e;
-    throw new ServiceError('UNKNOWN', '태그 연결 결과를 확인해야 합니다.');
+    throw new ServiceError('UNKNOWN', '같은 물품과 UID로 태그 연결을 다시 시도해 주세요.');
   }
   const body = await response.json().catch(() => null);
   if (!response.ok) {
@@ -32,19 +32,19 @@ export async function postItemTag(itemId: number, value: string) {
     const code = body?.error?.code;
     // Unrecognized/5xx responses may follow a committed write.
     if (response.status >= 500 || !messages[code])
-      throw new ServiceError('UNKNOWN', '태그 연결 결과를 확인해야 합니다.');
+      throw new ServiceError('UNKNOWN', '같은 물품과 UID로 태그 연결을 다시 시도해 주세요.');
     throw new ServiceError(code, messages[code]);
   }
   const tag = body?.tag;
   if (
-    response.status !== 201 ||
+    ![200, 201].includes(response.status) ||
     tag?.itemId !== itemId ||
     tag?.uid !== normalizeUid(value) ||
     tag?.status !== 'ACTIVE'
   )
     throw new ServiceError(
       'UNKNOWN',
-      '태그 연결 응답을 확인하지 못했습니다. 상태 확인이 필요합니다.',
+      '태그 연결 응답을 확인하지 못했습니다. 같은 물품과 UID로 다시 시도해 주세요.',
     );
   return tag as { tagId: number; uid: string; itemId: number; status: 'ACTIVE'; createdAt: string };
 }

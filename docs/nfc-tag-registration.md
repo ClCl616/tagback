@@ -1,4 +1,4 @@
-# NFC 태그 등록·물품 연결 (5주차)
+# NFC 태그 등록·교체·조회 (5~6주차)
 
 이 문서는 NFC 태그 등록 API 초안이다. API 경로와 UID 규칙은 팀 합의 전이다.
 
@@ -10,7 +10,7 @@
 - 허용 길이는 4·7·10바이트(16진수 8·14·20자리)다. 바이트 순서는 바꾸지 않는다.
 - 같은 물품 ID와 같은 정규화 UID의 재요청은 새 행을 만들지 않고 기존 태그를 `200`으로 반환한다. 최초 연결은 `201`이다.
 - 같은 물품의 다른 UID는 `409 ITEM_ALREADY_TAGGED`, 다른 물품에 연결된 UID는 `409 TAG_ALREADY_REGISTERED`를 반환한다.
-- 오늘은 실물 리더기 입력 대신 수동 입력한 테스트 UID로 확인한다.
+- 여기의 백엔드 검증은 실물 리더기 입력 대신 수동 입력한 테스트 UID로 수행한다.
 
 ## API 계약 초안
 
@@ -29,7 +29,9 @@ Content-Type: application/json
 {"tag":{"tagId":1,"uid":"04A23B1C5D6E80","itemId":12,"status":"ACTIVE","createdAt":"2026-10-06T12:00:00+09:00"}}
 ```
 
-같은 `itemId`와 정규화된 UID로 다시 요청하면 `200`과 동일한 `tagId`·물품 ID·UID를 반환한다. 현재 V4 스키마에는 비활성 태그 상태가 없으므로 저장된 태그는 모두 활성으로 취급한다. 동시에 같은 연결을 시도해도 DB 유니크 제약으로 행은 하나만 생성되며, 나머지 요청은 기존 연결을 조회해 성공으로 반환한다.
+같은 `itemId`와 정규화된 활성 UID로 다시 요청하면 `200`과 동일한 `tagId`·물품 ID·UID를 반환한다. 동시에 같은 연결을 시도해도 DB 유니크 제약으로 활성 행은 하나만 생성되며, 나머지 요청은 기존 연결을 조회해 성공으로 반환한다.
+
+연결 시 물품 상태가 `TAG_PENDING`이면 같은 트랜잭션에서 `AVAILABLE`로 변경한다. 그 결과는 `GET /api/v1/items/{itemId}`에서 확인할 수 있다. 다른 상태는 태그 연결만으로 변경하지 않는다.
 
 태그 등록 오류와 세션·권한 오류 모두 공용 형식 `{"error":{"code":"...","message":"...","retryAt":null}}`을 사용한다. 태그 등록 오류의 `retryAt`은 `null`이다.
 
@@ -44,7 +46,7 @@ Content-Type: application/json
 | 400 | `VALIDATION` | 본문 또는 UID 누락, 잘못된 JSON |
 | 400 | `INVALID_UID_FORMAT` | 정규화 후 길이·16진수 형식 오류 |
 | 404 | `ITEM_NOT_FOUND` | 없는 물품 ID |
-| 409 | `TAG_ALREADY_REGISTERED` | UID가 다른 물품에 연결됨 |
+| 409 | `TAG_ALREADY_REGISTERED` | UID가 다른 물품에 연결됐거나 과거에 비활성화됨 |
 | 409 | `ITEM_ALREADY_TAGGED` | 물품에 다른 UID가 이미 연결됨 |
 
 ## 프런트엔드 연동 흐름
@@ -52,11 +54,30 @@ Content-Type: application/json
 1. 기존 물품에 태그 추가: 관리자가 기존 물품의 `itemId`를 선택하고 UID를 읽거나 입력한 뒤 등록 API를 호출한다. `201`과 `200`은 모두 연결 성공으로 처리한다.
 2. 신규 등록: 물품을 먼저 생성해 얻은 `itemId`로 태그 연결 API를 호출한다. 태그 연결이 실패하거나 응답을 받지 못하면 물품을 다시 만들지 않고 **같은 `itemId`**와 UID로 연결을 재시도한다. 같은 연결이 이미 완료됐다면 `200`과 기존 태그 정보가 돌아온다. 다른 물품·UID 충돌의 `409`는 재시도로 덮어쓰지 않고 사용자에게 알려야 한다.
 
+## 6주차: 교체·비활성화·태그 조회
+
+- `PUT /api/items/{itemId}/tag`의 본문은 `{"uid":"04A23B1C5D6E81","expectedUid":"04A23B1C5D6E80"}`이다. `expectedUid` 키는 필수이며, 활성 태그가 없다고 기대하면 `null`을 보낸다. 키를 생략하면 `400 VALIDATION`이다. 두 UID 문자열은 서버에서 정규화한다.
+- 물품 행 잠금 안에서 요청 UID가 이미 활성이라면 `expectedUid`가 달라도 기존 태그 정보와 `200`을 반환한다. 그렇지 않으면 정규화한 `expectedUid`와 현재 활성 UID를 비교해 다르면 `409 TAG_CHANGED`다. 이어서 물품 상태가 `RENTED`이거나 미반납 대여 기록(`rentals.returned_at IS NULL`)이 있으면 `409 ITEM_RENTED`다. 통과하면 기존 활성 태그를 비활성화하고 새 태그를 만든다. 같은 물품의 과거 비활성 UID라면 기존 행의 `deactivated_at`을 `NULL`로 바꿔 재활성화한다. 변경은 한 트랜잭션이며 새 연결·재활성화는 `201`이다. 같은 `expectedUid`를 보낸 서로 다른 UID의 동시 교체 중 하나만 성공하고 다른 요청은 `409 TAG_CHANGED`다.
+- `DELETE /api/items/{itemId}/tag?expectedUid=<UID>`는 현재 활성 UID가 일치할 때만 태그를 비활성화하고 `204`를 반환한다. `?expectedUid=`(빈 값)은 활성 태그가 없다고 기대한다는 뜻으로, 실제로 없으면 대여 중이어도 변경 없이 `204`다. 기대 UID와 실제 활성 UID가 다르면 `409 TAG_CHANGED`, 파라미터를 생략하면 `400 VALIDATION`이다. 활성 태그가 있는데 대여 중이면 UID 일치 확인 후 `409 ITEM_RENTED`다. 존재하지 않는 물품은 `404 ITEM_NOT_FOUND`다. 따라서 성공한 DELETE를 옛 UID로 재시도하면 더 이상 `204`가 아니라 `409 TAG_CHANGED`이며, 태그가 없는 상태를 확인한 뒤 빈 값을 보내야 한다.
+- `PUT`과 `DELETE`는 관리자 세션 전용이며 교체·해제 시 물품 행을 잠가 같은 물품에 대한 동시 요청을 직렬화한다. `POST` 등록 계약은 바뀌지 않는다.
+- `PUT`으로 새 활성 태그가 생기거나 같은 물품의 과거 태그를 재활성화하면, 물품 상태가 `TAG_PENDING`일 때만 `AVAILABLE`로 변경한다. 이미 활성화된 같은 UID의 재요청(`200`)이나 `AVAILABLE` 물품의 교체는 상태·이력을 추가로 변경하지 않는다.
+- `DELETE`로 활성 태그를 실제 비활성화하면, 물품 상태가 `AVAILABLE`일 때만 `TAG_PENDING`으로 변경한다. 활성 태그가 없는 멱등 `DELETE`(`204`)는 상태·이력을 변경하지 않는다. `RENTED`, `INSPECTION`, `REPAIR` 상태는 태그 처리로 바꾸지 않는다.
+- 태그 변경과 상태 변경·`item_status_history` 기록은 같은 트랜잭션에서 처리한다. 상태가 실제 바뀐 경우에만 관리자 ID와 `source=TAG_REGISTRATION`, `reason=null`로 이력을 남긴다. `TAG_REGISTRATION`은 V12의 `source` CHECK 제약에 허용된 값이라 PUT·DELETE에서 재사용한다.
+- `GET /api/tags/{uid}`는 로그인한 `USER`와 `ADMIN` 모두 호출할 수 있다. UID는 등록 때와 같이 정규화한다. 응답 예시는 아래와 같다. `rentable`은 현재 물품 상태가 `AVAILABLE`일 때만 `true`다.
+
+```json
+{"item":{"itemId":12,"name":"공용 물품","status":"AVAILABLE","rentable":true},"tag":{"uid":"04A23B1C5D6E81","status":"ACTIVE"}}
+```
+
+미등록 UID는 `404 TAG_NOT_FOUND`, 비활성 UID는 `409 TAG_INACTIVE`다. 오류는 모두 `{"error":{"code":"...","message":"...","retryAt":null}}` 형식이다. 비활성 UID는 **같은 물품의 PUT에서만** 재활성화할 수 있으며 기존 `tagId`를 유지한다. 다른 물품에 등록·교체하려고 하면 전역 `tag_uid UNIQUE` 정책에 따라 `409 TAG_ALREADY_REGISTERED`다. 5주차 POST도 비활성 UID를 재활성화하지 않으며 `409`를 반환한다.
+
 ## DB와 후속 작업
 
-등록·중복 방지는 이미 병합된 V4의 `nfc_tags.tag_uid UNIQUE`와 `item_id UNIQUE`를 사용한다. 동시 요청에서 유니크 위반이 나면 삽입 트랜잭션을 롤백한 뒤 해당 물품·UID를 다시 조회한다. 같은 연결이면 기존 태그를 성공으로 반환하고, 다른 연결이면 위 409 오류로 변환한다.
+등록·중복 방지는 V4의 `nfc_tags.tag_uid UNIQUE`와 V13의 `uq_nfc_tags_active_item` 부분 유니크 인덱스를 사용한다. 동시 요청에서 유니크 위반이 나면 삽입 트랜잭션을 롤백한 뒤 해당 물품·UID를 다시 조회한다. 같은 연결이면 기존 태그를 성공으로 반환하고, 다른 연결이면 위 409 오류로 변환한다.
 
-기존 태그 비활성화와 교체는 현재 스키마로 불가능하다. `develop`에는 인증 스키마 V8이 병합됐으므로 마이그레이션 번호를 팀과 맞춘 뒤 후속 버전에서 `deactivated_at`과 물품별 활성 태그 유니크 인덱스를 추가해야 한다. 이미 적용된 V1~V8은 수정하지 않는다.
+V9는 사용자 프로필, V10·V11은 물품 상태 정책, V12는 물품 상태 이력에 사용되므로 NFC 교체 스키마는 V13이다. V13은 `nfc_tags_item_id_key`를 제거하고 `deactivated_at TIMESTAMPTZ`와 물품별 활성 태그만 유일하게 만드는 `uq_nfc_tags_active_item`을 추가한다. `tag_uid UNIQUE`는 그대로 둔다. 기존 V1~V12는 수정하지 않는다.
+
+V14는 V11의 즉시 검사 트리거를 교체한다. 트랜잭션 종료 시 `AVAILABLE` 물품에는 `deactivated_at IS NULL`인 활성 태그가 반드시 있어야 한다. 물품 상태와 태그 변경을 함께 검사하는 지연 제약 트리거이므로, 같은 트랜잭션에서 태그 교체·해제 중 잠시 활성 태그가 없어도 최종 상태가 유효하면 허용한다. V14 적용 전에 위반하는 기존 물품이 있으면 데이터를 자동 변경하지 않고 물품 ID를 담은 오류로 중단한다.
 
 등록 API는 관리자 전용 세션을 요구한다. 현재 세션 발급 기능은 `sms-mock` 프로필에서만 제공되므로 운영 사용 전 실제 인증 연동을 별도로 확인해야 한다.
 

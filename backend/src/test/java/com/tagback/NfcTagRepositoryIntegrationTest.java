@@ -10,13 +10,19 @@ import com.tagback.domain.repository.NfcTagRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-@SpringBootTest
+@EnabledIfEnvironmentVariable(named = "TAGBACK_ITEM_DB_TEST", matches = "true")
+@SpringBootTest(properties = {
+        "spring.profiles.active=sms-mock",
+        "spring.datasource.url=jdbc:postgresql://127.0.0.1:${TAGBACK_ITEM_DB_PORT:55440}/tagback_items_test",
+        "spring.datasource.username=postgres", "spring.datasource.password=",
+        "spring.jpa.hibernate.ddl-auto=validate", "spring.jpa.open-in-view=false"})
 @Transactional
 class NfcTagRepositoryIntegrationTest {
 
@@ -40,9 +46,11 @@ class NfcTagRepositoryIntegrationTest {
                 new ItemType(itemTypeName, "스모크 테스트용 품목 종류")
         );
         Item item = itemRepository.saveAndFlush(
-                new Item(itemName, ItemStatus.AVAILABLE, itemType)
+                new Item(itemName, ItemStatus.TAG_PENDING, itemType)
         );
         nfcTagRepository.saveAndFlush(new NfcTag(tagUid, item));
+        item.markAvailable();
+        itemRepository.flush();
 
         NfcTag foundTag = nfcTagRepository.findByUid(tagUid).orElseThrow();
 

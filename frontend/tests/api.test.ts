@@ -407,7 +407,7 @@ describe('Mock service contract — not real server verification', () => {
 it('SMS 없는 전화번호 로그인: 오인증 방지, PIN 제한 유지, 새 로그인 후 이전 세션 폐기', async () => {
   const attempt = (phone: string, pin: string) =>
     authApi.loginWithPhone(crypto.randomUUID(), phone, pin, 'phone-test');
-  await expect(attempt('01099998888', AUTH_DEMO.pin)).rejects.toThrow('전화번호 또는 PIN');
+  await expect(attempt('01099998888', AUTH_DEMO.pin)).rejects.toMatchObject({ code: 'ACCOUNT_NOT_FOUND' });
   for (let i = 0; i < 4; i++)
     await expect(attempt(MOCK.demoPhone, '246802')).rejects.toThrow('전화번호 또는 PIN');
   await expect(attempt(MOCK.demoPhone, '246802')).rejects.toMatchObject({ code: 'PIN_WAIT' });
@@ -480,4 +480,41 @@ it('물품 전체 삭제는 관련 기록을 지우고 계정·카테고리를 �
   expect(after.grants).toEqual([]);
   for (const key of ['users', 'auth', 'kinds', 'categories', 'stations'])
     expect(after[key]).toEqual(before[key]);
+});
+
+import { adminApi } from '../src/admin/adminApi';
+
+it('mock NFC 동일 연결은 기존 물품을 반환하고 다른 연결은 충돌을 유지한다', async () => {
+  mutate((db) => {
+    db.items[0].tag = '';
+    db.items[1].tag = '';
+  });
+  const initial = (await api.catalog()).items;
+  const first = await adminApi.attachTag(initial[0].id, '04:a2-3b 1c');
+  const retry = await adminApi.attachTag(initial[0].id, '04A23B1C');
+  expect(retry).toEqual(first);
+  await expect(adminApi.attachTag(initial[0].id, '04000099')).rejects.toMatchObject({
+    code: 'ITEM_ALREADY_TAGGED',
+  });
+  await expect(adminApi.attachTag(initial[1].id, '04A23B1C')).rejects.toMatchObject({
+    code: 'TAG_ALREADY_REGISTERED',
+  });
+  const current = (await api.catalog()).items;
+  expect(current).toHaveLength(initial.length);
+  expect(current.filter((i) => i.tag === '04A23B1C')).toHaveLength(1);
+});
+
+it('mock NFC 응답 유실 후 같은 요청과 동시 요청 모두 중복 없이 성공한다', async () => {
+  mutate((db) => {
+    db.items[0].tag = '';
+  });
+  const id = (await api.catalog()).items[0].id;
+  setControls({ nextFault: 'unknown', nextTarget: 'save' });
+  await expect(adminApi.attachTag(id, '04000077')).rejects.toMatchObject({ code: 'UNKNOWN' });
+  const [a, b] = await Promise.all([
+    adminApi.attachTag(id, '04:00:00:77'),
+    adminApi.attachTag(id, '04000077'),
+  ]);
+  expect(a).toEqual(b);
+  expect((await api.catalog()).items.filter((i) => i.tag === '04000077')).toHaveLength(1);
 });

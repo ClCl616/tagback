@@ -27,6 +27,9 @@ public class SessionAuthenticationInterceptor implements HandlerInterceptor {
                 || AnnotatedElementUtils.hasAnnotation(method.getBeanType(), AdminOnly.class);
         // A public marker must never override a method or controller's administrator restriction.
         if (!adminOnly && method.hasMethodAnnotation(PublicApi.class)) return true;
+        // Rental authentication must already have succeeded in the preceding interceptor.
+        if (!adminOnly && method.hasMethodAnnotation(RentalAuthenticated.class)
+                && request.getAttribute(RentalAuthenticationInterceptor.ATTRIBUTE) != null) return true;
         response.setHeader("Cache-Control", "no-store");
         var service = sessions.getIfAvailable();
         // Authentication is mock-profile-only for now. Protected handlers must fail closed elsewhere.
