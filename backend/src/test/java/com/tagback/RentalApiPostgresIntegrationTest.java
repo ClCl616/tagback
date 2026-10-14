@@ -5,6 +5,7 @@ import com.tagback.domain.entity.*;
 import com.tagback.domain.repository.*;
 import com.tagback.service.sms.SmsSecrets;
 import jakarta.servlet.http.Cookie;
+import java.sql.Timestamp;
 import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
@@ -127,6 +128,88 @@ class RentalApiPostgresIntegrationTest {
         assertEquals(json.readTree(created), json.readTree(replay));
         assertEquals(1, count("rentals"));
         assertEquals(1, count("item_status_history"));
+    }
+
+    @Test void rentalListIsEmptyUntilCheckoutAndShowsOnlyTheSessionUsersRentals() throws Exception {
+        mvc.perform(get("/api/v1/rentals/me"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("SESSION_REQUIRED"));
+        mvc.perform(get("/api/v1/rentals/me").cookie(member))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.rentals").isEmpty())
+                .andExpect(jsonPath("$.totalElements").value(0))
+                .andExpect(jsonPath("$.totalPages").value(0));
+
+        perform(verify(issue(member)), key(), body(itemId)).andExpect(status().isCreated());
+        perform(verify(issue(otherMember)), key(), body(otherItemId)).andExpect(status().isCreated());
+        mvc.perform(get("/api/v1/rentals/me").cookie(member))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rentals.length()").value(1))
+                .andExpect(jsonPath("$.rentals[0].itemId").value(Long.toString(itemId)))
+                .andExpect(jsonPath("$.rentals[0].itemName").value("API 물품"))
+                .andExpect(jsonPath("$.rentals[0].itemTypeId").value(Long.toString(typeId)))
+                .andExpect(jsonPath("$.rentals[0].rentalStatus").value("RENTED"))
+                .andExpect(jsonPath("$.rentals[0].dueAt").value(NOW.plusSeconds(72 * 3600).toString()))
+                .andExpect(jsonPath("$.rentals[0].userId").doesNotExist());
+        mvc.perform(get("/api/v1/rentals/me").cookie(otherMember))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rentals.length()").value(1))
+                .andExpect(jsonPath("$.rentals[0].itemId").value(Long.toString(otherItemId)));
+        mvc.perform(get("/api/v1/rentals/me").cookie(member).param("userId", Long.toString(otherUserId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"));
+    }
+
+    @Test void rentalListDerivesOverdueAtTheBoundaryAndReturnedHistoryWithoutChangingStoredStatus() throws Exception {
+        perform(verify(issue(member)), key(), body(itemId)).andExpect(status().isCreated());
+        jdbc.update("update rentals set due_at = ? where item_id = ?", Timestamp.from(NOW), itemId);
+        mvc.perform(get("/api/v1/rentals/me").cookie(member))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rentals[0].rentalStatus").value("RENTED"))
+                .andExpect(jsonPath("$.rentals[0].dueAt").value(NOW.toString()))
+                .andExpect(jsonPath("$.evaluatedAt").value(NOW.toString()));
+
+        var pastDue = NOW.minusNanos(1_000);
+        jdbc.update("update rentals set due_at = ? where item_id = ?", Timestamp.from(pastDue), itemId);
+        mvc.perform(get("/api/v1/rentals/me").cookie(member))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rentals[0].rentalStatus").value("OVERDUE"))
+                .andExpect(jsonPath("$.rentals[0].dueAt").value(pastDue.toString()));
+        assertEquals("RENTED", jdbc.queryForObject("select status from rentals where item_id = ?", String.class, itemId));
+
+        jdbc.update("update rentals set returned_at = ? where item_id = ?", Timestamp.from(NOW), itemId);
+        mvc.perform(get("/api/v1/rentals/me").cookie(member))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.rentals").isEmpty());
+        mvc.perform(get("/api/v1/rentals/me").cookie(member).param("scope", "HISTORY"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rentals.length()").value(1))
+                .andExpect(jsonPath("$.rentals[0].rentalStatus").value("RETURNED"))
+                .andExpect(jsonPath("$.rentals[0].returnedAt").value(NOW.toString()));
+        assertEquals("RENTED", jdbc.queryForObject("select status from rentals where item_id = ?", String.class, itemId));
+    }
+
+    @Test void rentalListPaginatesWithStableTieBreakAndRejectsInvalidFilters() throws Exception {
+        perform(verify(issue(member)), key(), body(itemId)).andExpect(status().isCreated());
+        perform(verify(issue(member)), key(), body(otherItemId)).andExpect(status().isCreated());
+        mvc.perform(get("/api/v1/rentals/me").cookie(member).param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rentals[0].itemId").value(Long.toString(otherItemId)))
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.totalPages").value(2));
+        mvc.perform(get("/api/v1/rentals/me").cookie(member).param("page", "1").param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rentals[0].itemId").value(Long.toString(itemId)));
+        mvc.perform(get("/api/v1/rentals/me").cookie(member).param("page", "2").param("size", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rentals").isEmpty())
+                .andExpect(jsonPath("$.totalElements").value(2));
+        for (String query : new String[]{"scope=ALL", "page=-1", "size=0", "size=101",
+                "page=2147483648", "page=2147483647&size=100"}) {
+            mvc.perform(get("/api/v1/rentals/me?" + query).cookie(member))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"));
+        }
     }
 
     @Test void rejectsMalformedBodiesAndClientSuppliedIdentityWithoutConsumingCode() throws Exception {
