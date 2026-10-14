@@ -18,6 +18,8 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -42,6 +44,7 @@ class TagLifecycleIntegrationTest {
     @Autowired TagRegistrationService registration;
     @Autowired TagLifecycleService lifecycle;
     @Autowired JdbcTemplate jdbc;
+    @Autowired TransactionTemplate transactions;
 
     private final List<Long> itemIds = new ArrayList<>();
     private final List<Long> typeIds = new ArrayList<>();
@@ -398,6 +401,39 @@ class TagLifecycleIntegrationTest {
                 String.class);
         assertTrue(index.contains("UNIQUE INDEX"));
         assertTrue(index.contains("deactivated_at IS NULL"));
+    }
+
+    @Test
+    void availableItemRequiresAnActiveTagAtTransactionCommit() {
+        Item item = item();
+        String oldUid = uid();
+        registration.register(item.getId(), oldUid);
+
+        assertThrows(DataIntegrityViolationException.class, () ->
+                jdbc.update("UPDATE nfc_tags SET deactivated_at = now() WHERE item_id = ?", item.getId()));
+        assertEquals(1L, countActive(item.getId()));
+
+        lifecycle.deactivate(item.getId(), oldUid, actorUserId);
+        assertThrows(DataIntegrityViolationException.class, () ->
+                jdbc.update("UPDATE items SET status = 'AVAILABLE' WHERE item_id = ?", item.getId()));
+        assertEquals(ItemStatus.TAG_PENDING, status(item.getId()));
+
+        String newUid = uid();
+        transactions.executeWithoutResult(ignored -> {
+            jdbc.update("UPDATE items SET status = 'AVAILABLE' WHERE item_id = ?", item.getId());
+            jdbc.update("INSERT INTO nfc_tags(item_id, tag_uid) VALUES (?, ?)", item.getId(), newUid);
+        });
+        assertEquals(ItemStatus.AVAILABLE, status(item.getId()));
+        assertEquals(1L, countActive(item.getId()));
+
+        String replacementUid = uid();
+        transactions.executeWithoutResult(ignored -> {
+            jdbc.update("UPDATE nfc_tags SET deactivated_at = now() WHERE item_id = ? AND deactivated_at IS NULL",
+                    item.getId());
+            jdbc.update("INSERT INTO nfc_tags(item_id, tag_uid) VALUES (?, ?)", item.getId(), replacementUid);
+        });
+        assertEquals(ItemStatus.AVAILABLE, status(item.getId()));
+        assertEquals(1L, countActive(item.getId()));
     }
 
     private Item item() {
