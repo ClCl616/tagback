@@ -44,6 +44,12 @@ public class ApiExceptionHandler {
                 new ApiErrorResponse.Error(exception.code().name(), exception.code().message(), exception.retryAt())));
     }
 
+    @ExceptionHandler(TagRegistrationException.class)
+    public ResponseEntity<ApiErrorResponse> handleTag(TagRegistrationException exception) {
+        return ResponseEntity.status(exception.status()).body(new ApiErrorResponse(
+                new ApiErrorResponse.Error(exception.code(), exception.getMessage(), null)));
+    }
+
     @ExceptionHandler({MethodArgumentNotValidException.class, HttpMessageNotReadableException.class,
             HandlerMethodValidationException.class, MethodArgumentTypeMismatchException.class,
             MissingRequestHeaderException.class})

@@ -26,6 +26,10 @@ public interface ItemRepository extends JpaRepository<Item, Long> {
             nativeQuery = true)
     boolean hasActiveRental(@Param("id") Long id);
 
+    @Query(value = "select exists(select 1 from rentals where item_id = :id and returned_at is null)",
+            nativeQuery = true)
+    boolean hasUnreturnedRental(@Param("id") Long id);
+
     @Query(value = "select exists(select 1 from nfc_tags where item_id = :id) "
             + "or exists(select 1 from rentals where item_id = :id) "
             + "or exists(select 1 from inspections where item_id = :id) "

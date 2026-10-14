@@ -2,6 +2,7 @@ package com.tagback.domain.entity;
 
 import jakarta.persistence.*;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 @Entity
 @Table(name = "nfc_tags")
@@ -15,12 +16,15 @@ public class NfcTag {
     @Column(name = "tag_uid", nullable = false, unique = true, length = 100)
     private String uid;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "item_id", nullable = false, unique = true)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "item_id", nullable = false)
     private Item item;
 
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private OffsetDateTime createdAt;
+
+    @Column(name = "deactivated_at")
+    private OffsetDateTime deactivatedAt;
 
     protected NfcTag() {
     }
@@ -44,5 +48,19 @@ public class NfcTag {
 
     public OffsetDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    public OffsetDateTime getDeactivatedAt() {
+        return deactivatedAt;
+    }
+
+    public void deactivate() {
+        if (deactivatedAt == null) {
+            deactivatedAt = OffsetDateTime.now(ZoneOffset.UTC);
+        }
+    }
+
+    public void reactivate() {
+        deactivatedAt = null;
     }
 }

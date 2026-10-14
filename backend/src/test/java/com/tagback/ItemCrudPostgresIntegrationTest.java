@@ -107,8 +107,10 @@ class ItemCrudPostgresIntegrationTest {
     @Test void databaseRejectsAvailableStatusWithoutTag() throws Exception {
         String id = create("태그 없는 물품", typeId);
 
-        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
-                "update items set status = 'AVAILABLE' where item_id = ?", Long.valueOf(id)));
+        assertThrows(DataIntegrityViolationException.class, () -> {
+            jdbc.update("update items set status = 'AVAILABLE' where item_id = ?", Long.valueOf(id));
+            jdbc.execute("set constraints all immediate");
+        });
     }
 
     @Test void databaseRejectsRemovingTagFromAvailableItem() throws Exception {
@@ -116,8 +118,10 @@ class ItemCrudPostgresIntegrationTest {
         jdbc.update("insert into nfc_tags(item_id, tag_uid) values (?, ?)", Long.valueOf(id), "integration-protected-tag");
         jdbc.update("update items set status = 'AVAILABLE' where item_id = ?", Long.valueOf(id));
 
-        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
-                "delete from nfc_tags where item_id = ?", Long.valueOf(id)));
+        assertThrows(DataIntegrityViolationException.class, () -> {
+            jdbc.update("delete from nfc_tags where item_id = ?", Long.valueOf(id));
+            jdbc.execute("set constraints all immediate");
+        });
     }
 
     @Test void statusApiChangesItemLogsActorAndIsVisibleToQueries() throws Exception {
