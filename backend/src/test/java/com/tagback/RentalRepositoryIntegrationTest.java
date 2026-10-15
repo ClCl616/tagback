@@ -2,8 +2,14 @@ package com.tagback;
 
 import com.tagback.domain.entity.*;
 import com.tagback.domain.repository.*;
+import com.tagback.service.RentalQueryService;
 import jakarta.persistence.EntityManager;
+import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -31,6 +37,8 @@ class RentalRepositoryIntegrationTest {
     @Autowired NfcTagRepository tags;
     @Autowired EntityManager em;
     @Autowired JdbcTemplate jdbc;
+    @Autowired RentalQueryService queries;
+    @Autowired Clock clock;
 
     private static final Instant RENTED_AT = Instant.parse("2026-10-14T03:00:00Z");
     private static final Instant DUE_AT = Instant.parse("2026-10-17T03:00:00Z");
@@ -114,5 +122,52 @@ class RentalRepositoryIntegrationTest {
         var failure = assertThrows(DataIntegrityViolationException.class,
                 () -> rentals.saveAndFlush(new Rental(user, item, RENTED_AT, DUE_AT)));
         assertTrue(failure.getMostSpecificCause().getMessage().contains("uq_active_rental_item"));
+    }
+
+    @Test
+    void listsOnlyTheAuthenticatedUsersRentalsByReturnState() {
+        var otherUser = users.saveAndFlush(new User("+821044444444", "integration-fixture-only", RENTED_AT));
+        var mine = rentals.saveAndFlush(new Rental(user, item, RENTED_AT, DUE_AT));
+        var theirs = rentals.saveAndFlush(new Rental(otherUser, otherItem, RENTED_AT, DUE_AT));
+        em.clear();
+
+        var activeSort = PageRequest.of(0, 20, Sort.by(Sort.Order.asc("dueAt"), Sort.Order.desc("id")));
+        var mineActive = rentals.findByUser_IdAndReturnedAtIsNull(user.getId(), activeSort);
+        assertEquals(1, mineActive.getTotalElements());
+        assertEquals(mine.getId(), mineActive.getContent().getFirst().getId());
+        assertEquals("물품 1", mineActive.getContent().getFirst().getItem().getItemName());
+        assertEquals(theirs.getId(), rentals.findByUser_IdAndReturnedAtIsNull(otherUser.getId(), activeSort)
+                .getContent().getFirst().getId());
+
+        jdbc.update("update rentals set returned_at = rented_at + interval '1 hour' where rental_id = ?", mine.getId());
+        em.clear();
+        var historySort = PageRequest.of(0, 20, Sort.by(Sort.Order.desc("returnedAt"), Sort.Order.desc("id")));
+        assertTrue(rentals.findByUser_IdAndReturnedAtIsNull(user.getId(), activeSort).isEmpty());
+        assertEquals(mine.getId(), rentals.findByUser_IdAndReturnedAtIsNotNull(user.getId(), historySort)
+                .getContent().getFirst().getId());
+        assertTrue(rentals.findByUser_IdAndReturnedAtIsNotNull(otherUser.getId(), historySort).isEmpty());
+    }
+
+    @Test
+    void overdueReadUsesStoredDueAtWithoutMutatingTheRental() {
+        var now = clock.instant().truncatedTo(ChronoUnit.MICROS);
+        var due = now.minusSeconds(1);
+        var saved = rentals.saveAndFlush(new Rental(user, item, due.minusSeconds(72 * 3600), due));
+        em.clear();
+
+        var active = queries.list(user.getId(), "ACTIVE", 0, 20);
+        assertEquals(1, active.totalElements());
+        assertEquals(RentalStatus.OVERDUE, active.rentals().getFirst().rentalStatus());
+        assertEquals(due, active.rentals().getFirst().dueAt());
+        assertEquals("RENTED", jdbc.queryForObject(
+                "select status from rentals where rental_id = ?", String.class, saved.getId()));
+
+        jdbc.update("update rentals set returned_at = ? where rental_id = ?", Timestamp.from(now), saved.getId());
+        em.clear();
+        assertEquals(0, queries.list(user.getId(), "ACTIVE", 0, 20).totalElements());
+        var history = queries.list(user.getId(), "HISTORY", 0, 20);
+        assertEquals(RentalStatus.RETURNED, history.rentals().getFirst().rentalStatus());
+        assertEquals("RENTED", jdbc.queryForObject(
+                "select status from rentals where rental_id = ?", String.class, saved.getId()));
     }
 }

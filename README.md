@@ -52,6 +52,7 @@ NFC 태그로 공용물품을 식별하고 반출·반납, 이용 이력, 연체
 - [현재 전화번호·PIN 인증 및 브라우저 등록](docs/pin-auth.md)
 - [프론트와 서버 인증 API 계약](docs/auth-api-contract.md)
 - [물품 반출 API 계약 초안](docs/item-checkout-api-contract.md)
+- [본인 대여 현황 조회 API 계약](docs/rental-status-api-contract.md)
 
 - [모바일 인증·단일 대여소 및 연동 계약](docs/mobile-auth-catalog.md)
 
