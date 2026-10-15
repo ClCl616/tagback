@@ -3,6 +3,18 @@ import { ServiceError } from './serviceError';
 import type { Catalog, Grant, Item, Receipt } from './types';
 
 type Action = 'verify' | 'catalog' | 'scan' | 'rent';
+export type ServerConnection = 'unknown' | 'connected' | 'disconnected';
+let serverConnection: ServerConnection = 'unknown';
+const connectionListeners = new Set<(status: ServerConnection) => void>();
+export function subscribeServerConnection(listener: (status: ServerConnection) => void): () => void {
+  connectionListeners.add(listener);
+  listener(serverConnection);
+  return () => { connectionListeners.delete(listener); };
+}
+function updateServerConnection(status: ServerConnection) {
+  serverConnection = status;
+  connectionListeners.forEach((listener) => listener(status));
+}
 const positiveId = (value: unknown): value is string =>
   typeof value === 'string' && /^[1-9][0-9]*$/.test(value) &&
   (value.length < 19 || (value.length === 19 && value <= '9223372036854775807'));
@@ -51,12 +63,15 @@ async function request(path: string, action: Action, method = 'GET', grant?: Gra
       signal: AbortSignal.timeout(15_000),
     });
   } catch (error) {
+    updateServerConnection('disconnected');
     if (action === 'rent')
       throw new ServiceError('UNKNOWN', '응답을 받지 못했습니다. 같은 요청으로 결과를 확인해 주세요.');
     if (error instanceof Error && error.name === 'TimeoutError')
       throw new ServiceError('TIMEOUT', '요청 시간이 초과되었습니다. 다시 시도해 주세요.');
     throw new ServiceError('NETWORK', '서버와 통신할 수 없습니다. 연결을 확인해 주세요.');
   }
+  // An HTTP error still proves the server was reachable; only transport failures mark it disconnected.
+  updateServerConnection('connected');
   const data = await response.json().catch(() => null);
   if (!response.ok) mapError(action, response.status, data?.error?.code, data?.error?.message);
   if (action === 'rent' && response.status !== 200 && response.status !== 201)

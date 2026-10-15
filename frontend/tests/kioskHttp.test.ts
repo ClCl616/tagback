@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { checkoutRental, lookupRentalTag, rentalCatalog, verifyRentalCode } from '../src/shared/kioskHttp';
+import { checkoutRental, lookupRentalTag, rentalCatalog, subscribeServerConnection, verifyRentalCode } from '../src/shared/kioskHttp';
 import type { Grant } from '../src/shared/types';
 
 const grant: Grant = { token: 'rental-token', maskedPhone: '010****5678', expiresAt: Date.now() + 60000 };
@@ -8,6 +8,22 @@ const json = (body: unknown, status = 200) => ({ ok: status >= 200 && status < 3
 afterEach(() => vi.unstubAllGlobals());
 
 describe('real kiosk HTTP contract', () => {
+  it('최근 실제 요청의 HTTP 응답·네트워크 실패·복구를 구분한다', async () => {
+    const states: string[] = [];
+    const unsubscribe = subscribeServerConnection((state) => states.push(state));
+    const fetch = vi.fn()
+      .mockRejectedValueOnce(new TypeError('offline'))
+      .mockResolvedValueOnce(json({ error: { code: 'RENTAL_CODE_INVALID' } }, 401))
+      .mockResolvedValueOnce(json({ token: grant.token, maskedPhoneNumber: grant.maskedPhone,
+        expiresAt: new Date(grant.expiresAt).toISOString() }, 201));
+    vi.stubGlobal('fetch', fetch);
+    await expect(verifyRentalCode('123456')).rejects.toMatchObject({ code: 'NETWORK' });
+    await expect(verifyRentalCode('123456')).rejects.toMatchObject({ code: 'CODE_INVALID' });
+    await verifyRentalCode('123456');
+    expect(states.slice(-3)).toEqual(['disconnected', 'connected', 'connected']);
+    unsubscribe();
+  });
+
   it('코드 검증 후 토큰을 받고 목록을 인증하여 조회한다', async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(json({ token: grant.token, maskedPhoneNumber: grant.maskedPhone,

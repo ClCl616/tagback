@@ -18,6 +18,7 @@ import {
 import { api, controls, ServiceError } from '../shared/api';
 import { MOCK } from '../shared/config';
 import { KIOSK_BRIDGE } from '../shared/kioskMode';
+import { subscribeServerConnection, type ServerConnection } from '../shared/kioskHttp';
 import { nfc, type ReaderStatus } from '../shared/nfc';
 import {
   Badge,
@@ -53,6 +54,7 @@ export default function KioskApp() {
   const [remaining, setRemaining] = useState<number>(MOCK.sessionSeconds);
   const [health, setHealth] = useState(controls);
   const [readerStatus, setReaderStatus] = useState<ReaderStatus>('connecting');
+  const [serverStatus, setServerStatus] = useState<ServerConnection>('unknown');
   const [unknown, setUnknown] = useState(false);
   const locked = useRef(false);
   const epoch = useRef(0);
@@ -67,7 +69,8 @@ export default function KioskApp() {
     [grant?.token], !KIOSK_BRIDGE,
   );
   const readerReady = KIOSK_BRIDGE ? readerStatus === 'connected' : health.reader;
-  const serviceReady = KIOSK_BRIDGE || health.service;
+  const serviceReady = KIOSK_BRIDGE ? serverStatus === 'connected' : health.service;
+  useEffect(() => KIOSK_BRIDGE ? subscribeServerConnection(setServerStatus) : undefined, []);
   const reset = useCallback((message = '') => {
     epoch.current++;
     locked.current = false;
@@ -296,11 +299,13 @@ export default function KioskApp() {
         </div>
         <div className={`reader-health ${readerReady && serviceReady ? '' : 'offline'}`}>
           <i />
-          {!serviceReady
-            ? '서비스 연결 끊김'
-            : readerReady
-              ? 'NFC 리더기 연결됨'
-              : KIOSK_BRIDGE && readerStatus === 'connecting' ? '리더기 연결 확인 중' : '리더기 연결 끊김'}
+          {KIOSK_BRIDGE
+            ? !readerReady
+              ? readerStatus === 'connecting' ? '리더기 연결 확인 중' : '리더기 연결 끊김'
+              : serverStatus === 'unknown' ? '서버 연결 미확인'
+                : serverStatus === 'disconnected' ? '서버 통신 오류' : 'NFC·서버 연결됨'
+            : !serviceReady ? '서비스 연결 끊김'
+              : readerReady ? 'NFC 리더기 연결됨' : '리더기 연결 끊김'}
         </div>
       </header>
       <main className={`kiosk-main ${stage === 'start' ? 'welcome-main' : ''}`}>
@@ -320,18 +325,21 @@ export default function KioskApp() {
                 {banner}
               </div>
             )}
-            {(!readerReady || !serviceReady) && (
+            {(!readerReady || (!KIOSK_BRIDGE && !serviceReady)) && (
               <ErrorBox
                 error={
                   new Error('현재 기기를 이용할 수 없습니다. 연결 복구 후 다시 시작해 주세요.')
                 }
               />
             )}
+            {KIOSK_BRIDGE && serverStatus === 'disconnected' && (
+              <p className="notice" role="alert">서버와 통신할 수 없습니다. 연결을 확인한 뒤 코드 검증을 다시 시도해 주세요.</p>
+            )}
             <div className="kiosk-actions">
               <button
                 className="rent-action"
                 onClick={() => start('rent')}
-                disabled={!readerReady || !serviceReady}
+                disabled={!readerReady || (!KIOSK_BRIDGE && !serviceReady)}
               >
                 <div className="action-symbol">
                   <ArrowRight size={45} />
