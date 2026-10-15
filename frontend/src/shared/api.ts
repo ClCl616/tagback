@@ -7,6 +7,8 @@ import { AUTH_DEMO } from './authPolicy';
 import type { DemoControls, Fault, ServiceApi, Receipt } from './types';
 
 import { ServiceError } from './serviceError';
+import { KIOSK_BRIDGE } from './kioskMode';
+import { checkoutRental, lookupRentalTag, rentalCatalog, verifyRentalCode } from './kioskHttp';
 export { ServiceError } from './serviceError';
 export const fail = (code: string, message: string): never => {
   throw new ServiceError(code, message);
@@ -154,7 +156,8 @@ async function save(id: string, fn: (db: Database) => Receipt) {
   return receipt;
 }
 export const api: ServiceApi = {
-  async catalog() {
+  async catalog(grant) {
+    if (KIOSK_BRIDGE && grant) return rentalCatalog(grant);
     await before();
     return transaction((db) => ({
       kinds: db.kinds,
@@ -214,6 +217,7 @@ export const api: ServiceApi = {
     );
   },
   async verifyCode(value) {
+    if (KIOSK_BRIDGE) return verifyRentalCode(value);
     await before(false, 'verify');
     return transaction((db) => {
       const c = checkCode(db, value);
@@ -229,7 +233,12 @@ export const api: ServiceApi = {
       return grant;
     });
   },
-  async scan(tag, mode, kindId) {
+  async scan(tag, mode, kindId, grant) {
+    if (KIOSK_BRIDGE) {
+      if (mode !== 'rent') return fail('UNSUPPORTED', '실서버 반납 API는 아직 연결되지 않았습니다.');
+      if (!grant) return fail('AUTH', '대여 코드를 다시 확인해 주세요.');
+      return { item: await lookupRentalTag(tag, grant, kindId || '') };
+    }
     await before(false, 'scan');
     if (!controls().reader)
       return fail('READER', '인식기 연결이 끊겼습니다. 연결 복구 후 다시 접촉해 주세요.');
@@ -265,9 +274,10 @@ export const api: ServiceApi = {
     });
   },
   rent(id, grant, itemId, kindId) {
+    if (KIOSK_BRIDGE) return checkoutRental(id, grant, itemId, kindId);
     return save(id, (db) => {
       const verified = db.grants.find((g) => g.token === grant.token);
-      if (!verified || verified.expiresAt <= Date.now())
+      if (!verified || !verified.code || !verified.userId || verified.expiresAt <= Date.now())
         return fail('AUTH', '대여 인증이 만료되었습니다. 코드 입력부터 다시 진행해 주세요.');
       const code = checkCode(db, verified.code);
       const item = db.items.find((i) => i.id === itemId);
@@ -294,6 +304,7 @@ export const api: ServiceApi = {
     });
   },
   returnItem(id, itemId, condition) {
+    if (KIOSK_BRIDGE) return Promise.reject(new ServiceError('UNSUPPORTED', '실서버 반납 API는 아직 연결되지 않았습니다.'));
     return save(id, (db) => {
       const item = db.items.find((i) => i.id === itemId);
       const rental = db.rentals.find((r) => r.itemId === itemId && !r.returnedAt);
@@ -317,6 +328,7 @@ export const api: ServiceApi = {
     });
   },
   async operation(id) {
+    if (KIOSK_BRIDGE) return fail('UNSUPPORTED', '실서버 결과 조회 API는 아직 없습니다.');
     await before();
     return transaction((db) => db.operations[id] || null);
   },

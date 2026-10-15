@@ -16,7 +16,7 @@ export default defineConfig({
     command: 'node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5176 --strictPort',
     url: 'http://127.0.0.1:5176',
     reuseExistingServer: false,
-    env: { VITE_AUTH_MODE: 'mock' },
+    env: { VITE_AUTH_MODE: 'mock', VITE_KIOSK_MODE: 'mock' },
   },
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
 });

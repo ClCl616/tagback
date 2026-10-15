@@ -42,8 +42,8 @@ export type SmsChallenge = { id: string; expiresAt: number; resendAt: number };
 export type Code = { value: string; userId: string; expiresAt: number; used: boolean };
 export type Grant = {
   token: string;
-  userId: string;
-  code: string;
+  userId?: string;
+  code?: string;
   expiresAt: number;
   maskedPhone: string;
 };
@@ -58,7 +58,7 @@ export type DemoControls = {
   sessionSeconds: number;
 };
 export interface ServiceApi {
-  catalog(): Promise<Catalog>;
+  catalog(grant?: Grant): Promise<Catalog>;
   logout(token: string): Promise<void>;
   me(token: string): Promise<{ phone: string; name: string; occupation: string }>;
   code(token: string, renew?: boolean): Promise<Code>;
@@ -68,6 +68,7 @@ export interface ServiceApi {
     tag: string,
     mode: 'rent' | 'return',
     kindId?: string,
+    grant?: Grant,
   ): Promise<{ item: Item; rental?: Rental }>;
   rent(operationId: string, grant: Grant, itemId: string, kindId: string): Promise<Receipt>;
   returnItem(

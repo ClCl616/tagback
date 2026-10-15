@@ -130,6 +130,31 @@ class RentalApiPostgresIntegrationTest {
         assertEquals(1, count("item_status_history"));
     }
 
+    @Test void issuedRentalGrantCanLookUpTagButNotChangeIt() throws Exception {
+        String token = verify(issue(member));
+        mvc.perform(get("/api/tags/04A23B1C5D6E80").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.item.itemId").value(itemId))
+                .andExpect(jsonPath("$.tag.uid").value("04A23B1C5D6E80"));
+        mvc.perform(get("/api/tags/04A23B1C5D6E80").cookie(member))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/tags/04A23B1C5D6E80"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("SESSION_REQUIRED"));
+        mvc.perform(get("/api/tags/04A23B1C5D6E80").cookie(member)
+                        .header("Authorization", "Bearer " + "x".repeat(43)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("RENTAL_GRANT_INVALID"));
+        mvc.perform(delete("/api/items/" + itemId + "/tag").header("Authorization", "Bearer " + token)
+                        .param("expectedUid", "04A23B1C5D6E80"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("SESSION_REQUIRED"));
+        clock.set(NOW.plusSeconds(180));
+        mvc.perform(get("/api/tags/04A23B1C5D6E80").header("Authorization", "Bearer " + token))
+                .andExpect(status().isGone())
+                .andExpect(jsonPath("$.error.code").value("RENTAL_GRANT_EXPIRED"));
+    }
+
     @Test void rentalListIsEmptyUntilCheckoutAndShowsOnlyTheSessionUsersRentals() throws Exception {
         mvc.perform(get("/api/v1/rentals/me"))
                 .andExpect(status().isUnauthorized())
