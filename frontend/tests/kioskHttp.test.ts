@@ -24,6 +24,62 @@ describe('real kiosk HTTP contract', () => {
     unsubscribe();
   });
 
+  it('네트워크 오류와 시간 초과는 연결 오류로 표시하고 다시 시도할 수 있는 메시지를 준다', async () => {
+    const states: string[] = [];
+    const unsubscribe = subscribeServerConnection((state) => states.push(state));
+    const timeout = new Error('timeout');
+    timeout.name = 'TimeoutError';
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(new TypeError('offline'))
+      .mockRejectedValueOnce(timeout));
+
+    await expect(verifyRentalCode('123456')).rejects.toMatchObject({
+      code: 'NETWORK', message: '서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.',
+    });
+    await expect(verifyRentalCode('123456')).rejects.toMatchObject({
+      code: 'TIMEOUT', message: '서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.',
+    });
+    expect(states.slice(-2)).toEqual(['disconnected', 'disconnected']);
+    unsubscribe();
+  });
+
+  it('백엔드 오류 형식이 없는 5xx는 연결 오류로 분류한다', async () => {
+    const states: string[] = [];
+    const unsubscribe = subscribeServerConnection((state) => states.push(state));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500, json: async () => null }));
+
+    await expect(verifyRentalCode('123456')).rejects.toMatchObject({
+      code: 'SERVER_UNAVAILABLE', message: '서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.',
+    });
+    expect(states.at(-1)).toBe('disconnected');
+    unsubscribe();
+  });
+
+  it('백엔드 오류 형식이 있는 5xx는 서버 연결을 정상으로 유지한다', async () => {
+    const states: string[] = [];
+    const unsubscribe = subscribeServerConnection((state) => states.push(state));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json({ error: {
+      code: 'BACKEND_FAILURE', message: '일시적인 백엔드 오류',
+    } }, 503)));
+
+    await expect(verifyRentalCode('123456')).rejects.toMatchObject({
+      code: 'BACKEND_FAILURE', message: '일시적인 백엔드 오류',
+    });
+    expect(states.at(-1)).toBe('connected');
+    unsubscribe();
+  });
+
+  it('백엔드 오류 형식이 있는 4xx는 연결 정상으로 두고 기존 오류 코드를 안내한다', async () => {
+    const states: string[] = [];
+    const unsubscribe = subscribeServerConnection((state) => states.push(state));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(json({ error: {
+      code: 'RENTAL_CODE_INVALID', message: '코드가 올바르지 않습니다.',
+    } }, 401)));
+
+    await expect(verifyRentalCode('123456')).rejects.toMatchObject({ code: 'CODE_INVALID' });
+    expect(states.at(-1)).toBe('connected');
+    unsubscribe();
+  });
+
   it('코드 검증 후 토큰을 받고 목록을 인증하여 조회한다', async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(json({ token: grant.token, maskedPhoneNumber: grant.maskedPhone,

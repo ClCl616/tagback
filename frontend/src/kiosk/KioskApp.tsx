@@ -337,7 +337,7 @@ export default function KioskApp() {
               />
             )}
             {KIOSK_BRIDGE && serverStatus === 'disconnected' && (
-              <p className="notice" role="alert">서버와 통신할 수 없습니다. 연결을 확인한 뒤 코드 검증을 다시 시도해 주세요.</p>
+              <p className="notice" role="alert">서버에 연결할 수 없습니다. 잠시 후 코드 확인을 다시 시도해 주세요.</p>
             )}
             <div className="kiosk-actions">
               <button
