@@ -78,4 +78,29 @@ describe('real kiosk HTTP contract', () => {
     await expect(checkoutRental('4d36c088-5b23-4960-a7e3-c4f98101ac0e', grant, '5', '12'))
       .rejects.toMatchObject({ code: 'UNKNOWN' });
   });
+
+  it('응답 유실 뒤 같은 키·토큰·본문으로 재시도해 저장 결과 200을 받는다', async () => {
+    const result = { rentalId: '9', itemId: '5', itemTypeId: '12', rentalStatus: 'RENTED',
+      itemStatus: 'RENTED', rentedAt: '2026-10-14T10:00:00Z', dueAt: '2026-10-15T10:00:00Z' };
+    const fetch = vi.fn().mockRejectedValueOnce(new TypeError('connection lost'))
+      .mockResolvedValueOnce(json(result, 200));
+    vi.stubGlobal('fetch', fetch);
+    const key = '4d36c088-5b23-4960-a7e3-c4f98101ac0e';
+    await expect(checkoutRental(key, grant, '5', '12')).rejects.toMatchObject({ code: 'UNKNOWN' });
+    expect((await checkoutRental(key, grant, '5', '12')).rental.id).toBe('9');
+    expect(fetch.mock.calls[0][1].headers['Idempotency-Key']).toBe(key);
+    expect(fetch.mock.calls[1][1].headers['Idempotency-Key']).toBe(key);
+    expect(fetch.mock.calls[1][1].headers.Authorization).toBe(fetch.mock.calls[0][1].headers.Authorization);
+    expect(fetch.mock.calls[1][1].body).toBe(fetch.mock.calls[0][1].body);
+  });
+
+  it('미확정 요청 재시도에서 토큰 만료는 성공·실패가 아닌 별도 상태로 돌린다', async () => {
+    const fetch = vi.fn().mockRejectedValueOnce(new TypeError('connection lost'))
+      .mockResolvedValueOnce(json({ error: { code: 'RENTAL_GRANT_EXPIRED' } }, 410));
+    vi.stubGlobal('fetch', fetch);
+    const key = '4d36c088-5b23-4960-a7e3-c4f98101ac0e';
+    await expect(checkoutRental(key, grant, '5', '12')).rejects.toMatchObject({ code: 'UNKNOWN' });
+    await expect(checkoutRental(key, grant, '5', '12')).rejects.toMatchObject({ code: 'GRANT_EXPIRED' });
+    expect(fetch.mock.calls[1][1].headers['Idempotency-Key']).toBe(key);
+  });
 });

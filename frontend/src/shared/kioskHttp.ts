@@ -34,7 +34,9 @@ function mapError(action: Action, status: number, code: unknown, message: unknow
     case 'RENTAL_CODE_EXPIRED': throw new ServiceError('CODE_EXPIRED', safe);
     case 'RENTAL_GRANT_REQUIRED':
     case 'RENTAL_GRANT_INVALID':
-    case 'RENTAL_GRANT_EXPIRED': throw new ServiceError('AUTH', safe);
+      throw new ServiceError('AUTH', safe);
+    case 'RENTAL_GRANT_EXPIRED':
+      throw new ServiceError(action === 'rent' ? 'GRANT_EXPIRED' : 'AUTH', safe);
     case 'TAG_NOT_FOUND': throw new ServiceError('TAG_UNKNOWN', '등록되지 않은 태그입니다.');
     case 'TAG_INACTIVE': throw new ServiceError('TAG_INACTIVE', '사용 중지된 태그입니다.');
     case 'ITEM_NOT_AVAILABLE': throw new ServiceError(action === 'scan' ? 'UNAVAILABLE' : 'CONFLICT', safe);

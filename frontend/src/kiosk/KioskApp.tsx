@@ -117,14 +117,16 @@ export default function KioskApp() {
         health.sessionSeconds - Math.floor((Date.now() - lastActivity.current) / 1000),
       );
       setRemaining(left);
-      if (left === 0) reset('이용 시간이 지나 처음 화면으로 돌아왔습니다. 다시 시작해 주세요.');
+      if (left === 0) reset(KIOSK_BRIDGE && unknown
+        ? '대여 결과를 확인할 수 없습니다. 새 코드로 다시 대여하지 말고 관리자에게 문의해 주세요.'
+        : '이용 시간이 지나 처음 화면으로 돌아왔습니다. 다시 시작해 주세요.');
     }, 500);
     return () => {
       clearInterval(timer);
       window.removeEventListener('pointerdown', activity);
       window.removeEventListener('keydown', activity);
     };
-  }, [stage, health.sessionSeconds, reset]);
+  }, [stage, health.sessionSeconds, reset, unknown]);
   // Every async result belongs to an epoch. Cancel/timeout invalidates it before the next customer starts.
   async function run<T>(task: () => Promise<T>, success: (result: T) => void) {
     if (locked.current) return;
@@ -285,7 +287,9 @@ export default function KioskApp() {
   const kind = catalog.data?.kinds.find((k) => k.id === (item?.kindId || kindId));
   const stationItems = catalog.data?.items.filter((i) => i.stationId === MOCK.stationId) || [];
   const errorCode = error instanceof ServiceError ? error.code : '';
-  const needsRestart = ['AUTH', 'CODE_EXPIRED', 'CODE_USED', 'CONFLICT'].includes(errorCode);
+  const needsRestart = ['AUTH', 'GRANT_EXPIRED', 'CODE_EXPIRED', 'CODE_USED', 'CONFLICT'].includes(errorCode);
+  const recoveryNeedsManualCheck = KIOSK_BRIDGE && unknown &&
+    ['AUTH', 'GRANT_EXPIRED'].includes(errorCode);
   return (
     <div className="kiosk-shell">
       <header className="kiosk-header">
@@ -717,7 +721,11 @@ export default function KioskApp() {
                 </div>
                 <div className="confirm-bottom">
                   <ErrorBox error={error} />
-                  {unknown ? (
+                  {recoveryNeedsManualCheck ? (
+                    <p className="notice" role="alert">
+                      대여 결과를 확인할 수 없습니다. 새 코드로 다시 대여하지 말고 관리자에게 문의해 주세요.
+                    </p>
+                  ) : unknown ? (
                     <button className="primary full" disabled={busy} onClick={recover}>
                       {busy ? '처리 결과 확인 중…' : '처리 결과 다시 확인'}
                     </button>
@@ -734,7 +742,9 @@ export default function KioskApp() {
                   <p>
                     <ShieldCheck size={16} />
                     {unknown
-                      ? '결과 확인 전에는 다시 확정하지 마세요.'
+                      ? recoveryNeedsManualCheck
+                        ? '결과가 확인되기 전에는 이 물품으로 새 반출을 시도하지 마세요.'
+                        : '결과 확인 전에는 다시 확정하지 마세요.'
                       : '저장이 완료된 뒤 완료 화면이 표시됩니다.'}
                   </p>
                 </div>
@@ -777,7 +787,9 @@ export default function KioskApp() {
             <h2 id="cancel-title">이용을 종료할까요?</h2>
             <p>
               {busy || unknown
-                ? '진행 중인 요청은 이미 저장되었을 수 있습니다. 종료 후 모바일의 내 대여 현황에서 결과를 확인해 주세요.'
+                ? KIOSK_BRIDGE
+                  ? '요청이 이미 저장되었을 수 있습니다. 새 코드로 다시 대여하지 말고 관리자에게 결과를 문의해 주세요.'
+                  : '진행 중인 요청은 이미 저장되었을 수 있습니다. 종료 후 모바일의 내 대여 현황에서 결과를 확인해 주세요.'
                 : '입력한 코드와 선택한 정보가 초기화됩니다.'}
             </p>
             <button autoFocus className="primary full" onClick={() => setCancelOpen(false)}>
