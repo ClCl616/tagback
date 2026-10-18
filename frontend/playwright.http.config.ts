@@ -7,7 +7,7 @@ export default defineConfig({
   use: { baseURL: 'http://localhost:5175', headless: true, screenshot: 'only-on-failure' },
   webServer: {
     command: 'node node_modules/vite/bin/vite.js --host localhost --port 5175 --strictPort',
-    env: { VITE_AUTH_MODE: 'http' },
+    env: { VITE_AUTH_MODE: 'http', VITE_KIOSK_MODE: 'mock' },
     url: 'http://localhost:5175',
     reuseExistingServer: false,
   },
