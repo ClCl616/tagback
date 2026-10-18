@@ -115,12 +115,16 @@ export async function rentalCatalog(grant: Grant): Promise<Catalog> {
 
 export async function lookupRentalTag(uid: string, grant: Grant, selectedTypeId: string): Promise<Item> {
   if (!positiveId(selectedTypeId)) throw new ServiceError('MISMATCH', '물품 종류를 다시 선택해 주세요.');
+  uid = uid.replace(/[\s:-]/g, '').toUpperCase();
+  if (!/^(?:[0-9A-F]{8}|[0-9A-F]{14}|[0-9A-F]{20})$/.test(uid))
+    throw new ServiceError('INVALID_UID_FORMAT', '태그 UID 형식을 확인해 주세요.');
   const data = await request(`/api/tags/${encodeURIComponent(uid)}`, 'scan', 'GET', grant);
   const row = data.item;
   if (!Number.isSafeInteger(row?.itemId) || row.itemId <= 0 || !positiveId(row.itemTypeId) ||
       typeof row.name !== 'string' || typeof row.itemTypeName !== 'string' ||
       typeof row.status !== 'string' ||
-      typeof row.rentable !== 'boolean' || data.tag?.status !== 'ACTIVE')
+      typeof row.rentable !== 'boolean' || data.tag?.status !== 'ACTIVE' ||
+      data.tag?.uid !== uid)
     throw new ServiceError('UNKNOWN', '태그 조회 응답을 확인하지 못했습니다.');
   if (row.itemTypeId !== selectedTypeId)
     throw new ServiceError('MISMATCH', '선택한 종류와 다른 물품입니다. 선택한 종류의 물품을 접촉해 주세요.');

@@ -102,8 +102,25 @@ describe('real kiosk HTTP contract', () => {
     vi.stubGlobal('fetch', fetch);
     expect((await lookupRentalTag('04A23B1C5D6E80', grant, '12')).kindId).toBe('12');
     await expect(lookupRentalTag('04A23B1C5D6E80', grant, '13')).rejects.toMatchObject({ code: 'MISMATCH' });
-    fetch.mockResolvedValueOnce(json({ item: { ...item, rentable: false }, tag: { status: 'ACTIVE' } }));
+    fetch.mockResolvedValueOnce(json({ item: { ...item, rentable: false }, tag: { uid: '04A23B1C5D6E80', status: 'ACTIVE' } }));
     await expect(lookupRentalTag('04A23B1C5D6E80', grant, '12')).rejects.toMatchObject({ code: 'UNAVAILABLE' });
+  });
+
+  it('요청 UID를 정규화하고 다른 UID 또는 UID 누락 응답을 거부한다', async () => {
+    const item = { itemId: 5, name: '우산 1', status: 'AVAILABLE', rentable: true,
+      itemTypeId: '12', itemTypeName: '우산' };
+    const fetch = vi.fn().mockResolvedValue(json({ item,
+      tag: { uid: '04A23B1C5D6E80', status: 'ACTIVE' } }));
+    vi.stubGlobal('fetch', fetch);
+    expect((await lookupRentalTag('04:a2:3b:1c:5d:6e:80', grant, '12')).tag).toBe('04A23B1C5D6E80');
+    expect(fetch.mock.calls[0][0]).toBe('/api/tags/04A23B1C5D6E80');
+    for (const uid of [undefined, '04A23B1C5D6E81', 'invalid']) {
+      fetch.mockResolvedValueOnce(json({ item, tag: { uid, status: 'ACTIVE' } }));
+      await expect(lookupRentalTag('04A23B1C5D6E80', grant, '12')).rejects.toMatchObject({ code: 'UNKNOWN' });
+    }
+    fetch.mockClear();
+    await expect(lookupRentalTag('invalid', grant, '12')).rejects.toMatchObject({ code: 'INVALID_UID_FORMAT' });
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('미등록·비활성 태그 오류를 사용자 안내로 변환한다', async () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -70,6 +70,14 @@ export default function KioskApp() {
   );
   const readerReady = KIOSK_BRIDGE ? readerStatus === 'connected' : health.reader;
   const serviceReady = KIOSK_BRIDGE ? serverStatus === 'connected' : health.service;
+  const readerDisconnected = KIOSK_BRIDGE ? readerStatus === 'disconnected' : !health.reader;
+  const deviceUnavailable = readerDisconnected || (!KIOSK_BRIDGE && !serviceReady);
+  const deviceError = useMemo(() => deviceUnavailable
+    ? new Error('현재 기기를 이용할 수 없습니다. 연결 복구 후 다시 시작해 주세요.')
+    : undefined, [deviceUnavailable]);
+  const readerError = useMemo(() => readerDisconnected
+    ? new Error('인식기 연결 복구 후 물품을 다시 접촉해 주세요. 이용을 취소할 수도 있습니다.')
+    : undefined, [readerDisconnected]);
   useEffect(() => KIOSK_BRIDGE ? subscribeServerConnection(setServerStatus) : undefined, []);
   const reset = useCallback((message = '') => {
     epoch.current++;
@@ -329,13 +337,7 @@ export default function KioskApp() {
                 {banner}
               </div>
             )}
-            {(!readerReady || (!KIOSK_BRIDGE && !serviceReady)) && (
-              <ErrorBox
-                error={
-                  new Error('현재 기기를 이용할 수 없습니다. 연결 복구 후 다시 시작해 주세요.')
-                }
-              />
-            )}
+            <ErrorBox error={deviceError} />
             {KIOSK_BRIDGE && serverStatus === 'disconnected' && (
               <p className="notice" role="alert">서버에 연결할 수 없습니다. 잠시 후 코드 확인을 다시 시도해 주세요.</p>
             )}
@@ -589,15 +591,7 @@ export default function KioskApp() {
                 )}
                 <div className="scan-errors">
                   <ErrorBox error={error} />
-                  {!readerReady && (
-                    <ErrorBox
-                      error={
-                        new Error(
-                          '인식기 연결 복구 후 물품을 다시 접촉해 주세요. 이용을 취소할 수도 있습니다.',
-                        )
-                      }
-                    />
-                  )}
+                  <ErrorBox error={readerError} />
                 </div>
                 <p className="muted">
                   {mode === 'rent'
