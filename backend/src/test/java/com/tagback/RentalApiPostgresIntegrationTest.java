@@ -237,6 +237,59 @@ class RentalApiPostgresIntegrationTest {
         }
     }
 
+    @Test void returnApiRequiresOwnerSessionAndPersistsTheCompleteReturnResult() throws Exception {
+        String token = verify(issue(member));
+        perform(token, key(), body(itemId)).andExpect(status().isCreated());
+
+        mvc.perform(post("/api/v1/rentals/return").contentType("application/json").content(returnBody(itemId)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("SESSION_REQUIRED"));
+        mvc.perform(post("/api/v1/rentals/return").cookie(otherMember).contentType("application/json")
+                        .content(returnBody(itemId)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
+        mvc.perform(post("/api/v1/rentals/return").cookie(member).contentType("application/json")
+                        .content("{\"itemId\":" + itemId + "}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"));
+        mvc.perform(post("/api/v1/rentals/return").cookie(member).param("userId", Long.toString(otherUserId))
+                        .contentType("application/json").content(returnBody(itemId)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"));
+
+        mvc.perform(post("/api/v1/rentals/return").cookie(member).contentType("application/json")
+                        .content(returnBody(itemId)))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.rentalId").isString())
+                .andExpect(jsonPath("$.itemId").value(Long.toString(itemId)))
+                .andExpect(jsonPath("$.rentalStatus").value("RETURNED"))
+                .andExpect(jsonPath("$.itemStatus").value("AVAILABLE"))
+                .andExpect(jsonPath("$.rentedAt").value(NOW.toString()))
+                .andExpect(jsonPath("$.dueAt").value(NOW.plusSeconds(72 * 3600).toString()))
+                .andExpect(jsonPath("$.returnedAt").value(NOW.toString()));
+
+        assertEquals(NOW, jdbc.queryForObject(
+                "select returned_at from rentals where item_id = ?", Timestamp.class, itemId).toInstant());
+        assertEquals("RETURNED", jdbc.queryForObject(
+                "select status from rentals where item_id = ?", String.class, itemId));
+        assertEquals("AVAILABLE", jdbc.queryForObject(
+                "select status from items where item_id = ?", String.class, itemId));
+        assertEquals(2, count("item_status_history"));
+        assertEquals("RENTED", jdbc.queryForObject(
+                "select from_status from item_status_history where item_id = ? order by item_status_history_id desc limit 1",
+                String.class, itemId));
+        assertEquals("AVAILABLE", jdbc.queryForObject(
+                "select to_status from item_status_history where item_id = ? order by item_status_history_id desc limit 1",
+                String.class, itemId));
+        assertEquals("RENTAL_FLOW", jdbc.queryForObject(
+                "select source from item_status_history where item_id = ? order by item_status_history_id desc limit 1",
+                String.class, itemId));
+        assertEquals(userId, jdbc.queryForObject(
+                "select changed_by_user_id from item_status_history where item_id = ? order by item_status_history_id desc limit 1",
+                Long.class, itemId));
+    }
+
     @Test void rejectsMalformedBodiesAndClientSuppliedIdentityWithoutConsumingCode() throws Exception {
         String token = verify(issue(member));
         for (String invalid : new String[]{"{}", "null", "{", "{\"itemId\":12,\"itemTypeId\":\"1\"}",
@@ -445,6 +498,7 @@ class RentalApiPostgresIntegrationTest {
     }
     private String key() { return UUID.randomUUID().toString(); }
     private String body(long item) { return "{\"itemId\":\"" + item + "\",\"itemTypeId\":\"" + typeId + "\"}"; }
+    private String returnBody(long item) { return "{\"itemId\":\"" + item + "\"}"; }
     private MockHttpServletRequestBuilder request(String token, String key, String body) {
         return post("/api/v1/rentals").header("Authorization", "Bearer " + token).header("Idempotency-Key", key).contentType("application/json").content(body);
     }

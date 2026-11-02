@@ -50,4 +50,14 @@ public class Rental {
     public Instant getDueAt() { return dueAt; }
     public Instant getReturnedAt() { return returnedAt; }
     public RentalStatus getStatus() { return status; }
+
+    /** Marks an active rental returned at the server-supplied time, including overdue rentals. */
+    public void markReturned(Instant returnedAt) {
+        Instant returnTime = Objects.requireNonNull(returnedAt, "returnedAt");
+        if (this.returnedAt != null) {
+            throw new IllegalStateException("Rental has already been returned");
+        }
+        this.returnedAt = returnTime;
+        this.status = RentalStatus.RETURNED;
+    }
 }

@@ -7,6 +7,7 @@ import com.tagback.exception.ItemException;
 import com.tagback.exception.RentalException;
 import com.tagback.service.ItemService;
 import com.tagback.service.RentalCheckoutService;
+import com.tagback.service.RentalReturnService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -52,6 +53,7 @@ class RentalCheckoutPostgresIntegrationTest {
     @Autowired NfcTagRepository tags;
     @Autowired RentalRepository rentals;
     @Autowired ItemStatusHistoryRepository history;
+    @Autowired RentalReturnService returns;
     @Autowired JdbcTemplate jdbc;
     @Autowired TransactionTemplate transactions;
     private Fixture data;
@@ -124,6 +126,60 @@ class RentalCheckoutPostgresIntegrationTest {
             throw new IllegalStateException("Simulated later authentication write failure");
         }));
         assertState("AVAILABLE", 0, 0);
+    }
+
+    @Test void returnCommitsReturnedTimeRentalItemAndActorHistoryForAnOverdueRental() {
+        prepareOverdueRental();
+
+        var result = returns.returnItem(data.userId(), data.itemId());
+
+        assertEquals(RentalStatus.RETURNED, result.rentalStatus());
+        assertEquals(ItemStatus.AVAILABLE, result.itemStatus());
+        assertEquals(NOW, result.returnedAt());
+        assertEquals(NOW.minusSeconds(4 * 86400), result.rentedAt());
+        assertEquals(NOW.minusSeconds(86400), result.dueAt());
+        assertEquals(NOW, jdbc.queryForObject(
+                "select returned_at from rentals where item_id = ?", java.sql.Timestamp.class, data.itemId()).toInstant());
+        assertEquals("RETURNED", jdbc.queryForObject(
+                "select status from rentals where item_id = ?", String.class, data.itemId()));
+        assertEquals("AVAILABLE", jdbc.queryForObject(
+                "select status from items where item_id = ?", String.class, data.itemId()));
+
+        var changes = history.findByItemIdOrderByIdAsc(data.itemId());
+        assertEquals(1, changes.size());
+        assertEquals(ItemStatus.RENTED, changes.getFirst().getFromStatus());
+        assertEquals(ItemStatus.AVAILABLE, changes.getFirst().getToStatus());
+        assertEquals(ItemStatusChangeSource.RENTAL_FLOW, changes.getFirst().getSource());
+        assertEquals(data.userId(), changes.getFirst().getChangedByUserId());
+    }
+
+    @Test void statusHistoryFailureRollsBackReturnTimestampRentalStateAndItemState() {
+        prepareOverdueRental();
+        jdbc.execute("alter table item_status_history add constraint test_return_history_write "
+                + "check (item_id <> " + data.itemId() + ")");
+        try {
+            assertThrows(DataIntegrityViolationException.class,
+                    () -> returns.returnItem(data.userId(), data.itemId()));
+            assertEquals(0, jdbc.queryForObject(
+                    "select count(*) from rentals where item_id = ? and returned_at is not null", Integer.class, data.itemId()));
+            assertEquals("OVERDUE", jdbc.queryForObject(
+                    "select status from rentals where item_id = ?", String.class, data.itemId()));
+            assertEquals("RENTED", jdbc.queryForObject(
+                    "select status from items where item_id = ?", String.class, data.itemId()));
+            assertEquals(0, jdbc.queryForObject(
+                    "select count(*) from item_status_history where item_id = ?", Integer.class, data.itemId()));
+        } finally {
+            jdbc.execute("alter table item_status_history drop constraint test_return_history_write");
+        }
+
+        // A later attempt must still be able to commit after the failed history insert rolled back.
+        returns.returnItem(data.userId(), data.itemId());
+        assertEquals(1, jdbc.queryForObject(
+                "select count(*) from rentals where item_id = ? and returned_at is not null", Integer.class, data.itemId()));
+        assertEquals("AVAILABLE", jdbc.queryForObject(
+                "select status from items where item_id = ?", String.class, data.itemId()));
+        assertEquals(1, jdbc.queryForObject(
+                "select count(*) from item_status_history where item_id = ?", Integer.class, data.itemId()));
     }
 
     @Test void activeOverdueRentalBlocksCheckoutEvenWhenItemStatusIsAvailable() {
@@ -200,6 +256,17 @@ class RentalCheckoutPostgresIntegrationTest {
         assertEquals(status, jdbc.queryForObject("select status from items where item_id = ?", String.class, data.itemId()));
         assertEquals(rentalCount, jdbc.queryForObject("select count(*) from rentals where item_id = ?", Integer.class, data.itemId()));
         assertEquals(historyCount, jdbc.queryForObject("select count(*) from item_status_history where item_id = ?", Integer.class, data.itemId()));
+    }
+
+    private void prepareOverdueRental() {
+        transactions.executeWithoutResult(tx -> {
+            var item = items.findForUpdate(data.itemId()).orElseThrow();
+            item.updateStatus(ItemStatus.RENTED);
+            rentals.saveAndFlush(new Rental(users.getReferenceById(data.userId()), item,
+                    NOW.minusSeconds(4 * 86400), NOW.minusSeconds(86400)));
+            jdbc.update("update rentals set status = 'OVERDUE' where item_id = ?", data.itemId());
+            items.flush();
+        });
     }
 
     private record Fixture(Long userId, Long otherUserId, Long itemId, Long typeId) {}

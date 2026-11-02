@@ -4,6 +4,7 @@ import com.tagback.domain.entity.ItemStatus;
 import com.tagback.domain.entity.Rental;
 import com.tagback.domain.entity.RentalStatus;
 import com.tagback.service.RentalCheckoutService.CheckoutResult;
+import com.tagback.service.RentalReturnService.ReturnResult;
 import java.time.Instant;
 import java.util.List;
 
@@ -17,6 +18,15 @@ public final class RentalResponses {
         public static Checkout from(CheckoutResult result) {
             return new Checkout(result.rentalId().toString(), result.itemId().toString(), result.itemTypeId().toString(),
                     result.rentalStatus(), result.itemStatus(), result.rentedAt(), result.dueAt(), result.returnedAt());
+        }
+    }
+
+    public record Returned(String rentalId, String itemId, RentalStatus rentalStatus, ItemStatus itemStatus,
+                           Instant rentedAt, Instant dueAt, Instant returnedAt) {
+        public static Returned from(ReturnResult result) {
+            return new Returned(result.rentalId().toString(), result.itemId().toString(),
+                    result.rentalStatus(), result.itemStatus(), result.rentedAt(), result.dueAt(),
+                    result.returnedAt());
         }
     }
 

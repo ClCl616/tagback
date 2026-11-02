@@ -2,7 +2,7 @@ package com.tagback.exception;
 
 import java.time.Instant;
 
-/** Rental authentication and checkout failures with safe public messages. */
+/** Rental authentication and operation failures with safe public messages. */
 public class RentalException extends RuntimeException {
     private final String code;
     private final int status;
@@ -33,6 +33,12 @@ public class RentalException extends RuntimeException {
 
     public static RentalException activeRental() {
         return new RentalException("RENTAL_ALREADY_ACTIVE", "이미 진행 중인 대여가 있는 물품입니다.", 409);
+    }
+    public static RentalException noActiveRental() {
+        return new RentalException("RENTAL_NOT_ACTIVE", "반납할 진행 중 대여가 없습니다.", 409);
+    }
+    public static RentalException returnStateConflict() {
+        return new RentalException("RENTAL_STATE_CONFLICT", "대여와 물품 상태가 일치하지 않아 반납할 수 없습니다.", 409);
     }
     public static RentalException grantRequired() {
         return new RentalException("RENTAL_GRANT_REQUIRED", "반출 인증이 필요합니다.", 401);

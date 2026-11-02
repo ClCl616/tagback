@@ -2,6 +2,7 @@ package com.tagback.exception;
 
 import com.tagback.controller.RentalController;
 import com.tagback.controller.RentalCodeController;
+import com.tagback.controller.RentalReturnController;
 import com.tagback.dto.ApiErrorResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,7 +11,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-@RestControllerAdvice(assignableTypes = {RentalController.class, RentalCodeController.class})
+@RestControllerAdvice(assignableTypes = {RentalController.class, RentalCodeController.class,
+        RentalReturnController.class})
 @Order(1)
 public class RentalApiExceptionHandler {
     private static final Logger logger = LoggerFactory.getLogger(RentalApiExceptionHandler.class);
