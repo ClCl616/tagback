@@ -19,6 +19,7 @@ import { api, controls, ServiceError } from '../shared/api';
 import { MOCK } from '../shared/config';
 import { KIOSK_BRIDGE } from '../shared/kioskMode';
 import { subscribeServerConnection, type ServerConnection } from '../shared/kioskHttp';
+import { lookupReturnTag } from '../shared/kioskReturn';
 import { nfc, type ReaderStatus } from '../shared/nfc';
 import {
   Badge,
@@ -164,7 +165,7 @@ export default function KioskApp() {
       scanSeen.current = { tag, at: Date.now() };
       lastActivity.current = Date.now();
       void run(
-        () => api.scan(tag, mode, kindId, grant),
+        () => KIOSK_BRIDGE && mode === 'return' ? lookupReturnTag(tag) : api.scan(tag, mode, kindId, grant),
         (result) => {
           setItem(result.item);
           setStage(mode === 'rent' ? 'confirm' : 'condition');
@@ -202,7 +203,6 @@ export default function KioskApp() {
     return () => document.removeEventListener('keydown', trap);
   }, [cancelOpen]);
   function start(next: 'rent' | 'return') {
-    if (KIOSK_BRIDGE && next === 'return') return;
     reset();
     setMode(next);
     setRemaining(health.sessionSeconds);
@@ -361,7 +361,7 @@ export default function KioskApp() {
               <button
                 className="return-action"
                 onClick={() => start('return')}
-                disabled={KIOSK_BRIDGE || !readerReady || !serviceReady}
+                disabled={!readerReady || (!KIOSK_BRIDGE && !serviceReady)}
               >
                 <div className="action-symbol">
                   <RotateCcw size={42} />
@@ -370,7 +370,7 @@ export default function KioskApp() {
                 <h2>반납하기</h2>
                 <p>반납할 물품을 준비해 주세요.</p>
                 <span className="action-footer">
-                  {KIOSK_BRIDGE ? '실서버 반납은 아직 준비 중이에요' : '로그인 없이 물품으로 확인해요'}
+                  {KIOSK_BRIDGE ? '반납 인증 및 처리는 준비 중이에요' : '로그인 없이 물품으로 확인해요'}
                   <ArrowRight />
                 </span>
               </button>
@@ -596,7 +596,9 @@ export default function KioskApp() {
                 <p className="muted">
                   {mode === 'rent'
                     ? '인식만으로 대여되지 않습니다. 다음 화면에서 대여를 확정해 주세요.'
-                    : '인식 후 물품 상태를 확인하고 반납을 확정해 주세요.'}
+                    : KIOSK_BRIDGE
+                      ? '반납 인증과 실제 반납 처리는 준비 중입니다.'
+                      : '인식 후 물품 상태를 확인하고 반납을 확정해 주세요.'}
                 </p>
                 {!!error && (
                   <button
