@@ -1,4 +1,5 @@
 import { ServiceError } from './serviceError';
+import { sendKioskRequest } from './kioskHttp';
 
 type Transport = (path: string, init: RequestInit) => Promise<Response>;
 type Credentials = () => Promise<HeadersInit | undefined>;
@@ -24,9 +25,9 @@ export function createReturnClient(transport: Transport, credentials: Credential
     if (!auth) throw new ServiceError('AUTH_PENDING', '반납 인증 방식이 아직 정해지지 않았습니다.');
     const headers = new Headers(auth);
     if (body !== undefined) headers.set('Content-Type', 'application/json');
-    const response = await transport(path, { method, headers, credentials: 'omit', body: body === undefined ? undefined : JSON.stringify(body) });
-    const data = await response.json();
+    const { response, data } = await sendKioskRequest(transport, path, { method, headers, credentials: 'omit', body: body === undefined ? undefined : JSON.stringify(body) });
     if (!response.ok) throw returnError(response.status, data?.error?.code);
+    if (!data || typeof data !== 'object') throw new ServiceError('UNKNOWN', '서버 응답을 확인하지 못했습니다.');
     return data;
   }
   return {

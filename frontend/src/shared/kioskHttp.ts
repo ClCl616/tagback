@@ -21,6 +21,29 @@ function hasBackendErrorShape(data: unknown): data is { error: { code: string; m
   const error = data.error;
   return !!error && typeof error === 'object' && 'code' in error && typeof error.code === 'string';
 }
+// Shared transport and connection classification for kiosk requests.
+export async function sendKioskRequest(
+  transport: (path: string, init: RequestInit) => Promise<Response>, path: string,
+  init: RequestInit, indeterminateOnFailure = false,
+): Promise<{ response: Response; data: any }> {
+  let response: Response;
+  try {
+    response = await transport(path, { ...init, signal: AbortSignal.timeout(15_000) });
+  } catch (error) {
+    updateServerConnection('disconnected');
+    if (indeterminateOnFailure)
+      throw new ServiceError('UNKNOWN', '응답을 받지 못했습니다. 같은 요청으로 결과를 확인해 주세요.');
+    if (error instanceof Error && error.name === 'TimeoutError')
+      throw new ServiceError('TIMEOUT', SERVER_UNAVAILABLE_MESSAGE);
+    throw new ServiceError('NETWORK', SERVER_UNAVAILABLE_MESSAGE);
+  }
+  const data = await response.json().catch(() => null);
+  const proxyFailure = response.status >= 500 && !hasBackendErrorShape(data);
+  updateServerConnection(proxyFailure ? 'disconnected' : 'connected');
+  if (proxyFailure && !indeterminateOnFailure)
+    throw new ServiceError('SERVER_UNAVAILABLE', SERVER_UNAVAILABLE_MESSAGE);
+  return { response, data };
+}
 const positiveId = (value: unknown): value is string =>
   typeof value === 'string' && /^[1-9][0-9]*$/.test(value) &&
   (value.length < 19 || (value.length === 19 && value <= '9223372036854775807'));
@@ -56,9 +79,7 @@ function mapError(action: Action, status: number, code: unknown, message: unknow
 
 async function request(path: string, action: Action, method = 'GET', grant?: Grant,
                        body?: unknown, key?: string): Promise<any> {
-  let response: Response;
-  try {
-    response = await fetch(path, {
+  const { response, data } = await sendKioskRequest(fetch, path, {
       method,
       cache: 'no-store',
       credentials: 'omit', // A shared kiosk must not send a user's mobile session cookie.
@@ -68,22 +89,7 @@ async function request(path: string, action: Action, method = 'GET', grant?: Gra
         ...(key ? { 'Idempotency-Key': key } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(15_000),
-    });
-  } catch (error) {
-    updateServerConnection('disconnected');
-    if (action === 'rent')
-      throw new ServiceError('UNKNOWN', '응답을 받지 못했습니다. 같은 요청으로 결과를 확인해 주세요.');
-    if (error instanceof Error && error.name === 'TimeoutError')
-      throw new ServiceError('TIMEOUT', SERVER_UNAVAILABLE_MESSAGE);
-    throw new ServiceError('NETWORK', SERVER_UNAVAILABLE_MESSAGE);
-  }
-  const data = await response.json().catch(() => null);
-  const backendError = hasBackendErrorShape(data);
-  const proxyFailure = response.status >= 500 && !backendError;
-  updateServerConnection(proxyFailure ? 'disconnected' : 'connected');
-  if (proxyFailure && action !== 'rent')
-    throw new ServiceError('SERVER_UNAVAILABLE', SERVER_UNAVAILABLE_MESSAGE);
+    }, action === 'rent');
   if (!response.ok) mapError(action, response.status, data?.error?.code, data?.error?.message);
   if (action === 'rent' && response.status !== 200 && response.status !== 201)
     throw new ServiceError('UNKNOWN', '반출 결과를 확인하지 못했습니다. 같은 요청으로 결과를 확인해 주세요.');
