@@ -1,5 +1,33 @@
 import { test, expect } from '@playwright/test';
 
+test('return scan ignores the same tag within one second', async ({ page }) => {
+  await page.clock.install();
+  await page.addInitScript(() => {
+    const sources = new Set<EventTarget>();
+    class FakeSource extends EventTarget {
+      constructor() { super(); sources.add(this); queueMicrotask(() => this.dispatchEvent(new MessageEvent('READER_CONNECTED'))); }
+      close() { sources.delete(this); }
+    }
+    Object.defineProperty(window, 'EventSource', { value: FakeSource });
+    window.addEventListener('test-repeat-tag', () => {
+      for (const source of sources) source.dispatchEvent(new MessageEvent('TAG_READ', {
+        data: JSON.stringify({ type: 'TAG_READ', uid: '04A23B1C5D6E80' }),
+      }));
+    });
+  });
+  await page.goto('/kiosk');
+  await page.getByRole('button', { name: /반납하기/ }).click();
+  const scan = () => page.evaluate(() => window.dispatchEvent(new Event('test-repeat-tag')));
+  await scan();
+  await expect(page.getByRole('dialog')).toContainText('반납 인증 방식이 아직 정해지지 않았습니다');
+  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
+  await scan();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.clock.fastForward(1001);
+  await scan();
+  await expect(page.getByRole('dialog')).toContainText('반납 인증 방식이 아직 정해지지 않았습니다');
+});
+
 test('return scan receives a bridge event but never sends a request without return authentication', async ({ page }) => {
   await page.addInitScript(() => {
     const sources = new Set<EventTarget>();
