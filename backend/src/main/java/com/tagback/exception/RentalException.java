@@ -40,6 +40,9 @@ public class RentalException extends RuntimeException {
     public static RentalException returnStateConflict() {
         return new RentalException("RENTAL_STATE_CONFLICT", "대여와 물품 상태가 일치하지 않아 반납할 수 없습니다.", 409);
     }
+    public static RentalException rentalChanged() {
+        return new RentalException("RENTAL_CHANGED", "대여 정보가 변경되었습니다. 태그를 다시 인식해 주세요.", 409);
+    }
     public static RentalException grantRequired() {
         return new RentalException("RENTAL_GRANT_REQUIRED", "반출 인증이 필요합니다.", 401);
     }

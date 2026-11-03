@@ -303,17 +303,19 @@ export const api: ServiceApi = {
       return { operationId: id, item, rental, type: 'rent' };
     });
   },
-  returnItem(id, itemId, condition) {
+  returnItem(id, itemId, rentalId, tagUid, condition) {
     if (KIOSK_BRIDGE) return Promise.reject(new ServiceError('UNSUPPORTED', '실서버 반납 API는 아직 연결되지 않았습니다.'));
     return save(id, (db) => {
       const item = db.items.find((i) => i.id === itemId);
       const rental = db.rentals.find((r) => r.itemId === itemId && !r.returnedAt);
       if (
         !item ||
+        item.tag !== tagUid ||
         !item.active ||
         item.stationId !== MOCK.stationId ||
         item.status !== 'rented' ||
-        !rental
+        !rental ||
+        rental.id !== rentalId
       )
         return fail(
           'CONFLICT',

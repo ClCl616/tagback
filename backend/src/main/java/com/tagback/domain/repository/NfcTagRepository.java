@@ -11,6 +11,9 @@ public interface NfcTagRepository extends JpaRepository<NfcTag, Long> {
 
     Optional<NfcTag> findByUid(String uid);
 
+    @Query("select t from NfcTag t where t.uid = :uid and t.deactivatedAt is null")
+    Optional<NfcTag> findActiveByUid(@Param("uid") String uid);
+
     @Query("select t from NfcTag t where t.item.id = :itemId and t.deactivatedAt is null")
     Optional<NfcTag> findByItem_Id(@Param("itemId") Long itemId);
 

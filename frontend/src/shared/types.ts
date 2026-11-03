@@ -74,6 +74,8 @@ export interface ServiceApi {
   returnItem(
     operationId: string,
     itemId: string,
+    rentalId: string,
+    tagUid: string,
     condition: 'normal' | 'damaged',
   ): Promise<Receipt>;
   operation(operationId: string): Promise<Receipt | null>;

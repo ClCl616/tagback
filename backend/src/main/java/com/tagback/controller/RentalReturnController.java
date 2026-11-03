@@ -30,6 +30,19 @@ public class RentalReturnController {
         this.origins = origins;
     }
 
+    @PostMapping("/return/scan")
+    public ResponseEntity<RentalResponses.ReturnScan> scanReturnTag(
+            @Valid @RequestBody RentalRequests.ReturnScan body,
+            @RequestAttribute(AuthenticatedUser.ATTRIBUTE) AuthenticatedUser user,
+            HttpServletRequest request) {
+        origins.check(request);
+        if (request.getParameterMap().containsKey("userId")) {
+            throw new AuthException(AuthErrorCode.INVALID_INPUT);
+        }
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(RentalResponses.ReturnScan.from(returns.scanTag(user.userId(), body.tagUid())));
+    }
+
     @PostMapping("/return")
     public ResponseEntity<RentalResponses.Returned> returnItem(
             @Valid @RequestBody RentalRequests.Return body,
@@ -39,7 +52,8 @@ public class RentalReturnController {
         if (request.getParameterMap().containsKey("userId")) {
             throw new AuthException(AuthErrorCode.INVALID_INPUT);
         }
-        var result = returns.returnItem(user.userId(), Long.parseLong(body.itemId()));
+        var result = returns.returnItem(user.userId(), body.tagUid(),
+                Long.parseLong(body.rentalId()), body.condition());
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(RentalResponses.Returned.from(result));
     }

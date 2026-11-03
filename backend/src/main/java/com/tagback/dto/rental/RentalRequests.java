@@ -1,6 +1,7 @@
 package com.tagback.dto.rental;
 
 import com.fasterxml.jackson.annotation.JsonAnySetter;
+import com.tagback.domain.entity.ReturnCondition;
 import com.tagback.dto.item.StrictStringDeserializer;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.NotBlank;
@@ -22,9 +23,18 @@ public final class RentalRequests {
 
     public record Return(
             @JsonDeserialize(using = StrictStringDeserializer.class)
-            @NotBlank @Pattern(regexp = "[1-9][0-9]{0,18}") @DecimalMax("9223372036854775807") String itemId) {
+        @NotBlank @Pattern(regexp = "[1-9][0-9]{0,18}") @DecimalMax("9223372036854775807") String rentalId,
+        @JsonDeserialize(using = StrictStringDeserializer.class) @NotBlank String tagUid,
+        @jakarta.validation.constraints.NotNull ReturnCondition condition) {
         @JsonAnySetter public void rejectUnknown(String name, Object value) {
             throw new IllegalArgumentException("Unknown return field");
+        }
+    }
+
+    public record ReturnScan(
+            @JsonDeserialize(using = StrictStringDeserializer.class) @NotBlank String tagUid) {
+        @JsonAnySetter public void rejectUnknown(String name, Object value) {
+            throw new IllegalArgumentException("Unknown return scan field");
         }
     }
 

@@ -240,12 +240,20 @@ class RentalApiPostgresIntegrationTest {
     @Test void returnApiRequiresOwnerSessionAndPersistsTheCompleteReturnResult() throws Exception {
         String token = verify(issue(member));
         perform(token, key(), body(itemId)).andExpect(status().isCreated());
+        String rentalId = jdbc.queryForObject("select rental_id from rentals where item_id = ?", String.class, itemId);
+        String body = returnBody(rentalId, "04A23B1C5D6E80", "NORMAL");
 
-        mvc.perform(post("/api/v1/rentals/return").contentType("application/json").content(returnBody(itemId)))
+        mvc.perform(post("/api/v1/rentals/return/scan").cookie(member).contentType("application/json")
+                        .content("{\"tagUid\":\"04A23B1C5D6E80\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rentalId").value(rentalId))
+                .andExpect(jsonPath("$.tagUid").value("04A23B1C5D6E80"));
+
+        mvc.perform(post("/api/v1/rentals/return").contentType("application/json").content(body))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error.code").value("SESSION_REQUIRED"));
         mvc.perform(post("/api/v1/rentals/return").cookie(otherMember).contentType("application/json")
-                        .content(returnBody(itemId)))
+                        .content(body))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code").value("FORBIDDEN"));
         mvc.perform(post("/api/v1/rentals/return").cookie(member).contentType("application/json")
@@ -253,18 +261,19 @@ class RentalApiPostgresIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"));
         mvc.perform(post("/api/v1/rentals/return").cookie(member).param("userId", Long.toString(otherUserId))
-                        .contentType("application/json").content(returnBody(itemId)))
+                        .contentType("application/json").content(body))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"));
 
         mvc.perform(post("/api/v1/rentals/return").cookie(member).contentType("application/json")
-                        .content(returnBody(itemId)))
+                        .content(body))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.rentalId").isString())
                 .andExpect(jsonPath("$.itemId").value(Long.toString(itemId)))
                 .andExpect(jsonPath("$.rentalStatus").value("RETURNED"))
                 .andExpect(jsonPath("$.itemStatus").value("AVAILABLE"))
+                .andExpect(jsonPath("$.condition").value("NORMAL"))
                 .andExpect(jsonPath("$.rentedAt").value(NOW.toString()))
                 .andExpect(jsonPath("$.dueAt").value(NOW.plusSeconds(72 * 3600).toString()))
                 .andExpect(jsonPath("$.returnedAt").value(NOW.toString()));
@@ -498,7 +507,10 @@ class RentalApiPostgresIntegrationTest {
     }
     private String key() { return UUID.randomUUID().toString(); }
     private String body(long item) { return "{\"itemId\":\"" + item + "\",\"itemTypeId\":\"" + typeId + "\"}"; }
-    private String returnBody(long item) { return "{\"itemId\":\"" + item + "\"}"; }
+    private String returnBody(String rentalId, String tagUid, String condition) {
+        return "{\"rentalId\":\"" + rentalId + "\",\"tagUid\":\"" + tagUid
+                + "\",\"condition\":\"" + condition + "\"}";
+    }
     private MockHttpServletRequestBuilder request(String token, String key, String body) {
         return post("/api/v1/rentals").header("Authorization", "Bearer " + token).header("Idempotency-Key", key).contentType("application/json").content(body);
     }

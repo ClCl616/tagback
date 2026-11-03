@@ -131,7 +131,7 @@ class RentalCheckoutPostgresIntegrationTest {
     @Test void returnCommitsReturnedTimeRentalItemAndActorHistoryForAnOverdueRental() {
         prepareOverdueRental();
 
-        var result = returns.returnItem(data.userId(), data.itemId());
+        var result = returnCurrentRental();
 
         assertEquals(RentalStatus.RETURNED, result.rentalStatus());
         assertEquals(ItemStatus.AVAILABLE, result.itemStatus());
@@ -159,7 +159,7 @@ class RentalCheckoutPostgresIntegrationTest {
                 + "check (item_id <> " + data.itemId() + ")");
         try {
             assertThrows(DataIntegrityViolationException.class,
-                    () -> returns.returnItem(data.userId(), data.itemId()));
+                    this::returnCurrentRental);
             assertEquals(0, jdbc.queryForObject(
                     "select count(*) from rentals where item_id = ? and returned_at is not null", Integer.class, data.itemId()));
             assertEquals("OVERDUE", jdbc.queryForObject(
@@ -173,7 +173,7 @@ class RentalCheckoutPostgresIntegrationTest {
         }
 
         // A later attempt must still be able to commit after the failed history insert rolled back.
-        returns.returnItem(data.userId(), data.itemId());
+        returnCurrentRental();
         assertEquals(1, jdbc.queryForObject(
                 "select count(*) from rentals where item_id = ? and returned_at is not null", Integer.class, data.itemId()));
         assertEquals("AVAILABLE", jdbc.queryForObject(
@@ -267,6 +267,11 @@ class RentalCheckoutPostgresIntegrationTest {
             jdbc.update("update rentals set status = 'OVERDUE' where item_id = ?", data.itemId());
             items.flush();
         });
+    }
+
+    private RentalReturnService.ReturnResult returnCurrentRental() {
+        var scan = returns.scanTag(data.userId(), "04A23B1C5D6E80");
+        return returns.returnItem(data.userId(), scan.tagUid(), scan.rentalId(), ReturnCondition.NORMAL);
     }
 
     private record Fixture(Long userId, Long otherUserId, Long itemId, Long typeId) {}

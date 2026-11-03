@@ -1,18 +1,31 @@
 # 물품 반납 API 계약
 
-작성: 2026-11-02. 작업 브랜치: `feat/item-return-history`.
+작성: 2026-11-03. 작업 브랜치: `feat/item-return-history`.
 
-현재 상태: 개발 프로필용 사용자 세션 반납 API와 서버 처리를 구현했다. 실제 키오스크·프론트엔드 연동은 아직 완료되지 않았다.
+## 반납 흐름
 
-## 1. 범위와 권한
+1. 키오스크에서 반납을 누르고 물품 태그를 실제로 인식한다.
+2. 인식한 UID로 활성 태그와 현재 대여를 조회한다. 물품 ID를 직접 입력해 반납할 수 없다.
+3. 확인 화면에는 UID 조회 결과에 연결된 물품과 대여 건을 표시한다. 사용자는 정상 또는 손상을 고른 뒤 확정한다.
+4. 정상 반납은 물품을 `AVAILABLE`로, 손상 반납은 `INSPECTION`으로 전환하고 반납 이력에 선택한 상태를 저장한다. 손상 반납은 `inspections`에도 `RETURN` / `DAMAGED` 점검 접수로 기록한다.
+5. 완료 화면에서 물품을 대여소 안의 안내된 반납 장소에 두도록 안내한다.
 
-- 로그인한 대여자 본인이 자신의 진행 중 대여만 반납할 수 있다.
-- 서버가 검증한 세션의 사용자 ID를 사용한다. 요청 본문이나 쿼리의 `userId`는 받지 않는다.
-- 반출 시 소비된 대여 코드·반출 토큰은 반납 인증으로 재사용하지 않는다. 이 API는 사용자 세션만 받으며 키오스크 반출 토큰을 허용하지 않는다.
-- 사용자의 세션 쿠키를 공유 키오스크에 복사하지 않는다. 현재 API를 키오스크 흐름과 연결하려면 NFC로 확인한 `itemId`를 사용자 세션이 있는 클라이언트에 안전하게 전달해야 한다.
-- API는 현재 `sms-mock & !prod & !production` 프로필에서만 제공된다. 운영 세션 인증과 실물 키오스크 연결은 별도 검증이 필요하다.
+현재 API는 개발 프로필에서 로그인 세션을 확인한다. 키오스크와 백엔드의 실제 반납 화면 연동 및 현장 NFC 리더기 검증은 별도 작업이다.
 
-## 2. 요청
+## 태그 스캔 및 대여 조회
+
+```http
+POST /api/v1/rentals/return/scan
+Cookie: __Host-tagback-session=<세션 값>
+Origin: <허용된 프론트엔드 Origin>
+Content-Type: application/json
+
+{"tagUid":"04A23B1C5D6E80"}
+```
+
+서버는 활성 NFC 태그에 연결된 물품의 진행 중 대여를 찾는다. 진행 중 대여가 없거나 세션 사용자가 대여자가 아니면 확정할 수 없다. 성공 응답의 `rentalId`는 이 스캔에서 확인한 대여 건을 고정한다.
+
+## 반납 확정
 
 ```http
 POST /api/v1/rentals/return
@@ -21,15 +34,17 @@ Origin: <허용된 프론트엔드 Origin>
 Content-Type: application/json
 
 {
-  "itemId": "12"
+  "tagUid": "04A23B1C5D6E80",
+  "rentalId": "101",
+  "condition": "NORMAL"
 }
 ```
 
-`itemId`는 NFC 조회로 확인한 양의 BIGINT 범위의 10진 문자열이다. 숫자형 JSON 값, `userId`, `returnedAt` 등 미정의 필드는 거부한다. 요청 시각은 받지 않으며 서버가 반납 시각을 정한다.
+`tagUid`는 실물 스캔값, `rentalId`는 반납 스캔 응답에서 받은 대여 ID, `condition`은 `NORMAL` 또는 `DAMAGED`다. 요청의 `itemId`만으로 반납할 수 없다. 서버는 태그가 활성 상태인지, 해당 물품의 현재 진행 중 대여 ID가 스캔 응답의 ID와 같은지, 세션 사용자가 그 대여자인지 확인한다.
 
-서버는 물품 행을 잠근 뒤 해당 물품의 진행 중 대여(`returned_at IS NULL`)를 찾고, 대여자 ID가 세션 사용자와 같은지 확인한다. 반출 전용 Bearer 토큰을 보내도 세션을 대신할 수 없다.
+물품 행 잠금 아래에서 대여·물품 상태·반납 상태·상태 이력을 한 트랜잭션으로 저장한다. 손상 반납은 `inspections`에 점검 접수를 함께 저장한다. 이력 저장에 실패하면 전체 반납을 롤백한다.
 
-## 3. 성공 응답
+## 성공 응답
 
 `200 OK`, `Cache-Control: no-store`:
 
@@ -39,32 +54,30 @@ Content-Type: application/json
   "itemId": "12",
   "rentalStatus": "RETURNED",
   "itemStatus": "AVAILABLE",
+  "condition": "NORMAL",
   "rentedAt": "2026-10-14T03:00:00Z",
   "dueAt": "2026-10-17T03:00:00Z",
   "returnedAt": "2026-10-16T04:00:00Z"
 }
 ```
 
-반납 시각은 서버 시각(UTC)이며, 연체였던 대여도 반납 완료 후 `RETURNED`다. 대여, 물품 상태 변경, `RENTAL_FLOW` 상태 이력은 하나의 트랜잭션으로 저장한다.
+`DAMAGED` 확정 응답은 `itemStatus: "INSPECTION"`, `condition: "DAMAGED"`를 반환한다. 시각은 서버가 정하며 연체였던 대여도 반납 뒤 `RETURNED`가 된다.
 
-## 4. 오류
+## 재시도와 충돌
+
+- 반납 요청은 스캔 때 확인한 `rentalId`와 일치하는 진행 중 대여만 변경한다.
+- 같은 물품을 새로 대여한 뒤 이전 요청이 재전송되어도 현재 대여 ID가 다르므로 `RENTAL_CHANGED`로 거부한다.
+- 이미 반납된 대여의 재요청은 `RENTAL_NOT_ACTIVE`로 거부한다. 이전 요청을 새 대여에 적용하지 않는다.
+- `tagUid`, `rentalId`, `condition`이 다른 미정의 필드는 거부한다. 숫자형 JSON ID와 쿼리 `userId`도 받지 않는다.
 
 | HTTP | 코드 | 조건 |
 |---|---|---|
-| 400 | `INVALID_INPUT` | 잘못된 ID, 숫자 ID, 미정의 요청 필드, `userId` 쿼리 |
+| 400 | `INVALID_INPUT` | 잘못된 ID, 숫자형 JSON ID, 누락되거나 미정의된 필드, `userId` 쿼리 |
 | 401 | `SESSION_REQUIRED`, `SESSION_EXPIRED`, `SESSION_REPLACED` | 로그인 세션 누락·만료·교체 |
 | 403 | `FORBIDDEN` | 세션 사용자가 해당 대여자가 아님 또는 Origin 거부 |
-| 404 | `ITEM_NOT_FOUND` | 물품이 없음 |
-| 409 | `RENTAL_NOT_ACTIVE` | 반납할 진행 중 대여가 없음(이미 반납된 경우 포함) |
-| 409 | `RENTAL_STATE_CONFLICT` | 진행 중 대여가 있으나 물품 상태가 `RENTED`가 아님 |
+| 404 | `ITEM_NOT_FOUND` | 태그에 연결된 물품이 없음 |
+| 409 | `RENTAL_NOT_ACTIVE` | 진행 중 대여가 없음 |
+| 409 | `RENTAL_CHANGED` | 스캔 이후 활성 대여나 태그 연결이 변경됨 |
+| 409 | `RENTAL_STATE_CONFLICT` | 대여와 물품 상태가 일치하지 않음 |
 
-요청을 다시 보내도 기존 성공 응답을 재생하지 않는다. 이미 반납된 물품의 재요청은 `RENTAL_NOT_ACTIVE`로 거부한다. 별도의 재시도·멱등성 정책은 후속 검증 항목이다.
-
-## 5. 검증
-
-2026-11-02 `backend/scripts/test-item-postgres.ps1 -Port 55441` 실행 결과: 139개 통과, 실패·오류·건너뜀 0. 임시 PostgreSQL에서 기존 Flyway 스키마를 적용해 검증했고 테스트 서버를 종료했다.
-
-- 연체 대여 반납 후 `returned_at`, `RETURNED`, 물품 `AVAILABLE`, 대여자와 `RENTAL_FLOW` 상태 이력이 함께 저장되는지 확인했다.
-- 상태 이력 저장을 DB 제약으로 실패시켜 반납 시각·대여 상태·물품 상태가 모두 롤백되는지 확인했다. 제약 제거 후 재시도 성공도 확인했다.
-- HTTP 세션 누락, 다른 사용자, 잘못된 입력을 거부하고, 대여자 본인의 반납은 정상 응답과 저장 결과를 반환하는지 확인했다.
-- 이미 반납된 건의 재요청·멱등성 동작은 별도 중복 반납 방지 작업에서 검증한다.
+이 문서는 새 계약을 기록한다. 반납 API와 실제 키오스크 UI 연결 및 통합 검증은 아직 완료되지 않았다.

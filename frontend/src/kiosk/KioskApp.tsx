@@ -45,6 +45,8 @@ export default function KioskApp() {
   const [code, setCode] = useState('');
   const [grant, setGrant] = useState<Grant>();
   const [item, setItem] = useState<Item>();
+  const [returnRentalId, setReturnRentalId] = useState('');
+  const [scannedTagUid, setScannedTagUid] = useState('');
   const [condition, setCondition] = useState<'normal' | 'damaged'>();
   const [completion, setCompletion] = useState<Completion>();
   const [error, setError] = useState<unknown>();
@@ -90,6 +92,8 @@ export default function KioskApp() {
     setCode('');
     setGrant(undefined);
     setItem(undefined);
+    setReturnRentalId('');
+    setScannedTagUid('');
     setCondition(undefined);
     setCompletion(undefined);
     setError(undefined);
@@ -167,6 +171,8 @@ export default function KioskApp() {
         () => api.scan(tag, mode, kindId, grant),
         (result) => {
           setItem(result.item);
+          setReturnRentalId(mode === 'return' ? result.rental?.id || '' : '');
+          setScannedTagUid(tag);
           setStage(mode === 'rent' ? 'confirm' : 'condition');
         },
       );
@@ -226,6 +232,8 @@ export default function KioskApp() {
       setStage(mode === 'rent' ? KIOSK_BRIDGE ? 'select' : 'code' : 'start');
     } else if (stage === 'condition') {
       setItem(undefined);
+      setReturnRentalId('');
+      setScannedTagUid('');
       setCondition(undefined);
       setStage('scan');
     } else if (stage === 'confirm') {
@@ -261,7 +269,7 @@ export default function KioskApp() {
       () =>
         mode === 'rent'
           ? api.rent(operation.current, grant!, item.id, kindId)
-          : api.returnItem(operation.current, item.id, condition!),
+          : api.returnItem(operation.current, item.id, returnRentalId, scannedTagUid, condition!),
       finish,
     );
   }
@@ -413,7 +421,7 @@ export default function KioskApp() {
             </div>
             {completion?.type === 'return' && (
               <p className="collection-note">
-                반납 기록이 저장되었습니다. 물품은 대여소의 지정된 장소에 놓아 주세요.
+                반납 기록이 저장되었습니다. 물품은 대전대 융합과학관 2층 학생 라운지 내 안내된 반납 장소에 놓아 주세요.
               </p>
             )}
             <button className="primary" onClick={() => reset()}>
