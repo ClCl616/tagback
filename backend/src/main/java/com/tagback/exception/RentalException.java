@@ -73,4 +73,7 @@ public class RentalException extends RuntimeException {
     public static RentalException codeUnavailable() {
         return new RentalException("RENTAL_CODE_UNAVAILABLE", "대여 코드를 발급할 수 없습니다. 잠시 후 다시 시도해 주세요.", 503);
     }
+    public static RentalException returnCodeInvalid() {
+        return new RentalException("RETURN_CODE_INVALID", "반납 코드가 유효하지 않거나 이 물품의 대여자와 일치하지 않습니다.", 401);
+    }
 }

@@ -7,6 +7,7 @@ import com.tagback.dto.rental.RentalResponses;
 import com.tagback.exception.AuthErrorCode;
 import com.tagback.exception.AuthException;
 import com.tagback.service.RentalReturnService;
+import com.tagback.service.RentalVerificationLimiter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.context.annotation.Profile;
@@ -23,10 +24,13 @@ import org.springframework.web.bind.annotation.RestController;
 public class RentalReturnController {
     private final RentalReturnService returns;
     private final AuthOriginGuard origins;
+    private final RentalVerificationLimiter limiter;
 
-    public RentalReturnController(RentalReturnService returns, AuthOriginGuard origins) {
+    public RentalReturnController(RentalReturnService returns, AuthOriginGuard origins,
+                                  RentalVerificationLimiter limiter) {
         this.returns = returns;
         this.origins = origins;
+        this.limiter = limiter;
     }
 
     @PostMapping("/return/scan")
@@ -51,7 +55,9 @@ public class RentalReturnController {
         if (request.getParameterMap().containsKey("userId")) {
             throw new AuthException(AuthErrorCode.INVALID_INPUT);
         }
-        var result = returns.returnItem(java.util.UUID.fromString(body.scanTicketId()), body.proof(), body.condition());
+        limiter.check(request.getRemoteAddr());
+        var result = returns.returnItem(java.util.UUID.fromString(body.scanTicketId()), body.proof(),
+                body.condition(), body.returnCode());
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(RentalResponses.Returned.from(result));
     }

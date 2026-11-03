@@ -27,6 +27,14 @@ public class NfcScanProofVerifier {
     }
 
     public VerifiedProof verify(NfcScanProof proof) {
+        return verify(proof, true);
+    }
+
+    public VerifiedProof verifyForReplay(NfcScanProof proof) {
+        return verify(proof, false);
+    }
+
+    private VerifiedProof verify(NfcScanProof proof, boolean checkAge) {
         try {
             if (proof == null || secret.length < 32 || expectedBridgeId.isBlank()
                     || !expectedBridgeId.equals(proof.bridgeId()) || proof.uid() == null || proof.nonce() == null
@@ -34,7 +42,7 @@ public class NfcScanProofVerifier {
             String uid = TagUidNormalizer.normalize(proof.uid());
             UUID nonce = UUID.fromString(proof.nonce());
             long now = clock.millis();
-            if (proof.issuedAt() > now + 5_000 || now - proof.issuedAt() > MAX_AGE_MILLIS) {
+            if (checkAge && (proof.issuedAt() > now + 5_000 || now - proof.issuedAt() > MAX_AGE_MILLIS)) {
                 throw new IllegalArgumentException();
             }
             byte[] supplied = HexFormat.of().parseHex(proof.signature());

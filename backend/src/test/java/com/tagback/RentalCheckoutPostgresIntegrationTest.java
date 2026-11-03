@@ -8,6 +8,7 @@ import com.tagback.exception.RentalException;
 import com.tagback.service.ItemService;
 import com.tagback.service.RentalCheckoutService;
 import com.tagback.service.RentalReturnService;
+import com.tagback.service.RentalCodeService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -56,6 +57,7 @@ class RentalCheckoutPostgresIntegrationTest {
     @Autowired RentalRepository rentals;
     @Autowired ItemStatusHistoryRepository history;
     @Autowired RentalReturnService returns;
+    @Autowired RentalCodeService codes;
     @Autowired JdbcTemplate jdbc;
     @Autowired TransactionTemplate transactions;
     private Fixture data;
@@ -80,6 +82,7 @@ class RentalCheckoutPostgresIntegrationTest {
             jdbc.update("delete from nfc_scan_proof_uses where tag_uid = ?", "04A23B1C5D6E80");
             jdbc.update("delete from item_status_history where item_id = ?", data.itemId());
             jdbc.update("delete from rentals where item_id = ?", data.itemId());
+            jdbc.update("delete from rental_codes where user_id = ?", data.userId());
             jdbc.update("update items set status = 'TAG_PENDING' where item_id = ?", data.itemId());
             jdbc.update("delete from nfc_tags where item_id = ?", data.itemId());
             jdbc.update("delete from items where item_id = ?", data.itemId());
@@ -106,7 +109,7 @@ class RentalCheckoutPostgresIntegrationTest {
         assertEquals(ItemStatus.AVAILABLE, changes.getFirst().getFromStatus());
         assertEquals(ItemStatus.RENTED, changes.getFirst().getToStatus());
         assertEquals(ItemStatusChangeSource.RENTAL_FLOW, changes.getFirst().getSource());
-        assertNull(changes.getFirst().getChangedByUserId());
+        assertEquals(data.userId(), changes.getFirst().getChangedByUserId());
     }
 
     @Test void lateHistoryDatabaseFailureRollsBackRentalAndAlreadyFlushedItem() {
@@ -276,7 +279,8 @@ class RentalCheckoutPostgresIntegrationTest {
     private RentalReturnService.ReturnResult returnCurrentRental() {
         var proof = scanProof("04A23B1C5D6E80");
         var scan = returns.scanTag(proof);
-        return returns.returnItem(scan.scanTicketId(), proof, ReturnCondition.NORMAL);
+        return returns.returnItem(scan.scanTicketId(), proof, ReturnCondition.NORMAL,
+                codes.issue(data.userId()).code());
     }
 
     private com.tagback.dto.rental.NfcScanProof scanProof(String uid) {

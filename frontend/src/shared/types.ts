@@ -82,6 +82,7 @@ export interface ServiceApi {
     scanTicketId: string | undefined,
     proof: NfcScanProof | undefined,
     condition: 'normal' | 'damaged',
+    returnCode: string,
   ): Promise<Receipt>;
   operation(operationId: string): Promise<Receipt | null>;
 }

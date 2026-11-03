@@ -70,6 +70,7 @@ class RentalApiPostgresIntegrationTest {
     private long typeId;
     private Cookie member;
     private Cookie otherMember;
+    private String returnCode = "000000";
 
     @BeforeEach void fixtures() {
         clock.set(NOW);
@@ -244,6 +245,7 @@ class RentalApiPostgresIntegrationTest {
     @Test void returnApiRequiresSignedReaderProofAndPersistsTheCompleteReturnResult() throws Exception {
         String token = verify(issue(member));
         perform(token, key(), body(itemId)).andExpect(status().isCreated());
+        returnCode = issue(member);
         String rentalId = jdbc.queryForObject("select rental_id from rentals where item_id = ?", String.class, itemId);
         var proof = scanProof("04A23B1C5D6E80");
         var scanResponse = mvc.perform(post("/api/v1/rentals/return/scan").contentType("application/json")
@@ -268,7 +270,15 @@ class RentalApiPostgresIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"));
 
+        String ownerCode = returnCode;
+        returnCode = issue(otherMember);
         mvc.perform(post("/api/v1/rentals/return").contentType("application/json")
+                        .content(returnBody(scanTicketId, proof, "NORMAL")))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("RETURN_CODE_INVALID"));
+        returnCode = ownerCode;
+
+        String completed = mvc.perform(post("/api/v1/rentals/return").contentType("application/json")
                         .content(body))
                 .andExpect(status().isOk())
                 .andExpect(header().string("Cache-Control", "no-store"))
@@ -279,10 +289,19 @@ class RentalApiPostgresIntegrationTest {
                 .andExpect(jsonPath("$.condition").value("NORMAL"))
                 .andExpect(jsonPath("$.rentedAt").value(NOW.toString()))
                 .andExpect(jsonPath("$.dueAt").value(NOW.plusSeconds(72 * 3600).toString()))
-                .andExpect(jsonPath("$.returnedAt").value(NOW.toString()));
-        mvc.perform(post("/api/v1/rentals/return").contentType("application/json").content(body))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("NFC_SCAN_REQUIRED"));
+                .andExpect(jsonPath("$.returnedAt").value(NOW.toString()))
+                .andReturn().getResponse().getContentAsString();
+        clock.set(NOW.plusSeconds(61));
+        String replayed = mvc.perform(post("/api/v1/rentals/return").contentType("application/json").content(body))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertEquals(json.readTree(completed), json.readTree(replayed));
+        assertEquals(2, jdbc.queryForObject("select count(*) from rental_codes where user_id = ? and consumed_at is not null and code_hash is null", Integer.class, userId));
+        mvc.perform(post("/api/v1/rentals/return").contentType("application/json")
+                        .content(returnBody(scanTicketId, proof, "DAMAGED")))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("RENTAL_CHANGED"));
+        mvc.perform(post("/api/v1/rentals/return").contentType("application/json")
+                        .content(returnBody(scanTicketId, unsignedProof("04A23B1C5D6E80"), "NORMAL")))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.error.code").value("NFC_SCAN_REQUIRED"));
 
         assertEquals(NOW, jdbc.queryForObject(
                 "select returned_at from rentals where item_id = ?", Timestamp.class, itemId).toInstant());
@@ -300,7 +319,7 @@ class RentalApiPostgresIntegrationTest {
         assertEquals("RENTAL_FLOW", jdbc.queryForObject(
                 "select source from item_status_history where item_id = ? order by item_status_history_id desc limit 1",
                 String.class, itemId));
-        assertNull(jdbc.queryForObject(
+        assertEquals(userId, jdbc.queryForObject(
                 "select changed_by_user_id from item_status_history where item_id = ? order by item_status_history_id desc limit 1",
                 Long.class, itemId));
     }
@@ -577,7 +596,8 @@ class RentalApiPostgresIntegrationTest {
     private String key() { return UUID.randomUUID().toString(); }
     private String body(long item) { return "{\"itemId\":\"" + item + "\",\"itemTypeId\":\"" + typeId + "\"}"; }
     private String returnBody(String scanTicketId, com.tagback.dto.rental.NfcScanProof proof, String condition) throws Exception {
-        return json.writeValueAsString(Map.of("scanTicketId", scanTicketId, "proof", proof, "condition", condition));
+        return json.writeValueAsString(Map.of("scanTicketId", scanTicketId, "proof", proof,
+                "condition", condition, "returnCode", returnCode));
     }
     private com.tagback.dto.rental.NfcScanProof scanProof(String uid) {
         return scanProof(uid, "kiosk-1");

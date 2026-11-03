@@ -25,7 +25,9 @@ public final class RentalRequests {
             @JsonDeserialize(using = StrictStringDeserializer.class)
         @NotBlank @Pattern(regexp = "[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}") String scanTicketId,
         @jakarta.validation.constraints.NotNull NfcScanProof proof,
-        @jakarta.validation.constraints.NotNull ReturnCondition condition) {
+        @jakarta.validation.constraints.NotNull ReturnCondition condition,
+        @JsonDeserialize(using = StrictStringDeserializer.class)
+        @NotBlank @Pattern(regexp = "[0-9]{6}") String returnCode) {
         @JsonAnySetter public void rejectUnknown(String name, Object value) {
             throw new IllegalArgumentException("Unknown return field");
         }

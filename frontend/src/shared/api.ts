@@ -9,6 +9,7 @@ import type { DemoControls, Fault, ServiceApi, Receipt, NfcScanProof } from './t
 import { ServiceError } from './serviceError';
 import { KIOSK_BRIDGE } from './kioskMode';
 import { checkoutRental, lookupRentalTag, lookupReturnTag, returnRental, rentalCatalog, verifyRentalCode } from './kioskHttp';
+import { issueRentalCode } from './rentalCodeHttp';
 export { ServiceError } from './serviceError';
 export const fail = (code: string, message: string): never => {
   throw new ServiceError(code, message);
@@ -187,7 +188,7 @@ export const api: ServiceApi = {
     });
   },
   async code(token, renew = false) {
-    if (HTTP_AUTH) throw new ServiceError('UNSUPPORTED', '이 기능은 서버 연동 준비 중입니다.');
+    if (HTTP_AUTH) return issueRentalCode();
     await before();
     return transaction((db) => {
       const uid = userId(db, token);
@@ -313,10 +314,10 @@ export const api: ServiceApi = {
       return { operationId: id, item, rental, type: 'rent' };
     });
   },
-  returnItem(id, itemId, rentalId, tagUid, scanTicketId, proof, condition) {
+  returnItem(id, itemId, rentalId, tagUid, scanTicketId, proof, condition, returnCode) {
     if (KIOSK_BRIDGE) {
       if (!scanTicketId || !proof) return Promise.reject(new ServiceError('NFC_SCAN_REQUIRED', '태그를 다시 인식해 주세요.'));
-      return returnRental(id, scanTicketId, rentalId, proof, condition);
+      return returnRental(id, scanTicketId, rentalId, proof, condition, returnCode);
     }
     return save(id, (db) => {
       const item = db.items.find((i) => i.id === itemId);
@@ -336,9 +337,13 @@ export const api: ServiceApi = {
         );
       if (!['normal', 'damaged'].includes(condition))
         return fail('CONDITION', '물품 상태를 선택해 주세요.');
+      const code = db.codes.find((candidate) => candidate.value === returnCode);
+      if (!code || code.used || code.expiresAt <= Date.now() || code.userId !== rental.userId)
+        return fail('RETURN_CODE_INVALID', '반납 코드가 유효하지 않거나 이 물품의 대여자와 일치하지 않습니다.');
       rental.returnedAt = Date.now();
       rental.condition = condition;
       item.status = condition === 'normal' ? 'available' : 'inspection';
+      code.used = true;
       return { operationId: id, item, rental, type: 'return' };
     });
   },
