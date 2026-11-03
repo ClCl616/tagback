@@ -55,11 +55,24 @@ describe('return integration boundary', () => {
     });
   it.each([
     [404, 'TAG_NOT_FOUND', 'TAG_UNKNOWN'], [409, 'TAG_INACTIVE', 'TAG_INACTIVE'],
-    [400, 'INVALID_INPUT', 'INVALID_INPUT'], [401, 'SESSION_EXPIRED', 'AUTH_PENDING'],
-    [403, 'FORBIDDEN', 'AUTH_PENDING'], [404, 'ITEM_NOT_FOUND', 'ITEM_NOT_FOUND'],
+    [400, 'INVALID_INPUT', 'INVALID_INPUT'], [404, 'ITEM_NOT_FOUND', 'ITEM_NOT_FOUND'],
     [409, 'RENTAL_NOT_ACTIVE', 'RENTAL_NOT_ACTIVE'], [409, 'RENTAL_STATE_CONFLICT', 'RENTAL_STATE_CONFLICT'],
   ])('maps %s %s', async (status, code, expected) => {
     const client = createReturnClient(async () => response(status, { error: { code } }), async () => ({ 'X-Test-Auth': 'mock' }));
     await expect(client.returnItem('12')).rejects.toMatchObject({ code: expected });
+  });
+  it.each([
+    [401, 'SESSION_REQUIRED', 'RETURN_SESSION_EXPIRED', '로그인이 만료되었어요. 다시 인증해 주세요.'],
+    [401, 'SESSION_EXPIRED', 'RETURN_SESSION_EXPIRED', '로그인이 만료되었어요. 다시 인증해 주세요.'],
+    [401, 'SESSION_REPLACED', 'RETURN_SESSION_EXPIRED', '로그인이 만료되었어요. 다시 인증해 주세요.'],
+    [401, undefined, 'RETURN_SESSION_EXPIRED', '로그인이 만료되었어요. 다시 인증해 주세요.'],
+    [401, 'UNRECOGNIZED', 'RETURN_SESSION_EXPIRED', '로그인이 만료되었어요. 다시 인증해 주세요.'],
+    [403, 'FORBIDDEN', 'RETURN_FORBIDDEN', '이 물품을 반납할 권한이 없어요.'],
+    [403, undefined, 'RETURN_FORBIDDEN', '이 물품을 반납할 권한이 없어요.'],
+    [403, 'UNRECOGNIZED', 'RETURN_FORBIDDEN', '이 물품을 반납할 권한이 없어요.'],
+  ])('classifies authentication error %s %s by status', async (status, code, expected, message) => {
+    const body = code === undefined ? {} : { error: { code } };
+    const client = createReturnClient(async () => response(status, body), async () => ({}));
+    await expect(client.returnItem('12')).rejects.toMatchObject({ code: expected, message });
   });
 });

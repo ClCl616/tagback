@@ -5,7 +5,8 @@ type Transport = (path: string, init: RequestInit) => Promise<Response>;
 type Credentials = () => Promise<HeadersInit | undefined>;
 
 export function returnError(status: number, code: unknown): ServiceError {
-  if (status === 401 || status === 403) return new ServiceError('AUTH_PENDING', '반납 인증 방식이 아직 정해지지 않았습니다.');
+  if (status === 401) return new ServiceError('RETURN_SESSION_EXPIRED', '로그인이 만료되었어요. 다시 인증해 주세요.');
+  if (status === 403) return new ServiceError('RETURN_FORBIDDEN', '이 물품을 반납할 권한이 없어요.');
   switch (code) {
     case 'TAG_NOT_FOUND': return new ServiceError('TAG_UNKNOWN', '등록되지 않은 태그입니다. 반납할 물품의 태그를 확인해 주세요.');
     case 'TAG_INACTIVE': return new ServiceError('TAG_INACTIVE', '사용 중지된 태그입니다. 관리자에게 문의해 주세요.');
