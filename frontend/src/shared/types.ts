@@ -47,6 +47,8 @@ export type Grant = {
   expiresAt: number;
   maskedPhone: string;
 };
+export type NfcScanProof = { bridgeId: string; uid: string; issuedAt: number; nonce: string; signature: string };
+export type NfcRead = { uid: string; proof?: NfcScanProof };
 export type Catalog = { categories?: string[]; kinds: Kind[]; items: Item[]; stations: Station[] };
 export type Receipt = { operationId: string; item: Item; rental: Rental; type: 'rent' | 'return' };
 export type Fault = '' | 'network' | 'timeout' | 'save' | 'unknown' | 'conflict';
@@ -69,13 +71,16 @@ export interface ServiceApi {
     mode: 'rent' | 'return',
     kindId?: string,
     grant?: Grant,
-  ): Promise<{ item: Item; rental?: Rental }>;
+    proof?: NfcScanProof,
+  ): Promise<{ item: Item; rental?: Rental; returnScanTicketId?: string; returnScanProof?: NfcScanProof }>;
   rent(operationId: string, grant: Grant, itemId: string, kindId: string): Promise<Receipt>;
   returnItem(
     operationId: string,
     itemId: string,
     rentalId: string,
     tagUid: string,
+    scanTicketId: string | undefined,
+    proof: NfcScanProof | undefined,
     condition: 'normal' | 'damaged',
   ): Promise<Receipt>;
   operation(operationId: string): Promise<Receipt | null>;

@@ -323,18 +323,18 @@ describe('Mock service contract — not real server verification', () => {
     const first = await api.rent('same', grant, 'calc-1', 'calc');
     const second = await api.rent('same', grant, 'calc-1', 'calc');
     expect(second).toEqual(first);
-    const returned = await api.returnItem('return', 'calc-1', 'normal');
-    expect(await api.returnItem('return', 'calc-1', 'normal')).toEqual(returned);
-    await expect(api.returnItem('another', 'calc-1', 'normal')).rejects.toMatchObject({
+    const returned = await api.returnItem('return', 'calc-1', first.rental.id, first.item.tag, undefined, undefined, 'normal');
+    expect(await api.returnItem('return', 'calc-1', first.rental.id, first.item.tag, undefined, undefined, 'normal')).toEqual(returned);
+    await expect(api.returnItem('another', 'calc-1', first.rental.id, first.item.tag, undefined, undefined, 'normal')).rejects.toMatchObject({
       code: 'CONFLICT',
     });
   });
   it('정상 반납은 재고 회복, 손상 반납은 점검 분리', async () => {
     const { grant } = await prepare();
-    await api.rent('r', grant, 'calc-1', 'calc');
-    await api.returnItem('n', 'calc-1', 'normal');
+    const normalRental = await api.rent('r', grant, 'calc-1', 'calc');
+    await api.returnItem('n', 'calc-1', normalRental.rental.id, normalRental.item.tag, undefined, undefined, 'normal');
     expect((await api.catalog()).items.find((i) => i.id === 'calc-1')?.status).toBe('available');
-    await api.returnItem('d', 'calc-6', 'damaged');
+    await api.returnItem('d', 'calc-6', 'seed-active', 'CALC-6', undefined, undefined, 'damaged');
     expect((await api.catalog()).items.find((i) => i.id === 'calc-6')?.status).toBe('inspection');
   });
   it('잘못된 종류·태그·대여소·비활성·없는 기록 거절', async () => {

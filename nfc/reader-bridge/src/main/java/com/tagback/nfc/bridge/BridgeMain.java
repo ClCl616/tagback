@@ -26,7 +26,12 @@ public final class BridgeMain {
             server.close();
         }));
         server.start();
-        BridgeEngine engine = new BridgeEngine(reader, server::publish, config.emptyPollsToRemove());
+        ScanProofSigner signer = new ScanProofSigner(config.scanSecret(), config.bridgeId());
+        java.util.function.Function<String, BridgeEvent> tagReadEvent = config.mockUid().isEmpty()
+                ? uid -> BridgeEvent.tagRead(uid, signer.sign(uid))
+                : BridgeEvent::tagRead;
+        BridgeEngine engine = new BridgeEngine(reader, server::publish, config.emptyPollsToRemove(),
+                tagReadEvent);
         polling.scheduleWithFixedDelay(engine::pollOnce, 0, config.pollMillis(), TimeUnit.MILLISECONDS);
         System.out.println("Reader bridge listening on http://127.0.0.1:" + server.port() + "/events"
                 + (config.mockUid().isEmpty() ? " (PC/SC)" : " (mock)"));

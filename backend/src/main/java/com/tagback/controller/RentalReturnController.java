@@ -1,7 +1,7 @@
 package com.tagback.controller;
 
 import com.tagback.config.AuthOriginGuard;
-import com.tagback.config.AuthenticatedUser;
+import com.tagback.config.PublicApi;
 import com.tagback.dto.rental.RentalRequests;
 import com.tagback.dto.rental.RentalResponses;
 import com.tagback.exception.AuthErrorCode;
@@ -13,7 +13,6 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,29 +30,28 @@ public class RentalReturnController {
     }
 
     @PostMapping("/return/scan")
+    @PublicApi
     public ResponseEntity<RentalResponses.ReturnScan> scanReturnTag(
             @Valid @RequestBody RentalRequests.ReturnScan body,
-            @RequestAttribute(AuthenticatedUser.ATTRIBUTE) AuthenticatedUser user,
             HttpServletRequest request) {
         origins.check(request);
         if (request.getParameterMap().containsKey("userId")) {
             throw new AuthException(AuthErrorCode.INVALID_INPUT);
         }
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
-                .body(RentalResponses.ReturnScan.from(returns.scanTag(user.userId(), body.tagUid())));
+                .body(RentalResponses.ReturnScan.from(returns.scanTag(body.proof())));
     }
 
     @PostMapping("/return")
+    @PublicApi
     public ResponseEntity<RentalResponses.Returned> returnItem(
             @Valid @RequestBody RentalRequests.Return body,
-            @RequestAttribute(AuthenticatedUser.ATTRIBUTE) AuthenticatedUser user,
             HttpServletRequest request) {
         origins.check(request);
         if (request.getParameterMap().containsKey("userId")) {
             throw new AuthException(AuthErrorCode.INVALID_INPUT);
         }
-        var result = returns.returnItem(user.userId(), body.tagUid(),
-                Long.parseLong(body.rentalId()), body.condition());
+        var result = returns.returnItem(java.util.UUID.fromString(body.scanTicketId()), body.proof(), body.condition());
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(RentalResponses.Returned.from(result));
     }

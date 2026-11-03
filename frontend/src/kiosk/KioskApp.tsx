@@ -30,7 +30,7 @@ import {
   ReaderArt,
   useResource,
 } from '../shared/ui';
-import type { Catalog, Grant, Item, Receipt } from '../shared/types';
+import type { Catalog, Grant, Item, NfcScanProof, Receipt } from '../shared/types';
 type Stage = 'start' | 'select' | 'code' | 'scan' | 'condition' | 'confirm' | 'done';
 type Completion = {
   type: 'rent' | 'return';
@@ -47,6 +47,8 @@ export default function KioskApp() {
   const [item, setItem] = useState<Item>();
   const [returnRentalId, setReturnRentalId] = useState('');
   const [scannedTagUid, setScannedTagUid] = useState('');
+  const [returnScanTicketId, setReturnScanTicketId] = useState('');
+  const [returnScanProof, setReturnScanProof] = useState<NfcScanProof>();
   const [condition, setCondition] = useState<'normal' | 'damaged'>();
   const [completion, setCompletion] = useState<Completion>();
   const [error, setError] = useState<unknown>();
@@ -94,6 +96,8 @@ export default function KioskApp() {
     setItem(undefined);
     setReturnRentalId('');
     setScannedTagUid('');
+    setReturnScanTicketId('');
+    setReturnScanProof(undefined);
     setCondition(undefined);
     setCompletion(undefined);
     setError(undefined);
@@ -162,17 +166,20 @@ export default function KioskApp() {
     }
   }
   useEffect(() => {
-    return nfc.subscribe((tag) => {
+    return nfc.subscribe((read) => {
+      const tag = read.uid;
       if (stage !== 'scan' || cancelOpen || locked.current || (!KIOSK_BRIDGE && !controls().reader)) return;
       if (scanSeen.current.tag === tag && Date.now() - scanSeen.current.at < 1000) return;
       scanSeen.current = { tag, at: Date.now() };
       lastActivity.current = Date.now();
       void run(
-        () => api.scan(tag, mode, kindId, grant),
+        () => api.scan(tag, mode, kindId, grant, read.proof),
         (result) => {
           setItem(result.item);
           setReturnRentalId(mode === 'return' ? result.rental?.id || '' : '');
           setScannedTagUid(tag);
+          setReturnScanTicketId(mode === 'return' ? result.returnScanTicketId || '' : '');
+          setReturnScanProof(mode === 'return' ? result.returnScanProof : undefined);
           setStage(mode === 'rent' ? 'confirm' : 'condition');
         },
       );
@@ -208,7 +215,6 @@ export default function KioskApp() {
     return () => document.removeEventListener('keydown', trap);
   }, [cancelOpen]);
   function start(next: 'rent' | 'return') {
-    if (KIOSK_BRIDGE && next === 'return') return;
     reset();
     setMode(next);
     setRemaining(health.sessionSeconds);
@@ -234,6 +240,8 @@ export default function KioskApp() {
       setItem(undefined);
       setReturnRentalId('');
       setScannedTagUid('');
+      setReturnScanTicketId('');
+      setReturnScanProof(undefined);
       setCondition(undefined);
       setStage('scan');
     } else if (stage === 'confirm') {
@@ -269,7 +277,8 @@ export default function KioskApp() {
       () =>
         mode === 'rent'
           ? api.rent(operation.current, grant!, item.id, kindId)
-          : api.returnItem(operation.current, item.id, returnRentalId, scannedTagUid, condition!),
+          : api.returnItem(operation.current, item.id, returnRentalId, scannedTagUid, returnScanTicketId,
+              returnScanProof, condition!),
       finish,
     );
   }
@@ -369,7 +378,8 @@ export default function KioskApp() {
               <button
                 className="return-action"
                 onClick={() => start('return')}
-                disabled={KIOSK_BRIDGE || !readerReady || !serviceReady}
+                disabled={!readerReady || (!KIOSK_BRIDGE && !serviceReady) ||
+                  (KIOSK_BRIDGE && serverStatus === 'disconnected')}
               >
                 <div className="action-symbol">
                   <RotateCcw size={42} />
@@ -378,7 +388,7 @@ export default function KioskApp() {
                 <h2>반납하기</h2>
                 <p>반납할 물품을 준비해 주세요.</p>
                 <span className="action-footer">
-                  {KIOSK_BRIDGE ? '실서버 반납은 아직 준비 중이에요' : '로그인 없이 물품으로 확인해요'}
+                  {KIOSK_BRIDGE ? '실물 태그를 인식해 반납해요' : '태그 인식 후 물품으로 확인해요'}
                   <ArrowRight />
                 </span>
               </button>

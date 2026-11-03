@@ -32,10 +32,10 @@ public final class RentalResponses {
         }
     }
 
-    public record ReturnScan(String tagUid, String rentalId, String itemId, String itemName,
+    public record ReturnScan(String scanTicketId, String rentalId, String itemId, String itemName,
                              String itemTypeId, String itemTypeName) {
         public static ReturnScan from(ReturnScanResult result) {
-            return new ReturnScan(result.tagUid(), result.rentalId().toString(), result.itemId().toString(),
+            return new ReturnScan(result.scanTicketId().toString(), result.rentalId().toString(), result.itemId().toString(),
                     result.itemName(), result.itemTypeId().toString(), result.itemTypeName());
         }
     }

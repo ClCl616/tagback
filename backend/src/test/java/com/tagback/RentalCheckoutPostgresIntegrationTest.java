@@ -36,6 +36,8 @@ import static org.junit.jupiter.api.Assertions.*;
         "spring.profiles.active=sms-mock",
         "spring.datasource.url=jdbc:postgresql://127.0.0.1:${TAGBACK_ITEM_DB_PORT:55440}/tagback_items_test",
         "spring.datasource.username=postgres", "spring.datasource.password=",
+        "tagback.nfc.scan-secret=test-only-nfc-scan-secret-32-bytes-long",
+        "tagback.nfc.bridge-id=kiosk-1",
         "spring.jpa.hibernate.ddl-auto=validate", "spring.jpa.open-in-view=false"})
 @Import(RentalCheckoutPostgresIntegrationTest.FixedClock.class)
 class RentalCheckoutPostgresIntegrationTest {
@@ -74,6 +76,8 @@ class RentalCheckoutPostgresIntegrationTest {
     @AfterEach void cleanup() {
         if (data == null) return;
         transactions.executeWithoutResult(tx -> {
+            jdbc.update("delete from nfc_return_scan_tickets where item_id = ?", data.itemId());
+            jdbc.update("delete from nfc_scan_proof_uses where tag_uid = ?", "04A23B1C5D6E80");
             jdbc.update("delete from item_status_history where item_id = ?", data.itemId());
             jdbc.update("delete from rentals where item_id = ?", data.itemId());
             jdbc.update("update items set status = 'TAG_PENDING' where item_id = ?", data.itemId());
@@ -102,7 +106,7 @@ class RentalCheckoutPostgresIntegrationTest {
         assertEquals(ItemStatus.AVAILABLE, changes.getFirst().getFromStatus());
         assertEquals(ItemStatus.RENTED, changes.getFirst().getToStatus());
         assertEquals(ItemStatusChangeSource.RENTAL_FLOW, changes.getFirst().getSource());
-        assertEquals(data.userId(), changes.getFirst().getChangedByUserId());
+        assertNull(changes.getFirst().getChangedByUserId());
     }
 
     @Test void lateHistoryDatabaseFailureRollsBackRentalAndAlreadyFlushedItem() {
@@ -270,8 +274,24 @@ class RentalCheckoutPostgresIntegrationTest {
     }
 
     private RentalReturnService.ReturnResult returnCurrentRental() {
-        var scan = returns.scanTag(data.userId(), "04A23B1C5D6E80");
-        return returns.returnItem(data.userId(), scan.tagUid(), scan.rentalId(), ReturnCondition.NORMAL);
+        var proof = scanProof("04A23B1C5D6E80");
+        var scan = returns.scanTag(proof);
+        return returns.returnItem(scan.scanTicketId(), proof, ReturnCondition.NORMAL);
+    }
+
+    private com.tagback.dto.rental.NfcScanProof scanProof(String uid) {
+        try {
+            long issuedAt = NOW.toEpochMilli();
+            String nonce = UUID.randomUUID().toString();
+            String message = "kiosk-1\n" + uid + "\n" + issuedAt + "\n" + nonce;
+            var mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(new javax.crypto.spec.SecretKeySpec(
+                    "test-only-nfc-scan-secret-32-bytes-long".getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
+            String signature = java.util.HexFormat.of().formatHex(mac.doFinal(message.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            return new com.tagback.dto.rental.NfcScanProof("kiosk-1", uid, issuedAt, nonce, signature);
+        } catch (Exception exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 
     private record Fixture(Long userId, Long otherUserId, Long itemId, Long typeId) {}

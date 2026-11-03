@@ -43,6 +43,12 @@ public class RentalException extends RuntimeException {
     public static RentalException rentalChanged() {
         return new RentalException("RENTAL_CHANGED", "대여 정보가 변경되었습니다. 태그를 다시 인식해 주세요.", 409);
     }
+    public static RentalException invalidScanProof() {
+        return new RentalException("NFC_SCAN_REQUIRED", "실물 태그를 리더기에 인식한 뒤 다시 진행해 주세요.", 403);
+    }
+    public static RentalException scanProofUsed() {
+        return new RentalException("NFC_SCAN_ALREADY_USED", "이미 사용한 태그 인식입니다. 태그를 다시 인식해 주세요.", 409);
+    }
     public static RentalException grantRequired() {
         return new RentalException("RENTAL_GRANT_REQUIRED", "반출 인증이 필요합니다.", 401);
     }

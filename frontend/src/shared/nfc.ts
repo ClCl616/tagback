@@ -1,9 +1,10 @@
 import { KIOSK_BRIDGE } from './kioskMode';
+import type { NfcRead } from './types';
 
 export type ReaderStatus = 'connecting' | 'connected' | 'disconnected';
 export interface NfcAdapter {
   subscribe(
-    listener: (tag: string) => void,
+    listener: (read: NfcRead) => void,
     options?: { onStatus?: (status: ReaderStatus) => void; onRemoved?: () => void },
   ): () => void;
 }
@@ -12,7 +13,7 @@ export const simulatorNfc: NfcAdapter = {
   subscribe(listener) {
     const channel = new BroadcastChannel('tagback-nfc');
     channel.onmessage = (e) => {
-      if (typeof e.data?.tag === 'string') listener(e.data.tag);
+      if (typeof e.data?.tag === 'string') listener({ uid: e.data.tag });
     };
     return () => channel.close();
   },
@@ -29,7 +30,18 @@ export const bridgeNfc: NfcAdapter = {
         if (
           data && typeof data === 'object' && 'type' in data && data.type === 'TAG_READ' &&
           'uid' in data && typeof data.uid === 'string' && /^[0-9A-F]{8}(?:[0-9A-F]{6}){0,2}$/.test(data.uid)
-        ) listener(data.uid);
+        ) {
+          const proofValid =
+          'bridgeId' in data && typeof data.bridgeId === 'string' && /^[A-Za-z0-9._-]{1,64}$/.test(data.bridgeId) &&
+          'issuedAt' in data && typeof data.issuedAt === 'number' && Number.isSafeInteger(data.issuedAt) &&
+          'nonce' in data && typeof data.nonce === 'string' &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(data.nonce) &&
+          'signature' in data && typeof data.signature === 'string' && /^[0-9a-f]{64}$/i.test(data.signature);
+          listener({ uid: data.uid, proof: proofValid ? {
+            bridgeId: data.bridgeId as string, uid: data.uid, issuedAt: data.issuedAt as number, nonce: data.nonce as string,
+            signature: data.signature as string,
+          } : undefined });
+        }
       } catch { /* Ignore malformed bridge events; never scan an unverified UID. */ }
     };
     const onRemoved = () => options?.onRemoved?.();

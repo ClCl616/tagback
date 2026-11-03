@@ -4,11 +4,11 @@ import { CONTROL_KEY, DB_KEY, MOCK } from './config';
 import { seed, type Database } from './seed';
 import { authApi, requireSession } from './auth';
 import { AUTH_DEMO } from './authPolicy';
-import type { DemoControls, Fault, ServiceApi, Receipt } from './types';
+import type { DemoControls, Fault, ServiceApi, Receipt, NfcScanProof } from './types';
 
 import { ServiceError } from './serviceError';
 import { KIOSK_BRIDGE } from './kioskMode';
-import { checkoutRental, lookupRentalTag, rentalCatalog, verifyRentalCode } from './kioskHttp';
+import { checkoutRental, lookupRentalTag, lookupReturnTag, returnRental, rentalCatalog, verifyRentalCode } from './kioskHttp';
 export { ServiceError } from './serviceError';
 export const fail = (code: string, message: string): never => {
   throw new ServiceError(code, message);
@@ -233,9 +233,19 @@ export const api: ServiceApi = {
       return grant;
     });
   },
-  async scan(tag, mode, kindId, grant) {
+  async scan(tag, mode, kindId, grant, proof) {
     if (KIOSK_BRIDGE) {
-      if (mode !== 'rent') return fail('UNSUPPORTED', '실서버 반납 API는 아직 연결되지 않았습니다.');
+      if (mode === 'return') {
+        if (!proof || proof.uid !== tag) return fail('NFC_SCAN_REQUIRED', '실물 태그를 리더기에 인식해 주세요.');
+        const result = await lookupReturnTag(proof);
+        return {
+          item: result.item,
+          returnScanTicketId: result.scanTicketId,
+          returnScanProof: proof,
+          rental: { id: result.rentalId, userId: '', itemId: result.item.id,
+            stationId: MOCK.stationId, rentedAt: 0, dueAt: 0 },
+        };
+      }
       if (!grant) return fail('AUTH', '대여 코드를 다시 확인해 주세요.');
       return { item: await lookupRentalTag(tag, grant, kindId || '') };
     }
@@ -303,8 +313,11 @@ export const api: ServiceApi = {
       return { operationId: id, item, rental, type: 'rent' };
     });
   },
-  returnItem(id, itemId, rentalId, tagUid, condition) {
-    if (KIOSK_BRIDGE) return Promise.reject(new ServiceError('UNSUPPORTED', '실서버 반납 API는 아직 연결되지 않았습니다.'));
+  returnItem(id, itemId, rentalId, tagUid, scanTicketId, proof, condition) {
+    if (KIOSK_BRIDGE) {
+      if (!scanTicketId || !proof) return Promise.reject(new ServiceError('NFC_SCAN_REQUIRED', '태그를 다시 인식해 주세요.'));
+      return returnRental(id, scanTicketId, rentalId, proof, condition);
+    }
     return save(id, (db) => {
       const item = db.items.find((i) => i.id === itemId);
       const rental = db.rentals.find((r) => r.itemId === itemId && !r.returnedAt);
