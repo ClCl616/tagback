@@ -303,9 +303,13 @@ export const api: ServiceApi = {
       return { operationId: id, item, rental, type: 'rent' };
     });
   },
-  returnItem(id, itemId, condition) {
+  returnItem(id, itemId, condition, grant) {
     if (KIOSK_BRIDGE) return Promise.reject(new ServiceError('UNSUPPORTED', '실서버 반납 API는 아직 연결되지 않았습니다.'));
     return save(id, (db) => {
+      const verified = db.grants.find((g) => g.token === grant?.token);
+      if (!verified || !verified.code || !verified.userId || verified.expiresAt <= Date.now())
+        return fail('AUTH', '반납 인증이 만료되었습니다. 코드를 다시 입력해 주세요.');
+      const code = checkCode(db, verified.code);
       const item = db.items.find((i) => i.id === itemId);
       const rental = db.rentals.find((r) => r.itemId === itemId && !r.returnedAt);
       if (
@@ -321,9 +325,12 @@ export const api: ServiceApi = {
         );
       if (!['normal', 'damaged'].includes(condition))
         return fail('CONDITION', '물품 상태를 선택해 주세요.');
+      if (rental.userId !== verified.userId)
+        return fail('RETURN_FORBIDDEN', '대여한 본인만 반납할 수 있어요. 대리 반납은 불가해요.');
       rental.returnedAt = Date.now();
       rental.condition = condition;
       item.status = condition === 'normal' ? 'available' : 'inspection';
+      code.used = true;
       return { operationId: id, item, rental, type: 'return' };
     });
   },

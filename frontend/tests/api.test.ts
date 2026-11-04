@@ -319,23 +319,38 @@ describe('Mock service contract — not real server verification', () => {
     expect((await api.catalog()).items.find((i) => i.id === 'calc-1')?.status).toBe('rented');
   });
   it('동일 요청 ID 재전송은 동일 결과', async () => {
-    const { grant } = await prepare();
+    const { token, grant } = await prepare();
     const first = await api.rent('same', grant, 'calc-1', 'calc');
     const second = await api.rent('same', grant, 'calc-1', 'calc');
     expect(second).toEqual(first);
-    const returned = await api.returnItem('return', 'calc-1', 'normal');
-    expect(await api.returnItem('return', 'calc-1', 'normal')).toEqual(returned);
-    await expect(api.returnItem('another', 'calc-1', 'normal')).rejects.toMatchObject({
+    const returnGrant = await api.verifyCode((await api.code(token, true)).value);
+    const returned = await api.returnItem('return', 'calc-1', 'normal', returnGrant);
+    expect(await api.returnItem('return', 'calc-1', 'normal', returnGrant)).toEqual(returned);
+    const nextGrant = await api.verifyCode((await api.code(token, true)).value);
+    await expect(api.returnItem('another', 'calc-1', 'normal', nextGrant)).rejects.toMatchObject({
       code: 'CONFLICT',
     });
   });
   it('정상 반납은 재고 회복, 손상 반납은 점검 분리', async () => {
-    const { grant } = await prepare();
+    const { token, grant } = await prepare();
     await api.rent('r', grant, 'calc-1', 'calc');
-    await api.returnItem('n', 'calc-1', 'normal');
+    const firstReturnGrant = await api.verifyCode((await api.code(token, true)).value);
+    await api.returnItem('n', 'calc-1', 'normal', firstReturnGrant);
     expect((await api.catalog()).items.find((i) => i.id === 'calc-1')?.status).toBe('available');
-    await api.returnItem('d', 'calc-6', 'damaged');
+    const secondReturnGrant = await api.verifyCode((await api.code(token, true)).value);
+    await api.returnItem('d', 'calc-6', 'damaged', secondReturnGrant);
     expect((await api.catalog()).items.find((i) => i.id === 'calc-6')?.status).toBe('inspection');
+  });
+  it('rejects a return when the code owner is not the borrower', async () => {
+    const otherId = crypto.randomUUID();
+    const value = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000).padStart(6, '0');
+    mutate((db) => {
+      db.users.push({ id: otherId, phone: db.users[0].phone });
+      db.codes.push({ value, userId: otherId, used: false, expiresAt: Date.now() + 60000 });
+    });
+    const grant = await api.verifyCode(value);
+    await expect(api.returnItem('other-return', 'calc-6', 'normal', grant)).rejects.toMatchObject({ code: 'RETURN_FORBIDDEN' });
+    expect((await api.catalog()).items.find((i) => i.id === 'calc-6')?.status).toBe('rented');
   });
   it('잘못된 종류·태그·대여소·비활성·없는 기록 거절', async () => {
     await expect(api.scan('UNKNOWN', 'rent', 'calc')).rejects.toMatchObject({

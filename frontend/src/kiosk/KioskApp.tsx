@@ -19,7 +19,7 @@ import { api, controls, ServiceError } from '../shared/api';
 import { MOCK } from '../shared/config';
 import { KIOSK_BRIDGE } from '../shared/kioskMode';
 import { subscribeServerConnection, type ServerConnection } from '../shared/kioskHttp';
-import { lookupReturnTag } from '../shared/kioskReturn';
+import { createReturnClient, lookupReturnTag } from '../shared/kioskReturn';
 import { nfc, type ReaderStatus } from '../shared/nfc';
 import {
   Badge,
@@ -63,6 +63,7 @@ export default function KioskApp() {
   const lastActivity = useRef(Date.now());
   const doneAt = useRef(0);
   const scanSeen = useRef({ tag: '', at: 0 });
+  const returnUid = useRef('');
   const catalog = useResource(
     () => KIOSK_BRIDGE && !grant
       ? Promise.resolve({ kinds: [], items: [], stations: [] } as Catalog)
@@ -85,6 +86,7 @@ export default function KioskApp() {
     locked.current = false;
     operation.current = '';
     scanSeen.current = { tag: '', at: 0 };
+    returnUid.current = '';
     setStage('start');
     setMode('rent');
     setKindId('');
@@ -164,8 +166,14 @@ export default function KioskApp() {
       if (scanSeen.current.tag === tag && Date.now() - scanSeen.current.at < 1000) return;
       scanSeen.current = { tag, at: Date.now() };
       lastActivity.current = Date.now();
+      if (KIOSK_BRIDGE && mode === 'return') {
+        returnUid.current = tag;
+        setError(undefined);
+        setStage('condition');
+        return;
+      }
       void run(
-        () => KIOSK_BRIDGE && mode === 'return' ? lookupReturnTag(tag) : api.scan(tag, mode, kindId, grant),
+        () => api.scan(tag, mode, kindId, grant),
         (result) => {
           setItem(result.item);
           setStage(mode === 'rent' ? 'confirm' : 'condition');
@@ -214,7 +222,7 @@ export default function KioskApp() {
     if (stage === 'code') {
       setCode('');
       setGrant(undefined);
-      setStage(KIOSK_BRIDGE ? 'start' : 'select');
+      setStage(mode === 'return' ? 'condition' : KIOSK_BRIDGE ? 'start' : 'select');
     } else if (stage === 'select' && KIOSK_BRIDGE) {
       setGrant(undefined);
       setStage('code');
@@ -227,9 +235,10 @@ export default function KioskApp() {
     } else if (stage === 'condition') {
       setItem(undefined);
       setCondition(undefined);
+      if (mode === 'return') returnUid.current = '';
       setStage('scan');
     } else if (stage === 'confirm') {
-      if (mode === 'return') setStage('condition');
+      if (mode === 'return') { setGrant(undefined); setCode(''); setStage('code'); }
       else {
         setItem(undefined);
         setStage('scan');
@@ -248,6 +257,7 @@ export default function KioskApp() {
     setKindId('');
     setItem(undefined);
     setCondition(undefined);
+    returnUid.current = '';
     setUnknown(false);
     operation.current = '';
     doneAt.current = Date.now();
@@ -261,7 +271,7 @@ export default function KioskApp() {
       () =>
         mode === 'rent'
           ? api.rent(operation.current, grant!, item.id, kindId)
-          : api.returnItem(operation.current, item.id, condition!),
+          : api.returnItem(operation.current, item.id, condition!, grant!),
       finish,
     );
   }
@@ -286,16 +296,16 @@ export default function KioskApp() {
     mode === 'rent'
       ? KIOSK_BRIDGE ? ['코드 입력', '물품 선택', 'NFC 인식', '최종 확인']
         : ['물품 선택', '코드 입력', 'NFC 인식', '최종 확인']
-      : ['NFC 인식', '상태 확인', '최종 확인'];
+      : ['NFC 인식', '상태 확인', '코드 입력', '최종 확인'];
   const steps: Partial<Record<Stage, number>> = mode === 'return'
-    ? { scan: 0, condition: 1, confirm: 2 }
+    ? { scan: 0, condition: 1, code: 2, confirm: 3 }
     : KIOSK_BRIDGE ? { code: 0, select: 1, scan: 2, confirm: 3 }
       : { select: 0, code: 1, scan: 2, confirm: 3 };
   const step = steps[stage];
   const kind = catalog.data?.kinds.find((k) => k.id === (item?.kindId || kindId));
   const stationItems = catalog.data?.items.filter((i) => i.stationId === MOCK.stationId) || [];
   const errorCode = error instanceof ServiceError ? error.code : '';
-  const needsRestart = ['AUTH', 'GRANT_EXPIRED', 'CODE_EXPIRED', 'CODE_USED', 'CONFLICT'].includes(errorCode);
+  const needsRestart = ['AUTH', 'GRANT_EXPIRED', 'CODE_EXPIRED', 'CODE_USED', 'CONFLICT', ...(mode === 'return' ? ['RETURN_CODE_AUTH'] : [])].includes(errorCode);
   const recoveryNeedsManualCheck = KIOSK_BRIDGE && unknown &&
     ['AUTH', 'GRANT_EXPIRED'].includes(errorCode);
   return (
@@ -370,7 +380,7 @@ export default function KioskApp() {
                 <h2>반납하기</h2>
                 <p>반납할 물품을 준비해 주세요.</p>
                 <span className="action-footer">
-                  {KIOSK_BRIDGE ? '반납 인증 및 처리는 준비 중이에요' : '로그인 없이 물품으로 확인해요'}
+                  {KIOSK_BRIDGE ? '태그와 반납 코드를 준비해 주세요' : '반납 코드를 준비해 주세요'}
                   <ArrowRight />
                 </span>
               </button>
@@ -481,22 +491,22 @@ export default function KioskApp() {
                 <div>
                   <div className="eyebrow">YOUR ONE-TIME CODE</div>
                   <h1>
-                    대여 코드를
+                    {mode === 'return' ? '반납 코드를' : '대여 코드를'}
                     <br />
                     입력해 주세요.
                   </h1>
                   <p>
                     모바일 웹에 로그인한 뒤<br />
-                    <strong>‘대여 코드’</strong>에서 확인할 수 있어요.
+                    <strong>{mode === 'return' ? '‘반납 코드’' : '‘대여 코드’'}</strong>에서 확인할 수 있어요.
                   </p>
-                  {!KIOSK_BRIDGE && <div className="selected-kind">
+                  {!KIOSK_BRIDGE && mode === 'rent' && <div className="selected-kind">
                     <ProductArt kind={kind?.art || 'calculator'} />
                     <div>
                       <span>선택한 물품</span>
                       <strong>{kind?.name}</strong>
                     </div>
                   </div>}
-                  {KIOSK_BRIDGE && <p>코드를 확인한 뒤 물품 종류를 선택합니다.</p>}
+                  {KIOSK_BRIDGE && mode === 'rent' && <p>코드를 확인한 뒤 물품 종류를 선택합니다.</p>}
                   <div className="note">
                     <ShieldCheck size={20} />
                     <p>코드는 본인만 사용해 주세요.</p>
@@ -508,16 +518,24 @@ export default function KioskApp() {
                     e.preventDefault();
                     if (code.length === MOCK.codeLength)
                       void run(
-                        () => api.verifyCode(code),
+                        async () => {
+                          const seq = epoch.current;
+                          const verified = await api.verifyCode(code);
+                          if (KIOSK_BRIDGE && mode === 'return' && seq === epoch.current) {
+                            const client = createReturnClient(fetch, async () => ({ Authorization: `Bearer ${verified.token}` }));
+                            await lookupReturnTag(returnUid.current, client);
+                          }
+                          return verified;
+                        },
                         (g) => {
                           setGrant(g);
                           setCode('');
-                          setStage(KIOSK_BRIDGE ? 'select' : 'scan');
+                          setStage(mode === 'return' ? 'confirm' : KIOSK_BRIDGE ? 'select' : 'scan');
                         },
                       );
                   }}
                 >
-                  <label htmlFor="rental-code">일회성 대여 코드</label>
+                  <label htmlFor="rental-code">{mode === 'return' ? '일회성 반납 코드' : '일회성 대여 코드'}</label>
                   <input
                     id="rental-code"
                     className="kiosk-code-input"
@@ -597,7 +615,7 @@ export default function KioskApp() {
                   {mode === 'rent'
                     ? '인식만으로 대여되지 않습니다. 다음 화면에서 대여를 확정해 주세요.'
                     : KIOSK_BRIDGE
-                      ? '반납 인증과 실제 반납 처리는 준비 중입니다.'
+                      ? '인식 후 상태와 코드를 입력해 주세요. 물품 확인은 코드 검증 후 진행됩니다.'
                       : '인식 후 물품 상태를 확인하고 반납을 확정해 주세요.'}
                 </p>
                 {!!error && (
@@ -622,8 +640,8 @@ export default function KioskApp() {
                 <div className="condition-item">
                   <ProductArt kind={kind?.art || 'calculator'} />
                   <div>
-                    <h2>{kind?.name}</h2>
-                    <p>{item?.label} · 대전대 융합과학관</p>
+                    <h2>{kind?.name || (KIOSK_BRIDGE ? '인식된 태그' : '')}</h2>
+                    <p>{item?.label || (KIOSK_BRIDGE ? '물품 정보는 코드 검증 후 확인합니다.' : '')} · 대전대 융합과학관</p>
                   </div>
                 </div>
                 <div className="condition-options">
@@ -647,14 +665,15 @@ export default function KioskApp() {
                   </button>
                 </div>
                 <p className="condition-note">
-                  {condition === 'damaged'
-                    ? '손상된 물품은 점검 중으로 분리되어 다음 대여가 제한됩니다.'
-                    : '선택한 상태는 반납 기록에 함께 저장됩니다.'}
+                  {KIOSK_BRIDGE ? '선택한 상태는 현재 저장되지 않습니다.'
+                    : condition === 'damaged'
+                      ? '손상된 물품은 점검 중으로 분리되어 다음 대여가 제한됩니다.'
+                      : '선택한 상태는 반납 기록에 함께 저장됩니다.'}
                 </p>
                 <button
                   className="primary centered"
                   disabled={!condition}
-                  onClick={() => setStage('confirm')}
+                  onClick={() => setStage('code')}
                 >
                   선택한 상태로 계속
                   <ArrowRight size={22} />
@@ -726,8 +745,11 @@ export default function KioskApp() {
                       {busy ? '처리 결과 확인 중…' : '처리 결과 다시 확인'}
                     </button>
                   ) : needsRestart ? (
-                    <button className="primary full" onClick={() => start(mode)}>
-                      {mode === 'rent' ? KIOSK_BRIDGE ? '코드 입력부터 다시 진행' : '물품 선택부터 다시 진행' : '물품 다시 인식하기'}
+                    <button className="primary full" onClick={() => {
+                      if (mode === 'return' && errorCode !== 'CONFLICT') { setError(undefined); setGrant(undefined); setCode(''); setStage('code'); }
+                      else start(mode);
+                    }}>
+                      {mode === 'rent' ? KIOSK_BRIDGE ? '코드 입력부터 다시 진행' : '물품 선택부터 다시 진행' : errorCode === 'CONFLICT' ? '물품 다시 인식하기' : '코드 다시 입력하기'}
                     </button>
                   ) : (
                     <button className="primary full" disabled={busy} onClick={confirm}>

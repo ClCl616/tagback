@@ -59,6 +59,13 @@ describe('return integration boundary', () => {
     expect((transport.mock.calls[0][1].headers as Headers).get('X-Test-Auth')).toBe('mock');
     await expect(client.lookup('04A23B1C5D6E80')).rejects.toMatchObject({ code: 'UNKNOWN' });
   });
+  it('checks the scanned UID before leaving return confirmation unsupported', async () => {
+    const transport = vi.fn().mockResolvedValue(response(200, { tag: { uid: '04A23B1C5D6E80', status: 'ACTIVE' } }));
+    const client = createReturnClient(transport, async () => ({}));
+    await expect(lookupReturnTag('04A23B1C5D6E80', client)).rejects.toMatchObject({ code: 'UNSUPPORTED' });
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(transport.mock.calls[0][0]).toBe('/api/tags/04A23B1C5D6E80');
+  });
   it.each([[404, 'TAG_NOT_FOUND', 'TAG_UNKNOWN'], [409, 'TAG_INACTIVE', 'TAG_INACTIVE']])
    ('maps return lookup error %s %s', async (status, code, expected) => {
       const client = createReturnClient(async () => response(status, { error: { code } }), async () => ({ 'X-Test-Auth': 'mock' }));

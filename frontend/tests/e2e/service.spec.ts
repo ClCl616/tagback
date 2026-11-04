@@ -170,6 +170,10 @@ test('전체 대여 → 정상 반납 → 손상 반납, 모바일 동기화', a
   await expect(kiosk.getByRole('button', { name: '선택한 상태로 계속' })).toBeDisabled();
   await kiosk.getByRole('button', { name: /정상이에요/ }).click();
   await kiosk.getByRole('button', { name: '선택한 상태로 계속' }).click();
+  await page.goto('/mobile/code');
+  await expect(page.locator('.code-number')).toHaveText(/\d{6}/);
+  await kiosk.getByLabel('일회성 반납 코드').fill((await page.locator('.code-number').textContent())!);
+  await kiosk.getByRole('button', { name: '코드 확인', exact: true }).click();
   await kiosk.getByRole('button', { name: '반납 확정', exact: true }).click();
   await expect(kiosk.getByRole('heading', { name: '반납이 완료되었습니다' })).toBeVisible();
   await page.goto('/mobile');
@@ -179,6 +183,10 @@ test('전체 대여 → 정상 반납 → 손상 반납, 모바일 동기화', a
   await scan(page, 'CALC-6');
   await kiosk.getByRole('button', { name: /손상이 있어요/ }).click();
   await kiosk.getByRole('button', { name: '선택한 상태로 계속' }).click();
+  await page.goto('/mobile/code');
+  await expect(page.locator('.code-number')).toHaveText(/\d{6}/);
+  await kiosk.getByLabel('일회성 반납 코드').fill((await page.locator('.code-number').textContent())!);
+  await kiosk.getByRole('button', { name: '코드 확인', exact: true }).click();
   await kiosk.getByRole('button', { name: '반납 확정', exact: true }).click();
   await expect(
     kiosk.getByRole('heading', { name: '반납 · 점검 접수가 완료되었습니다' }),

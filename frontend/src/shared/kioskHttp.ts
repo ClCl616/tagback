@@ -80,16 +80,16 @@ export function mapError(action: Action, status: number, code: unknown, message:
 async function request(path: string, action: Action, method = 'GET', grant?: Grant,
                        body?: unknown, key?: string): Promise<any> {
   const { response, data } = await sendKioskRequest(fetch, path, {
-      method,
-      cache: 'no-store',
-      credentials: 'omit', // A shared kiosk must not send a user's mobile session cookie.
-      headers: {
-        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-        ...(grant ? { Authorization: `Bearer ${grant.token}` } : {}),
-        ...(key ? { 'Idempotency-Key': key } : {}),
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    }, action === 'rent');
+    method,
+    cache: 'no-store',
+    credentials: 'omit', // A shared kiosk must not send a user's mobile session cookie.
+    headers: {
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...(grant ? { Authorization: `Bearer ${grant.token}` } : {}),
+      ...(key ? { 'Idempotency-Key': key } : {}),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  }, action === 'rent');
   if (!response.ok) mapError(action, response.status, data?.error?.code, data?.error?.message);
   if (action === 'rent' && response.status !== 200 && response.status !== 201)
     throw new ServiceError('UNKNOWN', '반출 결과를 확인하지 못했습니다. 같은 요청으로 결과를 확인해 주세요.');

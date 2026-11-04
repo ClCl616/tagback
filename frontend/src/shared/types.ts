@@ -75,6 +75,7 @@ export interface ServiceApi {
     operationId: string,
     itemId: string,
     condition: 'normal' | 'damaged',
+    grant: Grant,
   ): Promise<Receipt>;
   operation(operationId: string): Promise<Receipt | null>;
 }
