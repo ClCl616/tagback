@@ -85,11 +85,24 @@ test('모바일 코드와 실제 반납 API가 대여자 본인만 반납하도�
     await expect(kiosk.getByRole('heading', { name: '물품 상태를 확인해 주세요' })).toBeVisible();
     await kiosk.getByRole('button', { name: /정상이에요/ }).click();
     await kiosk.getByRole('button', { name: '선택한 상태로 계속' }).click();
+    let invalidResponseLost = false;
+    await kiosk.route('**/api/v1/rentals/return', async (route) => {
+      if (invalidResponseLost) return route.continue();
+      invalidResponseLost = true;
+      const response = await route.fetch();
+      expect(response.status()).toBe(401);
+      await route.abort();
+    });
     await kiosk.getByLabel('일회성 반납 코드').fill(otherCode);
     await kiosk.getByRole('button', { name: '코드 확인하고 반납 완료' }).click();
+    await expect(kiosk.getByRole('button', { name: '반납 결과 다시 확인' })).toBeVisible();
+    await kiosk.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
+    await kiosk.getByRole('button', { name: '반납 결과 다시 확인' }).click();
     await expect(kiosk.getByRole('alert')).toContainText('대여자와 일치하지 않습니다');
     expect(sql("select status from items where item_name = 'Live calculator'")).toBe('RENTED');
     await kiosk.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
+    await expect(kiosk.getByLabel('일회성 반납 코드')).toBeEnabled();
+    await kiosk.unroute('**/api/v1/rentals/return');
 
     let responseLost = false;
     await kiosk.route('**/api/v1/rentals/return', async (route) => {

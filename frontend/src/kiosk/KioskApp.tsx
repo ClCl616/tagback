@@ -165,6 +165,8 @@ export default function KioskApp() {
         setError(e);
         if ((stage === 'confirm' || (stage === 'code' && mode === 'return'))
             && e instanceof ServiceError && e.code === 'UNKNOWN') setUnknown(true);
+        if (stage === 'code' && mode === 'return'
+            && e instanceof ServiceError && e.code === 'RETURN_CODE_INVALID') setUnknown(false);
       }
     } finally {
       if (seq === epoch.current) {
