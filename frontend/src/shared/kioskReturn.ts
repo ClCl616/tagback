@@ -5,8 +5,8 @@ type Transport = (path: string, init: RequestInit) => Promise<Response>;
 type Credentials = () => Promise<HeadersInit | undefined>;
 
 export function returnError(status: number, code: unknown): ServiceError {
-  if (status === 401) return new ServiceError('RETURN_SESSION_EXPIRED', '로그인이 만료되었어요. 다시 인증해 주세요.');
-  if (status === 403) return new ServiceError('RETURN_FORBIDDEN', '이 물품을 반납할 권한이 없어요.');
+  if (status === 401) return new ServiceError('RETURN_CODE_AUTH', '코드를 다시 입력해 주세요.');
+  if (status === 403) return new ServiceError('RETURN_FORBIDDEN', '대여한 본인만 반납할 수 있어요. 대리 반납은 불가해요.');
   switch (code) {
     case 'TAG_NOT_FOUND': return new ServiceError('TAG_UNKNOWN', '등록되지 않은 태그입니다. 반납할 물품의 태그를 확인해 주세요.');
     case 'TAG_INACTIVE': return new ServiceError('TAG_INACTIVE', '사용 중지된 태그입니다. 관리자에게 문의해 주세요.');
@@ -23,7 +23,7 @@ export function returnError(status: number, code: unknown): ServiceError {
 export function createReturnClient(transport: Transport, credentials: Credentials) {
   async function request(path: string, method: string, body?: unknown) {
     const auth = await credentials();
-    if (!auth) throw new ServiceError('AUTH_PENDING', '반납 인증 방식이 아직 정해지지 않았습니다.');
+    if (!auth) throw new ServiceError('AUTH_PENDING', '반납 코드를 입력해 주세요.');
     const headers = new Headers(auth);
     if (body !== undefined) headers.set('Content-Type', 'application/json');
     const { response, data } = await sendKioskRequest(transport, path, { method, headers, credentials: 'omit', body: body === undefined ? undefined : JSON.stringify(body) });
@@ -44,7 +44,7 @@ export function createReturnClient(transport: Transport, credentials: Credential
 }
 
 export async function lookupReturnTag(uid: string, client?: Pick<ReturnType<typeof createReturnClient>, 'lookup'>): Promise<never> {
-  if (!client) throw new ServiceError('AUTH_PENDING', '반납 인증 방식이 아직 정해지지 않았습니다.');
+  if (!client) throw new ServiceError('AUTH_PENDING', '반납 코드를 입력해 주세요.');
   await client.lookup(uid);
   // Even a successful lookup must not enable return confirmation until the contract is agreed.
   throw new ServiceError('UNSUPPORTED', '실서버 반납 처리는 아직 준비 중입니다.');

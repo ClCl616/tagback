@@ -19,13 +19,13 @@ test('return scan ignores the same tag within one second', async ({ page }) => {
   await page.getByRole('button', { name: /반납하기/ }).click();
   const scan = () => page.evaluate(() => window.dispatchEvent(new Event('test-repeat-tag')));
   await scan();
-  await expect(page.getByRole('dialog')).toContainText('반납 인증 방식이 아직 정해지지 않았습니다');
+  await expect(page.getByRole('dialog')).toContainText('반납 코드를 입력해 주세요');
   await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
   await scan();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.clock.fastForward(1001);
   await scan();
-  await expect(page.getByRole('dialog')).toContainText('반납 인증 방식이 아직 정해지지 않았습니다');
+  await expect(page.getByRole('dialog')).toContainText('반납 코드를 입력해 주세요');
 });
 
 test('return scan receives a bridge event but never sends a request without return authentication', async ({ page }) => {
@@ -49,7 +49,8 @@ test('return scan receives a bridge event but never sends a request without retu
   await page.getByRole('button', { name: /반납하기/ }).click();
   await expect(page.getByRole('heading', { name: '반납할 물품을 인식해 주세요' })).toBeVisible();
   await page.evaluate(() => window.dispatchEvent(new Event('test-return-tag')));
-  await expect(page.getByRole('dialog')).toContainText('반납 인증 방식이 아직 정해지지 않았습니다');
+  await expect(page.getByRole('dialog')).toContainText('반납 코드를 입력해 주세요');
+  await expect(page.locator('#rental-code')).toHaveCount(0);
   expect(calls).toEqual([]);
 });
 
