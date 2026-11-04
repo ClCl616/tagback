@@ -70,9 +70,33 @@ test('뒤로가기와 취소 및 시간 초과에서 이전 입력이 초기화�
   await expect(page.getByLabel('일회성 반납 코드')).toHaveValue('');
   await page.getByRole('button', {name: '이용 취소'}).click();
   await page.getByRole('button', {name: '종료하고 처음으로'}).click();
+  const scannedUids: string[] = [];
+  const returnedUids: string[] = [];
+  await page.unroute('**/api/v1/rentals/return/scan');
+  await page.route('**/api/v1/rentals/return/scan', async route => {
+    scannedUids.push(route.request().postDataJSON().proof.uid);
+    await route.fulfill({json: {scanTicketId: '6fa7b810-77bd-4f49-8cf9-e9bd457f1101', rentalId: '9', itemId: '5', itemName: '새 물품', itemTypeId: '1', itemTypeName: '공용 물품'}});
+  });
+  await page.route('**/api/v1/rentals/return', async route => {
+    returnedUids.push(route.request().postDataJSON().proof.uid);
+    await route.fulfill({status: 401, json: {error: {code: 'RETURN_CODE_INVALID', message: '코드를 확인해 주세요'}}});
+  });
   await page.getByRole('button', {name: /반납하기/}).click();
-  await emit(page, 'TAG_READ'); await enterCode(page);
+  expect(scannedUids).toEqual([]);
+  expect(returnedUids).toEqual([]);
+  await emit(page, 'TAG_READ', '04A23B1C5D6E81');
+  await expect(page.getByRole('heading', {name: '물품 상태를 확인해 주세요'})).toBeVisible();
+  await expect(page.getByRole('button', {name: /정상이에요/})).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('button', {name: /손상이 있어요/})).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('button', {name: '선택한 상태로 계속'})).toBeDisabled();
+  expect(scannedUids).toEqual(['04A23B1C5D6E81']);
+  await enterCode(page);
   await expect(page.getByLabel('일회성 반납 코드')).toHaveValue('');
+  await page.getByLabel('일회성 반납 코드').fill('000000');
+  await page.getByRole('button', {name: '코드 확인하고 반납 완료'}).click();
+  await expect(page.getByText('코드를 확인해 주세요')).toBeVisible();
+  expect(returnedUids).toEqual(['04A23B1C5D6E81']);
+  await page.getByRole('dialog').getByRole('button', {name: '확인', exact: true}).click();
   await page.clock.fastForward(181000);
   await expect(page.getByRole('button', {name: /반납하기/})).toBeVisible();
   await page.getByRole('button', {name: /반납하기/}).click();
@@ -102,4 +126,15 @@ test('실패한 인식 직후 1초 내 같은 UID 재인식을 무시한다', as
   await emit(page, 'TAG_READ');
   await page.waitForTimeout(200);
   expect(calls).toBe(1);
+});
+
+test('태그 인식 단계의 상태 충돌에서 처음 화면으로 돌아간다', async ({page}) => {
+  await openReturn(page);
+  await page.route('**/api/v1/rentals/return/scan', route => route.fulfill({status: 409,
+    json: {error: {code: 'RENTAL_STATE_CONFLICT', message: 'conflict'}}}));
+  await emit(page, 'TAG_READ');
+  await expect(page.getByText('물품 상태가 변경되었습니다. 관리자에게 문의해 주세요.')).toBeVisible();
+  await page.getByRole('dialog').getByRole('button', {name: '확인', exact: true}).click();
+  await page.getByRole('button', {name: '처음으로 돌아가기'}).click();
+  await expect(page.getByRole('button', {name: /반납하기/})).toBeVisible();
 });

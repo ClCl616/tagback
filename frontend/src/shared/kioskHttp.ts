@@ -74,7 +74,7 @@ function mapError(action: Action, status: number, code: unknown, message: unknow
     case 'RENTAL_VERIFICATION_LIMITED': {
       if (action !== 'return') break;
       const parsed = typeof retryAt === 'string' ? Date.parse(retryAt) : NaN;
-      const time = Number.isFinite(parsed) ? new Date(parsed).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }) : undefined;
+      const time = Number.isFinite(parsed) ? new Date(parsed).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }) : undefined;
       throw new ServiceError('RENTAL_VERIFICATION_LIMITED', time ? `요청이 많습니다. ${time} 이후 다시 시도해 주세요.` : '요청이 많습니다. 잠시 후 다시 시도해 주세요.', Number.isFinite(parsed) ? parsed : undefined);
     }
     case 'NFC_SCAN_REQUIRED':
