@@ -33,6 +33,7 @@ test('return scan keeps UID after removal, verifies code, and keeps the selectio
   const emit = (type: string) => page.evaluate(value => window.dispatchEvent(new CustomEvent('test-repeat-tag', { detail: value })), type);
   await page.evaluate(() => { for (let n = 0; n < 2; n++) window.dispatchEvent(new CustomEvent('test-repeat-tag', { detail: 'TAG_READ' })); });
   await expect(page.getByRole('heading', { name: '물품 상태를 확인해 주세요' })).toBeVisible();
+  await expect(page.locator('.condition-item .product-art')).toHaveCount(0);
   await page.getByRole('button', { name: '이전', exact: true }).click();
   await emit('TAG_READ');
   await expect(page.getByRole('heading', { name: '반납할 물품을 인식해 주세요' })).toBeVisible();
@@ -43,6 +44,7 @@ test('return scan keeps UID after removal, verifies code, and keeps the selectio
   await page.getByRole('button', { name: /정상이에요/ }).click();
   await page.getByRole('button', { name: '선택한 상태로 계속' }).click();
   await expect(page.getByLabel('일회성 반납 코드')).toBeVisible();
+  await expect(page.locator('.code-stage strong')).toHaveText('‘대여 코드’');
   await page.getByLabel('일회성 반납 코드').fill('123456');
   await page.getByRole('button', { name: '코드 확인', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText('코드 인증 시간이 지났어요');

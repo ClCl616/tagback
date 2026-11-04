@@ -305,7 +305,7 @@ export default function KioskApp() {
   const kind = catalog.data?.kinds.find((k) => k.id === (item?.kindId || kindId));
   const stationItems = catalog.data?.items.filter((i) => i.stationId === MOCK.stationId) || [];
   const errorCode = error instanceof ServiceError ? error.code : '';
-  const needsRestart = ['AUTH', 'GRANT_EXPIRED', 'CODE_EXPIRED', 'CODE_USED', 'CONFLICT', ...(mode === 'return' ? ['RETURN_CODE_AUTH'] : [])].includes(errorCode);
+  const needsRestart = ['AUTH', 'GRANT_EXPIRED', 'CODE_EXPIRED', 'CODE_USED', 'CONFLICT', ...(mode === 'return' ? ['RETURN_CODE_AUTH', 'RETURN_FORBIDDEN'] : [])].includes(errorCode);
   const recoveryNeedsManualCheck = KIOSK_BRIDGE && unknown &&
     ['AUTH', 'GRANT_EXPIRED'].includes(errorCode);
   return (
@@ -497,7 +497,7 @@ export default function KioskApp() {
                   </h1>
                   <p>
                     모바일 웹에 로그인한 뒤<br />
-                    <strong>{mode === 'return' ? '‘반납 코드’' : '‘대여 코드’'}</strong>에서 확인할 수 있어요.
+                    <strong>‘대여 코드’</strong>에서 확인할 수 있어요.
                   </p>
                   {!KIOSK_BRIDGE && mode === 'rent' && <div className="selected-kind">
                     <ProductArt kind={kind?.art || 'calculator'} />
@@ -638,7 +638,7 @@ export default function KioskApp() {
                   <p>사용하신 물품의 상태를 직접 확인하고 선택해 주세요.</p>
                 </div>
                 <div className="condition-item">
-                  <ProductArt kind={kind?.art || 'calculator'} />
+                  {(!KIOSK_BRIDGE || kind) && <ProductArt kind={kind?.art || 'calculator'} />}
                   <div>
                     <h2>{kind?.name || (KIOSK_BRIDGE ? '인식된 태그' : '')}</h2>
                     <p>{item?.label || (KIOSK_BRIDGE ? '물품 정보는 코드 검증 후 확인합니다.' : '')} · 대전대 융합과학관</p>

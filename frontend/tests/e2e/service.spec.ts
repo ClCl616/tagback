@@ -122,6 +122,38 @@ async function enterRent(kiosk: Page, code: string) {
     kiosk.getByRole('heading', { name: '물품의 NFC 태그를 인식해 주세요' }),
   ).toBeVisible();
 }
+test('다른 사람의 반납 코드는 거부하고 선택 상태를 유지하며 코드를 다시 입력한다', async ({ page, context }) => {
+  await page.goto('/mobile');
+  await expect(page.getByRole('heading', { name: '공학용 계산기', exact: true })).toBeVisible();
+  const otherCode = await page.evaluate(() => {
+    const key = 'tagback.mock.v1';
+    const db = JSON.parse(localStorage.getItem(key)!);
+    const userId = crypto.randomUUID();
+    let value: string;
+    do { value = String(crypto.getRandomValues(new Uint32Array(1))[0] % 1000000).padStart(6, '0'); }
+    while (db.codes.some((code: { value: string }) => code.value === value));
+    db.users.push({ id: userId, phone: db.users[0].phone });
+    db.codes.push({ value, userId, used: false, expiresAt: Date.now() + 180000 });
+    localStorage.setItem(key, JSON.stringify(db));
+    return value;
+  });
+  const kiosk = await context.newPage();
+  await kiosk.goto('/kiosk');
+  await kiosk.getByRole('button', { name: /반납하기/ }).click();
+  await scan(page, 'CALC-6');
+  await kiosk.getByRole('button', { name: /손상이 있어요/ }).click();
+  await kiosk.getByRole('button', { name: '선택한 상태로 계속' }).click();
+  await kiosk.getByLabel('일회성 반납 코드').fill(otherCode);
+  await kiosk.getByRole('button', { name: '코드 확인', exact: true }).click();
+  await kiosk.getByRole('button', { name: '반납 확정', exact: true }).click();
+  await expect(kiosk.getByRole('dialog')).toContainText('대리 반납은 불가해요');
+  await kiosk.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
+  await kiosk.getByRole('button', { name: '코드 다시 입력하기' }).click();
+  await expect(kiosk.getByLabel('일회성 반납 코드')).toHaveValue('');
+  await kiosk.getByRole('button', { name: '이전', exact: true }).click();
+  await expect(kiosk.getByRole('button', { name: /손상이 있어요/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(kiosk.getByText('계산기 006')).toBeVisible();
+});
 test('비회원 탐색, 재고 없음, 320px 넘침 없음', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 850 });
   await page.goto('/mobile');
