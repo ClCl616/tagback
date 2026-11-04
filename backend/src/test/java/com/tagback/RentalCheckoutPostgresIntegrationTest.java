@@ -7,6 +7,8 @@ import com.tagback.exception.ItemException;
 import com.tagback.exception.RentalException;
 import com.tagback.service.ItemService;
 import com.tagback.service.RentalCheckoutService;
+import com.tagback.service.RentalReturnService;
+import com.tagback.service.RentalCodeService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -35,6 +37,8 @@ import static org.junit.jupiter.api.Assertions.*;
         "spring.profiles.active=sms-mock",
         "spring.datasource.url=jdbc:postgresql://127.0.0.1:${TAGBACK_ITEM_DB_PORT:55440}/tagback_items_test",
         "spring.datasource.username=postgres", "spring.datasource.password=",
+        "tagback.nfc.scan-secret=test-only-nfc-scan-secret-32-bytes-long",
+        "tagback.nfc.bridge-id=kiosk-1",
         "spring.jpa.hibernate.ddl-auto=validate", "spring.jpa.open-in-view=false"})
 @Import(RentalCheckoutPostgresIntegrationTest.FixedClock.class)
 class RentalCheckoutPostgresIntegrationTest {
@@ -52,6 +56,8 @@ class RentalCheckoutPostgresIntegrationTest {
     @Autowired NfcTagRepository tags;
     @Autowired RentalRepository rentals;
     @Autowired ItemStatusHistoryRepository history;
+    @Autowired RentalReturnService returns;
+    @Autowired RentalCodeService codes;
     @Autowired JdbcTemplate jdbc;
     @Autowired TransactionTemplate transactions;
     private Fixture data;
@@ -72,8 +78,11 @@ class RentalCheckoutPostgresIntegrationTest {
     @AfterEach void cleanup() {
         if (data == null) return;
         transactions.executeWithoutResult(tx -> {
+            jdbc.update("delete from nfc_return_scan_tickets where item_id = ?", data.itemId());
+            jdbc.update("delete from nfc_scan_proof_uses where tag_uid = ?", "04A23B1C5D6E80");
             jdbc.update("delete from item_status_history where item_id = ?", data.itemId());
             jdbc.update("delete from rentals where item_id = ?", data.itemId());
+            jdbc.update("delete from rental_codes where user_id = ?", data.userId());
             jdbc.update("update items set status = 'TAG_PENDING' where item_id = ?", data.itemId());
             jdbc.update("delete from nfc_tags where item_id = ?", data.itemId());
             jdbc.update("delete from items where item_id = ?", data.itemId());
@@ -124,6 +133,60 @@ class RentalCheckoutPostgresIntegrationTest {
             throw new IllegalStateException("Simulated later authentication write failure");
         }));
         assertState("AVAILABLE", 0, 0);
+    }
+
+    @Test void returnCommitsReturnedTimeRentalItemAndActorHistoryForAnOverdueRental() {
+        prepareOverdueRental();
+
+        var result = returnCurrentRental();
+
+        assertEquals(RentalStatus.RETURNED, result.rentalStatus());
+        assertEquals(ItemStatus.AVAILABLE, result.itemStatus());
+        assertEquals(NOW, result.returnedAt());
+        assertEquals(NOW.minusSeconds(4 * 86400), result.rentedAt());
+        assertEquals(NOW.minusSeconds(86400), result.dueAt());
+        assertEquals(NOW, jdbc.queryForObject(
+                "select returned_at from rentals where item_id = ?", java.sql.Timestamp.class, data.itemId()).toInstant());
+        assertEquals("RETURNED", jdbc.queryForObject(
+                "select status from rentals where item_id = ?", String.class, data.itemId()));
+        assertEquals("AVAILABLE", jdbc.queryForObject(
+                "select status from items where item_id = ?", String.class, data.itemId()));
+
+        var changes = history.findByItemIdOrderByIdAsc(data.itemId());
+        assertEquals(1, changes.size());
+        assertEquals(ItemStatus.RENTED, changes.getFirst().getFromStatus());
+        assertEquals(ItemStatus.AVAILABLE, changes.getFirst().getToStatus());
+        assertEquals(ItemStatusChangeSource.RENTAL_FLOW, changes.getFirst().getSource());
+        assertEquals(data.userId(), changes.getFirst().getChangedByUserId());
+    }
+
+    @Test void statusHistoryFailureRollsBackReturnTimestampRentalStateAndItemState() {
+        prepareOverdueRental();
+        jdbc.execute("alter table item_status_history add constraint test_return_history_write "
+                + "check (item_id <> " + data.itemId() + ")");
+        try {
+            assertThrows(DataIntegrityViolationException.class,
+                    this::returnCurrentRental);
+            assertEquals(0, jdbc.queryForObject(
+                    "select count(*) from rentals where item_id = ? and returned_at is not null", Integer.class, data.itemId()));
+            assertEquals("OVERDUE", jdbc.queryForObject(
+                    "select status from rentals where item_id = ?", String.class, data.itemId()));
+            assertEquals("RENTED", jdbc.queryForObject(
+                    "select status from items where item_id = ?", String.class, data.itemId()));
+            assertEquals(0, jdbc.queryForObject(
+                    "select count(*) from item_status_history where item_id = ?", Integer.class, data.itemId()));
+        } finally {
+            jdbc.execute("alter table item_status_history drop constraint test_return_history_write");
+        }
+
+        // A later attempt must still be able to commit after the failed history insert rolled back.
+        returnCurrentRental();
+        assertEquals(1, jdbc.queryForObject(
+                "select count(*) from rentals where item_id = ? and returned_at is not null", Integer.class, data.itemId()));
+        assertEquals("AVAILABLE", jdbc.queryForObject(
+                "select status from items where item_id = ?", String.class, data.itemId()));
+        assertEquals(1, jdbc.queryForObject(
+                "select count(*) from item_status_history where item_id = ?", Integer.class, data.itemId()));
     }
 
     @Test void activeOverdueRentalBlocksCheckoutEvenWhenItemStatusIsAvailable() {
@@ -200,6 +263,39 @@ class RentalCheckoutPostgresIntegrationTest {
         assertEquals(status, jdbc.queryForObject("select status from items where item_id = ?", String.class, data.itemId()));
         assertEquals(rentalCount, jdbc.queryForObject("select count(*) from rentals where item_id = ?", Integer.class, data.itemId()));
         assertEquals(historyCount, jdbc.queryForObject("select count(*) from item_status_history where item_id = ?", Integer.class, data.itemId()));
+    }
+
+    private void prepareOverdueRental() {
+        transactions.executeWithoutResult(tx -> {
+            var item = items.findForUpdate(data.itemId()).orElseThrow();
+            item.updateStatus(ItemStatus.RENTED);
+            rentals.saveAndFlush(new Rental(users.getReferenceById(data.userId()), item,
+                    NOW.minusSeconds(4 * 86400), NOW.minusSeconds(86400)));
+            jdbc.update("update rentals set status = 'OVERDUE' where item_id = ?", data.itemId());
+            items.flush();
+        });
+    }
+
+    private RentalReturnService.ReturnResult returnCurrentRental() {
+        var proof = scanProof("04A23B1C5D6E80");
+        var scan = returns.scanTag(proof);
+        return returns.returnItem(scan.scanTicketId(), proof, ReturnCondition.NORMAL,
+                codes.issue(data.userId()).code());
+    }
+
+    private com.tagback.dto.rental.NfcScanProof scanProof(String uid) {
+        try {
+            long issuedAt = NOW.toEpochMilli();
+            String nonce = UUID.randomUUID().toString();
+            String message = "kiosk-1\n" + uid + "\n" + issuedAt + "\n" + nonce;
+            var mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(new javax.crypto.spec.SecretKeySpec(
+                    "test-only-nfc-scan-secret-32-bytes-long".getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
+            String signature = java.util.HexFormat.of().formatHex(mac.doFinal(message.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            return new com.tagback.dto.rental.NfcScanProof("kiosk-1", uid, issuedAt, nonce, signature);
+        } catch (Exception exception) {
+            throw new IllegalStateException(exception);
+        }
     }
 
     private record Fixture(Long userId, Long otherUserId, Long itemId, Long typeId) {}

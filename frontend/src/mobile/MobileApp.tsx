@@ -68,7 +68,7 @@ function MobileLayout() {
           </NavLink>
           <NavLink to="/mobile/code">
             <Ticket />
-            <span>대여 코드</span>
+            <span>이용 코드</span>
           </NavLink>
           <NavLink to="/mobile/rentals">
             <Package />
@@ -404,13 +404,13 @@ function CodePage() {
   const seconds = Math.max(0, Math.ceil(((r.data?.expiresAt || 0) - now) / 1000));
   return (
     <div className="page-content">
-      <div className="eyebrow">READY TO BORROW</div>
-      <h1>나의 대여 코드</h1>
-      <p className="muted">현장 키오스크에 아래 코드를 입력해 주세요.</p>
+      <div className="eyebrow">READY TO BORROW OR RETURN</div>
+      <h1>나의 이용 코드</h1>
+      <p className="muted">대여 또는 반납할 때 현장 키오스크에 아래 코드를 입력해 주세요.</p>
       {r.authError ? (
         <AuthError next="/mobile/code" />
       ) : r.loading ? (
-        <Loading text="대여 코드를 확인하고 있어요" />
+        <Loading text="이용 코드를 확인하고 있어요" />
       ) : r.error ? (
         <ErrorBox error={r.error} retry={r.reload} />
       ) : (
@@ -418,8 +418,8 @@ function CodePage() {
           <div className="ticket-icon">
             <Ticket size={28} />
           </div>
-          <span>일회성 대여 코드</span>
-          <strong className="code-number" aria-label="대여 코드">
+          <span>일회성 대여·반납 코드</span>
+          <strong className="code-number" aria-label="이용 코드">
             {used || expired ? '••••••' : r.data?.value}
           </strong>
           <div className="ticket-divider" />
@@ -448,6 +448,10 @@ function CodePage() {
             </section>
           </div>
         ))}
+      </div>
+      <div className="note">
+        <ShieldCheck size={19} />
+        <p>반납할 때는 태그 인식과 물품 상태 선택 후 이 코드를 입력해 주세요. 대여자 본인의 코드만 사용할 수 있습니다.</p>
       </div>
       <div className="note">
         <ShieldCheck size={19} />
@@ -606,7 +610,7 @@ function Account() {
           <Link className="account-code" to="/mobile/code">
             <Ticket size={24} />
             <div>
-              <strong>내 대여 코드</strong>
+              <strong>내 이용 코드</strong>
               <span>키오스크에서 대여할 때 확인하세요</span>
             </div>
             <ChevronRight size={20} />

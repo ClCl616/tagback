@@ -30,6 +30,10 @@ public class Rental {
     private Instant returnedAt;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "return_condition", length = 20)
+    private ReturnCondition returnCondition;
+
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private RentalStatus status = RentalStatus.RENTED;
 
@@ -49,5 +53,17 @@ public class Rental {
     public Instant getRentedAt() { return rentedAt; }
     public Instant getDueAt() { return dueAt; }
     public Instant getReturnedAt() { return returnedAt; }
+    public ReturnCondition getReturnCondition() { return returnCondition; }
     public RentalStatus getStatus() { return status; }
+
+    /** Marks an active rental returned at the server-supplied time, including overdue rentals. */
+    public void markReturned(Instant returnedAt, ReturnCondition condition) {
+        Instant returnTime = Objects.requireNonNull(returnedAt, "returnedAt");
+        if (this.returnedAt != null) {
+            throw new IllegalStateException("Rental has already been returned");
+        }
+        this.returnedAt = returnTime;
+        this.returnCondition = Objects.requireNonNull(condition, "condition");
+        this.status = RentalStatus.RETURNED;
+    }
 }

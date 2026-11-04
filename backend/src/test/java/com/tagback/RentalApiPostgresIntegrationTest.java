@@ -34,6 +34,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.profiles.active=sms-mock",
         "spring.datasource.url=jdbc:postgresql://127.0.0.1:${TAGBACK_ITEM_DB_PORT:55440}/tagback_items_test",
         "spring.datasource.username=postgres", "spring.datasource.password=",
+        "tagback.nfc.scan-secret=test-only-nfc-scan-secret-32-bytes-long",
+        "tagback.nfc.bridge-id=kiosk-1",
         "spring.jpa.hibernate.ddl-auto=validate", "spring.jpa.open-in-view=false"})
 @AutoConfigureMockMvc
 @Import(RentalApiPostgresIntegrationTest.TimeConfig.class)
@@ -68,6 +70,7 @@ class RentalApiPostgresIntegrationTest {
     private long typeId;
     private Cookie member;
     private Cookie otherMember;
+    private String returnCode = "000000";
 
     @BeforeEach void fixtures() {
         clock.set(NOW);
@@ -86,6 +89,8 @@ class RentalApiPostgresIntegrationTest {
 
     @AfterEach void cleanup() {
         transactions.executeWithoutResult(tx -> {
+            jdbc.update("delete from nfc_return_scan_tickets where item_id in (?, ?)", itemId, otherItemId);
+            jdbc.update("delete from nfc_scan_proof_uses where tag_uid in (?, ?)", "04A23B1C5D6E80", "04A23B1C5D6E81");
             jdbc.update("delete from rental_operations where item_id in (?, ?)", itemId, otherItemId);
             jdbc.update("delete from rental_grants where rental_code_id in (select rental_code_id from rental_codes where user_id in (?, ?))", userId, otherUserId);
             jdbc.update("delete from rental_codes where user_id in (?, ?)", userId, otherUserId);
@@ -235,6 +240,151 @@ class RentalApiPostgresIntegrationTest {
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"));
         }
+    }
+
+    @Test void returnApiRequiresSignedReaderProofAndPersistsTheCompleteReturnResult() throws Exception {
+        String token = verify(issue(member));
+        perform(token, key(), body(itemId)).andExpect(status().isCreated());
+        returnCode = issue(member);
+        String rentalId = jdbc.queryForObject("select rental_id from rentals where item_id = ?", String.class, itemId);
+        var proof = scanProof("04A23B1C5D6E80");
+        var scanResponse = mvc.perform(post("/api/v1/rentals/return/scan").contentType("application/json")
+                        .content(json.writeValueAsString(Map.of("proof", proof))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rentalId").value(rentalId))
+                .andExpect(jsonPath("$.itemId").value(Long.toString(itemId)))
+                .andReturn();
+        String scanTicketId = json.readTree(scanResponse.getResponse().getContentAsString()).get("scanTicketId").asString();
+        String body = returnBody(scanTicketId, proof, "NORMAL");
+
+        mvc.perform(post("/api/v1/rentals/return").contentType("application/json")
+                        .content("{\"itemId\":" + itemId + "}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"));
+        mvc.perform(post("/api/v1/rentals/return/scan").contentType("application/json")
+                        .content(json.writeValueAsString(Map.of("proof", unsignedProof("04A23B1C5D6E80")))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("NFC_SCAN_REQUIRED"));
+        mvc.perform(post("/api/v1/rentals/return").param("userId", Long.toString(otherUserId))
+                        .contentType("application/json").content(body))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"));
+
+        String ownerCode = returnCode;
+        returnCode = issue(otherMember);
+        mvc.perform(post("/api/v1/rentals/return").contentType("application/json")
+                        .content(returnBody(scanTicketId, proof, "NORMAL")))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error.code").value("RETURN_CODE_INVALID"));
+        returnCode = ownerCode;
+
+        String completed = mvc.perform(post("/api/v1/rentals/return").contentType("application/json")
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.rentalId").isString())
+                .andExpect(jsonPath("$.itemId").value(Long.toString(itemId)))
+                .andExpect(jsonPath("$.rentalStatus").value("RETURNED"))
+                .andExpect(jsonPath("$.itemStatus").value("AVAILABLE"))
+                .andExpect(jsonPath("$.condition").value("NORMAL"))
+                .andExpect(jsonPath("$.rentedAt").value(NOW.toString()))
+                .andExpect(jsonPath("$.dueAt").value(NOW.plusSeconds(72 * 3600).toString()))
+                .andExpect(jsonPath("$.returnedAt").value(NOW.toString()))
+                .andReturn().getResponse().getContentAsString();
+        clock.set(NOW.plusSeconds(61));
+        String replayed = mvc.perform(post("/api/v1/rentals/return").contentType("application/json").content(body))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertEquals(json.readTree(completed), json.readTree(replayed));
+        assertEquals(2, jdbc.queryForObject("select count(*) from rental_codes where user_id = ? and consumed_at is not null and code_hash is null", Integer.class, userId));
+        mvc.perform(post("/api/v1/rentals/return").contentType("application/json")
+                        .content(returnBody(scanTicketId, proof, "DAMAGED")))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("RENTAL_CHANGED"));
+        mvc.perform(post("/api/v1/rentals/return").contentType("application/json")
+                        .content(returnBody(scanTicketId, unsignedProof("04A23B1C5D6E80"), "NORMAL")))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.error.code").value("NFC_SCAN_REQUIRED"));
+
+        assertEquals(NOW, jdbc.queryForObject(
+                "select returned_at from rentals where item_id = ?", Timestamp.class, itemId).toInstant());
+        assertEquals("RETURNED", jdbc.queryForObject(
+                "select status from rentals where item_id = ?", String.class, itemId));
+        assertEquals("AVAILABLE", jdbc.queryForObject(
+                "select status from items where item_id = ?", String.class, itemId));
+        assertEquals(2, count("item_status_history"));
+        assertEquals("RENTED", jdbc.queryForObject(
+                "select from_status from item_status_history where item_id = ? order by item_status_history_id desc limit 1",
+                String.class, itemId));
+        assertEquals("AVAILABLE", jdbc.queryForObject(
+                "select to_status from item_status_history where item_id = ? order by item_status_history_id desc limit 1",
+                String.class, itemId));
+        assertEquals("RENTAL_FLOW", jdbc.queryForObject(
+                "select source from item_status_history where item_id = ? order by item_status_history_id desc limit 1",
+                String.class, itemId));
+        assertEquals(userId, jdbc.queryForObject(
+                "select changed_by_user_id from item_status_history where item_id = ? order by item_status_history_id desc limit 1",
+                Long.class, itemId));
+    }
+
+    @Test void rejectsDirectUidUnsignedForgedWrongKioskAndExpiredScanTickets() throws Exception {
+        String token = verify(issue(member));
+        perform(token, key(), body(itemId)).andExpect(status().isCreated());
+        String uid = "04A23B1C5D6E80";
+
+        mvc.perform(post("/api/v1/rentals/return/scan").contentType("application/json")
+                        .content("{\"uid\":\"" + uid + "\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"));
+        mvc.perform(post("/api/v1/rentals/return/scan").contentType("application/json")
+                        .content(json.writeValueAsString(Map.of("proof", unsignedProof(uid)))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("NFC_SCAN_REQUIRED"));
+        mvc.perform(post("/api/v1/rentals/return/scan").contentType("application/json")
+                        .content(json.writeValueAsString(Map.of("proof", scanProof(uid, "other-kiosk")))))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("NFC_SCAN_REQUIRED"));
+
+        var proof = scanProof(uid);
+        var scan = mvc.perform(post("/api/v1/rentals/return/scan").contentType("application/json")
+                        .content(json.writeValueAsString(Map.of("proof", proof))))
+                .andExpect(status().isOk()).andReturn();
+        String ticket = json.readTree(scan.getResponse().getContentAsString()).get("scanTicketId").asString();
+        mvc.perform(post("/api/v1/rentals/return/scan").contentType("application/json")
+                        .content(json.writeValueAsString(Map.of("proof", proof))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code").value("NFC_SCAN_ALREADY_USED"));
+        mvc.perform(post("/api/v1/rentals/return").contentType("application/json")
+                        .content(returnBody(UUID.randomUUID().toString(), proof, "NORMAL")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("NFC_SCAN_REQUIRED"));
+        mvc.perform(post("/api/v1/rentals/return").contentType("application/json")
+                        .content(returnBody(ticket, scanProof(uid, "other-kiosk"), "NORMAL")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("NFC_SCAN_REQUIRED"));
+
+        clock.set(NOW.plusSeconds(61));
+        mvc.perform(post("/api/v1/rentals/return").contentType("application/json")
+                        .content(returnBody(ticket, proof, "NORMAL")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("NFC_SCAN_REQUIRED"));
+        assertEquals("RENTED", jdbc.queryForObject("select status from items where item_id = ?", String.class, itemId));
+    }
+
+    @Test void oneTicketCannotBePairedWithAnotherItemsAuthenticatedScan() throws Exception {
+        String token = verify(issue(member));
+        perform(token, key(), body(itemId)).andExpect(status().isCreated());
+        var proofA = scanProof("04A23B1C5D6E80");
+        String ticketA = scanFor(proofA);
+
+        String otherToken = verify(issue(member));
+        perform(otherToken, key(), body(otherItemId)).andExpect(status().isCreated());
+        var proofB = scanProof("04A23B1C5D6E81");
+        scanFor(proofB);
+
+        mvc.perform(post("/api/v1/rentals/return").contentType("application/json")
+                        .content(returnBody(ticketA, proofB, "NORMAL")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code").value("NFC_SCAN_REQUIRED"));
+        assertEquals("RENTED", jdbc.queryForObject("select status from items where item_id = ?", String.class, itemId));
+        assertEquals("RENTED", jdbc.queryForObject("select status from items where item_id = ?", String.class, otherItemId));
     }
 
     @Test void rejectsMalformedBodiesAndClientSuppliedIdentityWithoutConsumingCode() throws Exception {
@@ -445,6 +595,36 @@ class RentalApiPostgresIntegrationTest {
     }
     private String key() { return UUID.randomUUID().toString(); }
     private String body(long item) { return "{\"itemId\":\"" + item + "\",\"itemTypeId\":\"" + typeId + "\"}"; }
+    private String returnBody(String scanTicketId, com.tagback.dto.rental.NfcScanProof proof, String condition) throws Exception {
+        return json.writeValueAsString(Map.of("scanTicketId", scanTicketId, "proof", proof,
+                "condition", condition, "returnCode", returnCode));
+    }
+    private com.tagback.dto.rental.NfcScanProof scanProof(String uid) {
+        return scanProof(uid, "kiosk-1");
+    }
+    private String scanFor(com.tagback.dto.rental.NfcScanProof proof) throws Exception {
+        var response = mvc.perform(post("/api/v1/rentals/return/scan").contentType("application/json")
+                        .content(json.writeValueAsString(Map.of("proof", proof))))
+                .andExpect(status().isOk()).andReturn();
+        return json.readTree(response.getResponse().getContentAsString()).get("scanTicketId").asString();
+    }
+    private com.tagback.dto.rental.NfcScanProof scanProof(String uid, String bridgeId) {
+        try {
+            long issuedAt = clock.millis();
+            String nonce = UUID.randomUUID().toString();
+            String message = bridgeId + "\n" + uid + "\n" + issuedAt + "\n" + nonce;
+            var mac = javax.crypto.Mac.getInstance("HmacSHA256");
+            mac.init(new javax.crypto.spec.SecretKeySpec(
+                    "test-only-nfc-scan-secret-32-bytes-long".getBytes(java.nio.charset.StandardCharsets.UTF_8), "HmacSHA256"));
+            String signature = java.util.HexFormat.of().formatHex(mac.doFinal(message.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            return new com.tagback.dto.rental.NfcScanProof(bridgeId, uid, issuedAt, nonce, signature);
+        } catch (Exception exception) {
+            throw new IllegalStateException(exception);
+        }
+    }
+    private com.tagback.dto.rental.NfcScanProof unsignedProof(String uid) {
+        return new com.tagback.dto.rental.NfcScanProof("kiosk-1", uid, clock.millis(), UUID.randomUUID().toString(), "0".repeat(64));
+    }
     private MockHttpServletRequestBuilder request(String token, String key, String body) {
         return post("/api/v1/rentals").header("Authorization", "Bearer " + token).header("Idempotency-Key", key).contentType("application/json").content(body);
     }

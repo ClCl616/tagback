@@ -1,11 +1,12 @@
 import { MOCK } from './config';
 import { ServiceError } from './serviceError';
-import type { Catalog, Grant, Item, Receipt } from './types';
+import type { Catalog, Grant, Item, Receipt, NfcScanProof } from './types';
 
-type Action = 'verify' | 'catalog' | 'scan' | 'rent';
+type Action = 'verify' | 'catalog' | 'scan' | 'rent' | 'return-scan' | 'return';
 const SERVER_UNAVAILABLE_MESSAGE = '서버에 연결할 수 없습니다. 잠시 후 다시 시도하세요.';
 export type ServerConnection = 'unknown' | 'connected' | 'disconnected';
 let serverConnection: ServerConnection = 'unknown';
+let connectionRevision = 0;
 const connectionListeners = new Set<(status: ServerConnection) => void>();
 export function subscribeServerConnection(listener: (status: ServerConnection) => void): () => void {
   connectionListeners.add(listener);
@@ -13,8 +14,21 @@ export function subscribeServerConnection(listener: (status: ServerConnection) =
   return () => { connectionListeners.delete(listener); };
 }
 function updateServerConnection(status: ServerConnection) {
+  connectionRevision++;
   serverConnection = status;
   connectionListeners.forEach((listener) => listener(status));
+}
+export async function probeServerConnection(): Promise<void> {
+  const revision = connectionRevision;
+  try {
+    const response = await fetch('/api/v1/kiosk/health', {
+      cache: 'no-store', credentials: 'omit', signal: AbortSignal.timeout(3_000),
+    });
+    if (revision === connectionRevision)
+      updateServerConnection(response.ok ? 'connected' : 'disconnected');
+  } catch {
+    if (revision === connectionRevision) updateServerConnection('disconnected');
+  }
 }
 function hasBackendErrorShape(data: unknown): data is { error: { code: string; message?: unknown } } {
   if (!data || typeof data !== 'object' || !('error' in data)) return false;
@@ -32,12 +46,13 @@ const timestamp = (value: unknown) => {
 
 function mapError(action: Action, status: number, code: unknown, message: unknown): never {
   const safe = typeof message === 'string' ? message : '요청을 처리하지 못했습니다.';
-  if (action === 'rent' && status >= 500)
+  if ((action === 'rent' || action === 'return') && status >= 500)
     throw new ServiceError('UNKNOWN', '처리 결과를 확인하지 못했습니다. 같은 요청으로 결과를 확인해 주세요.');
   switch (code) {
     case 'RENTAL_CODE_INVALID': throw new ServiceError('CODE_INVALID', safe);
     case 'RENTAL_CODE_CONSUMED': throw new ServiceError('CODE_USED', safe);
     case 'RENTAL_CODE_EXPIRED': throw new ServiceError('CODE_EXPIRED', safe);
+    case 'RETURN_CODE_INVALID': throw new ServiceError('RETURN_CODE_INVALID', safe);
     case 'RENTAL_GRANT_REQUIRED':
     case 'RENTAL_GRANT_INVALID':
       throw new ServiceError('AUTH', safe);
@@ -48,6 +63,8 @@ function mapError(action: Action, status: number, code: unknown, message: unknow
     case 'ITEM_NOT_AVAILABLE': throw new ServiceError(action === 'scan' ? 'UNAVAILABLE' : 'CONFLICT', safe);
     case 'ITEM_TYPE_MISMATCH': throw new ServiceError('MISMATCH', '선택한 종류와 다른 물품입니다.');
     case 'RENTAL_ALREADY_ACTIVE': throw new ServiceError('CONFLICT', safe);
+    case 'NFC_SCAN_REQUIRED':
+    case 'NFC_SCAN_ALREADY_USED': throw new ServiceError('NFC_SCAN_REQUIRED', safe);
     default:
       if (status === 401) throw new ServiceError('AUTH', '대여 코드를 다시 확인해 주세요.');
       throw new ServiceError(typeof code === 'string' ? code : 'UNKNOWN', safe);
@@ -72,7 +89,7 @@ async function request(path: string, action: Action, method = 'GET', grant?: Gra
     });
   } catch (error) {
     updateServerConnection('disconnected');
-    if (action === 'rent')
+    if (action === 'rent' || action === 'return')
       throw new ServiceError('UNKNOWN', '응답을 받지 못했습니다. 같은 요청으로 결과를 확인해 주세요.');
     if (error instanceof Error && error.name === 'TimeoutError')
       throw new ServiceError('TIMEOUT', SERVER_UNAVAILABLE_MESSAGE);
@@ -82,7 +99,7 @@ async function request(path: string, action: Action, method = 'GET', grant?: Gra
   const backendError = hasBackendErrorShape(data);
   const proxyFailure = response.status >= 500 && !backendError;
   updateServerConnection(proxyFailure ? 'disconnected' : 'connected');
-  if (proxyFailure && action !== 'rent')
+  if (proxyFailure && action !== 'rent' && action !== 'return')
     throw new ServiceError('SERVER_UNAVAILABLE', SERVER_UNAVAILABLE_MESSAGE);
   if (!response.ok) mapError(action, response.status, data?.error?.code, data?.error?.message);
   if (action === 'rent' && response.status !== 200 && response.status !== 201)
@@ -133,6 +150,32 @@ export async function lookupRentalTag(uid: string, grant: Grant, selectedTypeId:
     kindId: row.itemTypeId, stationId: MOCK.stationId, tag: uid, active: true, status: 'available' };
 }
 
+export async function lookupReturnTag(proof: NfcScanProof): Promise<{
+  item: Item;
+  rentalId: string;
+  scanTicketId: string;
+  proof: NfcScanProof;
+}> {
+  if (!/^[A-Za-z0-9._-]{1,64}$/.test(proof.bridgeId) ||
+      !/^(?:[0-9A-F]{8}|[0-9A-F]{14}|[0-9A-F]{20})$/.test(proof.uid) ||
+      !Number.isSafeInteger(proof.issuedAt) ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(proof.nonce) ||
+      !/^[0-9a-f]{64}$/i.test(proof.signature))
+    throw new ServiceError('NFC_SCAN_REQUIRED', '실물 태그를 리더기에 인식해 주세요.');
+  const data = await request('/api/v1/rentals/return/scan', 'return-scan', 'POST', undefined, { proof });
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(data?.scanTicketId) ||
+      !positiveId(data?.rentalId) || !positiveId(data?.itemId) ||
+      typeof data?.itemName !== 'string' || !positiveId(data?.itemTypeId) ||
+      typeof data?.itemTypeName !== 'string')
+    throw new ServiceError('UNKNOWN', '태그 인식 결과를 확인하지 못했습니다.');
+  const item: Item = {
+    id: data.itemId, label: data.itemName, name: data.itemName,
+    kindId: data.itemTypeId, stationId: MOCK.stationId, tag: proof.uid,
+    active: true, status: 'rented',
+  };
+  return { item, rentalId: data.rentalId, scanTicketId: data.scanTicketId, proof };
+}
+
 export async function checkoutRental(key: string, grant: Grant, itemId: string,
                                      itemTypeId: string): Promise<Receipt> {
   if (!positiveId(itemId) || !positiveId(itemTypeId) ||
@@ -149,4 +192,28 @@ export async function checkoutRental(key: string, grant: Grant, itemId: string,
     item: { id: itemId, label: `물품 ${itemId}`, kindId: itemTypeId,
       stationId: MOCK.stationId, tag: '', active: true, status: 'rented' },
     rental: { id: data.rentalId, userId: '', itemId, stationId: MOCK.stationId, rentedAt, dueAt } };
+}
+
+export async function returnRental(key: string, scanTicketId: string,
+                                   rentalId: string, proof: NfcScanProof,
+                                   condition: 'normal' | 'damaged', returnCode: string): Promise<Receipt> {
+  if (!/^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$/.test(key) ||
+      !positiveId(rentalId) ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(scanTicketId))
+    throw new ServiceError('NFC_SCAN_REQUIRED', '태그를 다시 인식한 뒤 반납을 확정해 주세요.');
+  if (!/^[0-9]{6}$/.test(returnCode))
+    throw new ServiceError('RETURN_CODE_INVALID', '6자리 반납 코드를 입력해 주세요.');
+  const data = await request('/api/v1/rentals/return', 'return', 'POST', undefined,
+    { scanTicketId, proof, condition: condition.toUpperCase(), returnCode });
+  const expectedStatus = condition === 'normal' ? 'AVAILABLE' : 'INSPECTION';
+  if (data?.rentalId !== rentalId || !positiveId(data?.itemId) ||
+      data?.rentalStatus !== 'RETURNED' || data?.itemStatus !== expectedStatus ||
+      data?.condition !== condition.toUpperCase())
+    throw new ServiceError('UNKNOWN', '반납 결과를 확인하지 못했습니다. 같은 요청으로 결과를 다시 확인해 주세요.');
+  return { operationId: key, type: 'return',
+    item: { id: data.itemId, label: `물품 ${data.itemId}`, kindId: '', stationId: MOCK.stationId,
+      tag: '', active: true, status: condition === 'normal' ? 'available' : 'inspection' },
+    rental: { id: data.rentalId, userId: '', itemId: data.itemId, stationId: MOCK.stationId,
+      rentedAt: timestamp(data.rentedAt), dueAt: timestamp(data.dueAt),
+      returnedAt: timestamp(data.returnedAt), condition } };
 }

@@ -1,6 +1,11 @@
 import { expect, test } from '@playwright/test';
+import { loginMobile } from './auth-helpers';
 
 test('반납 완료 자동 종료와 다음 이용자 초기 상태', async ({ page, context }) => {
+  const mobile = await context.newPage();
+  await loginMobile(mobile);
+  await expect(mobile.locator('.code-number')).toHaveText(/\d{6}/);
+  const code = (await mobile.locator('.code-number').textContent())!;
   await page.goto('/kiosk');
   await page.getByRole('button', { name: /반납하기/ }).click();
   const simulator = await context.newPage();
@@ -8,7 +13,8 @@ test('반납 완료 자동 종료와 다음 이용자 초기 상태', async ({ p
   await simulator.getByRole('button', { name: /계산기 006/ }).click();
   await page.getByRole('button', { name: /정상이에요/ }).click();
   await page.getByRole('button', { name: '선택한 상태로 계속' }).click();
-  await page.getByRole('button', { name: '반납 확정', exact: true }).click();
+  await page.getByLabel('일회성 반납 코드').fill(code);
+  await page.getByRole('button', { name: '코드 확인하고 반납 완료' }).click();
   await expect(page.getByRole('heading', { name: '반납이 완료되었습니다' })).toBeVisible();
   await expect(page.getByRole('button', { name: /대여하기/ })).toBeVisible({ timeout: 16000 });
   await expect(page.getByText('계산기 006')).not.toBeVisible();

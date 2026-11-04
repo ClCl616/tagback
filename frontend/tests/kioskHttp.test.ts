@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { checkoutRental, lookupRentalTag, rentalCatalog, subscribeServerConnection, verifyRentalCode } from '../src/shared/kioskHttp';
+import { checkoutRental, lookupRentalTag, probeServerConnection, rentalCatalog, returnRental, subscribeServerConnection, verifyRentalCode } from '../src/shared/kioskHttp';
 import type { Grant } from '../src/shared/types';
+import { issueRentalCode } from '../src/shared/rentalCodeHttp';
 
 const grant: Grant = { token: 'rental-token', maskedPhone: '010****5678', expiresAt: Date.now() + 60000 };
 const json = (body: unknown, status = 200) => ({ ok: status >= 200 && status < 300,
@@ -8,6 +9,43 @@ const json = (body: unknown, status = 200) => ({ ok: status >= 200 && status < 3
 afterEach(() => vi.unstubAllGlobals());
 
 describe('real kiosk HTTP contract', () => {
+  it('모바일 세션으로 일회성 대여·반납 코드를 발급받는다', async () => {
+    const fetch = vi.fn().mockResolvedValue(json({ code: '123456', expiresAt: '2026-10-14T10:03:00Z' }));
+    vi.stubGlobal('fetch', fetch);
+    expect((await issueRentalCode()).value).toBe('123456');
+    expect(fetch.mock.calls[0][0]).toBe('/api/v1/rental-codes');
+    expect(fetch.mock.calls[0][1].credentials).toBe('include');
+  });
+  it('서버 복구를 주기 확인 요청으로 감지한다', async () => {
+    const states: string[] = [];
+    const unsubscribe = subscribeServerConnection((state) => states.push(state));
+    const fetch = vi.fn().mockRejectedValueOnce(new TypeError('offline'))
+      .mockResolvedValueOnce({ ok: true, status: 200 });
+    vi.stubGlobal('fetch', fetch);
+    await probeServerConnection();
+    await probeServerConnection();
+    expect(states.slice(-2)).toEqual(['disconnected', 'connected']);
+    expect(fetch.mock.calls[1][0]).toBe('/api/v1/kiosk/health');
+    unsubscribe();
+  });
+
+  it('반납 응답 유실 뒤 같은 티켓과 증명으로 완료 결과를 다시 확인한다', async () => {
+    const key = '4d36c088-5b23-4960-a7e3-c4f98101ac0e';
+    const ticket = '6fa7b810-77bd-4f49-8cf9-e9bd457f1101';
+    const proof = { bridgeId: 'kiosk-1', uid: '04A23B1C5D6E80', issuedAt: 1790000000000,
+      nonce: '98f6da84-f149-4e1d-b6f5-370523b76d2b', signature: 'a'.repeat(64) };
+    const result = { rentalId: '9', itemId: '5', rentalStatus: 'RETURNED', itemStatus: 'AVAILABLE',
+      condition: 'NORMAL', rentedAt: '2026-10-14T10:00:00Z',
+      dueAt: '2026-10-15T10:00:00Z', returnedAt: '2026-10-14T11:00:00Z' };
+    const fetch = vi.fn().mockRejectedValueOnce(new TypeError('response lost'))
+      .mockResolvedValueOnce(json(result));
+    vi.stubGlobal('fetch', fetch);
+    await expect(returnRental(key, ticket, '9', proof, 'normal', '123456')).rejects.toMatchObject({ code: 'UNKNOWN' });
+    expect((await returnRental(key, ticket, '9', proof, 'normal', '123456')).rental.returnedAt)
+      .toBe(Date.parse(result.returnedAt));
+    expect(fetch.mock.calls[0][1].body).toBe(fetch.mock.calls[1][1].body);
+    expect(JSON.parse(fetch.mock.calls[0][1].body).returnCode).toBe('123456');
+  });
   it('최근 실제 요청의 HTTP 응답·네트워크 실패·복구를 구분한다', async () => {
     const states: string[] = [];
     const unsubscribe = subscribeServerConnection((state) => states.push(state));

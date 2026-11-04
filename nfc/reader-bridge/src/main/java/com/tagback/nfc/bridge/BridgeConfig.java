@@ -9,7 +9,7 @@ import java.util.Set;
 /** Command-line options override environment variables. */
 public record BridgeConfig(int port, String origin, String readerName, String mockUid,
                            long pollMillis, long mockHoldMillis, long mockGapMillis,
-                           int emptyPollsToRemove, long pingMillis) {
+                           int emptyPollsToRemove, long pingMillis, String scanSecret, String bridgeId) {
     private static final Set<String> OPTIONS = Set.of(
             "port", "origin", "reader", "mock-uid", "poll-ms", "mock-hold-ms", "mock-gap-ms",
             "remove-after", "ping-ms");
@@ -45,7 +45,15 @@ public record BridgeConfig(int port, String origin, String readerName, String mo
         int removeAfter = Math.toIntExact(number(value(options, environment, "remove-after",
                 "NFC_BRIDGE_REMOVE_AFTER", "2"), 1, 100));
         long ping = number(value(options, environment, "ping-ms", "NFC_BRIDGE_PING_MS", "15000"), 10, 3_600_000);
-        return new BridgeConfig(port, origin, reader, mock, poll, hold, gap, removeAfter, ping);
+        String scanSecret = value(options, environment, "scan-secret", "NFC_SCAN_SECRET", "");
+        if (scanSecret.getBytes(java.nio.charset.StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalArgumentException("NFC_SCAN_SECRET must be at least 32 bytes");
+        }
+        String bridgeId = value(options, environment, "bridge-id", "NFC_BRIDGE_ID", "");
+        if (!bridgeId.matches("[A-Za-z0-9._-]{1,64}")) {
+            throw new IllegalArgumentException("NFC_BRIDGE_ID must be 1-64 letters, digits, dots, underscores, or hyphens");
+        }
+        return new BridgeConfig(port, origin, reader, mock, poll, hold, gap, removeAfter, ping, scanSecret, bridgeId);
     }
 
     private static String value(Map<String, String> options, Map<String, String> environment,

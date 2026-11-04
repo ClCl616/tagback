@@ -18,7 +18,7 @@ import {
 import { api, controls, ServiceError } from '../shared/api';
 import { MOCK } from '../shared/config';
 import { KIOSK_BRIDGE } from '../shared/kioskMode';
-import { subscribeServerConnection, type ServerConnection } from '../shared/kioskHttp';
+import { probeServerConnection, subscribeServerConnection, type ServerConnection } from '../shared/kioskHttp';
 import { nfc, type ReaderStatus } from '../shared/nfc';
 import {
   Badge,
@@ -30,13 +30,14 @@ import {
   ReaderArt,
   useResource,
 } from '../shared/ui';
-import type { Catalog, Grant, Item, Receipt } from '../shared/types';
+import type { Catalog, Grant, Item, NfcScanProof, Receipt } from '../shared/types';
 type Stage = 'start' | 'select' | 'code' | 'scan' | 'condition' | 'confirm' | 'done';
 type Completion = {
   type: 'rent' | 'return';
   label: string;
   dueAt: number;
   condition?: 'normal' | 'damaged';
+  recovered?: boolean;
 };
 export default function KioskApp() {
   const [stage, setStage] = useState<Stage>('start');
@@ -45,6 +46,10 @@ export default function KioskApp() {
   const [code, setCode] = useState('');
   const [grant, setGrant] = useState<Grant>();
   const [item, setItem] = useState<Item>();
+  const [returnRentalId, setReturnRentalId] = useState('');
+  const [scannedTagUid, setScannedTagUid] = useState('');
+  const [returnScanTicketId, setReturnScanTicketId] = useState('');
+  const [returnScanProof, setReturnScanProof] = useState<NfcScanProof>();
   const [condition, setCondition] = useState<'normal' | 'damaged'>();
   const [completion, setCompletion] = useState<Completion>();
   const [error, setError] = useState<unknown>();
@@ -79,6 +84,12 @@ export default function KioskApp() {
     ? new Error('인식기 연결 복구 후 물품을 다시 접촉해 주세요. 이용을 취소할 수도 있습니다.')
     : undefined, [readerDisconnected]);
   useEffect(() => KIOSK_BRIDGE ? subscribeServerConnection(setServerStatus) : undefined, []);
+  useEffect(() => {
+    if (!KIOSK_BRIDGE) return;
+    void probeServerConnection();
+    const timer = window.setInterval(() => { void probeServerConnection(); }, 5_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const reset = useCallback((message = '') => {
     epoch.current++;
     locked.current = false;
@@ -90,6 +101,10 @@ export default function KioskApp() {
     setCode('');
     setGrant(undefined);
     setItem(undefined);
+    setReturnRentalId('');
+    setScannedTagUid('');
+    setReturnScanTicketId('');
+    setReturnScanProof(undefined);
     setCondition(undefined);
     setCompletion(undefined);
     setError(undefined);
@@ -148,7 +163,10 @@ export default function KioskApp() {
     } catch (e) {
       if (seq === epoch.current) {
         setError(e);
-        if (stage === 'confirm' && e instanceof ServiceError && e.code === 'UNKNOWN') setUnknown(true);
+        if ((stage === 'confirm' || (stage === 'code' && mode === 'return'))
+            && e instanceof ServiceError && e.code === 'UNKNOWN') setUnknown(true);
+        if (stage === 'code' && mode === 'return'
+            && e instanceof ServiceError && e.code === 'RETURN_CODE_INVALID') setUnknown(false);
       }
     } finally {
       if (seq === epoch.current) {
@@ -158,15 +176,20 @@ export default function KioskApp() {
     }
   }
   useEffect(() => {
-    return nfc.subscribe((tag) => {
+    return nfc.subscribe((read) => {
+      const tag = read.uid;
       if (stage !== 'scan' || cancelOpen || locked.current || (!KIOSK_BRIDGE && !controls().reader)) return;
       if (scanSeen.current.tag === tag && Date.now() - scanSeen.current.at < 1000) return;
       scanSeen.current = { tag, at: Date.now() };
       lastActivity.current = Date.now();
       void run(
-        () => api.scan(tag, mode, kindId, grant),
+        () => api.scan(tag, mode, kindId, grant, read.proof),
         (result) => {
           setItem(result.item);
+          setReturnRentalId(mode === 'return' ? result.rental?.id || '' : '');
+          setScannedTagUid(tag);
+          setReturnScanTicketId(mode === 'return' ? result.returnScanTicketId || '' : '');
+          setReturnScanProof(mode === 'return' ? result.returnScanProof : undefined);
           setStage(mode === 'rent' ? 'confirm' : 'condition');
         },
       );
@@ -202,7 +225,6 @@ export default function KioskApp() {
     return () => document.removeEventListener('keydown', trap);
   }, [cancelOpen]);
   function start(next: 'rent' | 'return') {
-    if (KIOSK_BRIDGE && next === 'return') return;
     reset();
     setMode(next);
     setRemaining(health.sessionSeconds);
@@ -213,8 +235,11 @@ export default function KioskApp() {
     setError(undefined);
     if (stage === 'code') {
       setCode('');
-      setGrant(undefined);
-      setStage(KIOSK_BRIDGE ? 'start' : 'select');
+      if (mode === 'return') setStage('condition');
+      else {
+        setGrant(undefined);
+        setStage(KIOSK_BRIDGE ? 'start' : 'select');
+      }
     } else if (stage === 'select' && KIOSK_BRIDGE) {
       setGrant(undefined);
       setStage('code');
@@ -226,6 +251,10 @@ export default function KioskApp() {
       setStage(mode === 'rent' ? KIOSK_BRIDGE ? 'select' : 'code' : 'start');
     } else if (stage === 'condition') {
       setItem(undefined);
+      setReturnRentalId('');
+      setScannedTagUid('');
+      setReturnScanTicketId('');
+      setReturnScanProof(undefined);
       setCondition(undefined);
       setStage('scan');
     } else if (stage === 'confirm') {
@@ -236,12 +265,13 @@ export default function KioskApp() {
       }
     }
   }
-  function finish(receipt: Receipt) {
+  function finish(receipt: Receipt, recovered = false) {
     setCompletion({
       type: receipt.type,
       label: KIOSK_BRIDGE && item ? item.label : receipt.item.label,
       dueAt: receipt.rental.dueAt,
       condition: receipt.rental.condition,
+      recovered,
     });
     setGrant(undefined);
     setCode('');
@@ -261,11 +291,17 @@ export default function KioskApp() {
       () =>
         mode === 'rent'
           ? api.rent(operation.current, grant!, item.id, kindId)
-          : api.returnItem(operation.current, item.id, condition!),
+          : api.returnItem(operation.current, item.id, returnRentalId, scannedTagUid, returnScanTicketId,
+              returnScanProof, condition!, code),
       finish,
     );
   }
   function recover() {
+    if (KIOSK_BRIDGE && mode === 'return' && item && returnScanProof && condition) {
+      void run(() => api.returnItem(operation.current, item.id, returnRentalId, scannedTagUid,
+        returnScanTicketId, returnScanProof, condition, code), (receipt) => finish(receipt, true));
+      return;
+    }
     if (KIOSK_BRIDGE && item && grant) {
       // No result-read endpoint exists; replay exactly the same token, key and body.
       void run(() => api.rent(operation.current, grant, item.id, kindId), finish);
@@ -286,15 +322,17 @@ export default function KioskApp() {
     mode === 'rent'
       ? KIOSK_BRIDGE ? ['코드 입력', '물품 선택', 'NFC 인식', '최종 확인']
         : ['물품 선택', '코드 입력', 'NFC 인식', '최종 확인']
-      : ['NFC 인식', '상태 확인', '최종 확인'];
+      : ['NFC 인식', '상태 확인', '반납 코드'];
   const steps: Partial<Record<Stage, number>> = mode === 'return'
-    ? { scan: 0, condition: 1, confirm: 2 }
+    ? { scan: 0, condition: 1, code: 2 }
     : KIOSK_BRIDGE ? { code: 0, select: 1, scan: 2, confirm: 3 }
       : { select: 0, code: 1, scan: 2, confirm: 3 };
   const step = steps[stage];
   const kind = catalog.data?.kinds.find((k) => k.id === (item?.kindId || kindId));
   const stationItems = catalog.data?.items.filter((i) => i.stationId === MOCK.stationId) || [];
   const errorCode = error instanceof ServiceError ? error.code : '';
+  const returnNeedsRescan = mode === 'return' &&
+    ['NFC_SCAN_REQUIRED', 'RENTAL_CHANGED', 'RENTAL_NOT_ACTIVE'].includes(errorCode);
   const needsRestart = ['AUTH', 'GRANT_EXPIRED', 'CODE_EXPIRED', 'CODE_USED', 'CONFLICT'].includes(errorCode);
   const recoveryNeedsManualCheck = KIOSK_BRIDGE && unknown &&
     ['AUTH', 'GRANT_EXPIRED'].includes(errorCode);
@@ -361,7 +399,8 @@ export default function KioskApp() {
               <button
                 className="return-action"
                 onClick={() => start('return')}
-                disabled={KIOSK_BRIDGE || !readerReady || !serviceReady}
+                disabled={!readerReady || (!KIOSK_BRIDGE && !serviceReady) ||
+                  (KIOSK_BRIDGE && serverStatus === 'disconnected')}
               >
                 <div className="action-symbol">
                   <RotateCcw size={42} />
@@ -370,7 +409,7 @@ export default function KioskApp() {
                 <h2>반납하기</h2>
                 <p>반납할 물품을 준비해 주세요.</p>
                 <span className="action-footer">
-                  {KIOSK_BRIDGE ? '실서버 반납은 아직 준비 중이에요' : '로그인 없이 물품으로 확인해요'}
+                  {KIOSK_BRIDGE ? '실물 태그를 인식해 반납해요' : '태그 인식 후 물품으로 확인해요'}
                   <ArrowRight />
                 </span>
               </button>
@@ -391,7 +430,9 @@ export default function KioskApp() {
             <h1>
               {completion?.type === 'rent'
                 ? '대여가 완료되었습니다'
-                : completion?.condition === 'damaged'
+                : completion?.recovered
+                  ? '이미 반납이 완료됐어요'
+                  : completion?.condition === 'damaged'
                   ? '반납 · 점검 접수가 완료되었습니다'
                   : '반납이 완료되었습니다'}
             </h1>
@@ -413,7 +454,7 @@ export default function KioskApp() {
             </div>
             {completion?.type === 'return' && (
               <p className="collection-note">
-                반납 기록이 저장되었습니다. 물품은 대여소의 지정된 장소에 놓아 주세요.
+                반납 기록이 저장되었습니다. 물품은 대전대 융합과학관 2층 학생 라운지 내 안내된 반납 장소에 놓아 주세요.
               </p>
             )}
             <button className="primary" onClick={() => reset()}>
@@ -481,14 +522,21 @@ export default function KioskApp() {
                 <div>
                   <div className="eyebrow">YOUR ONE-TIME CODE</div>
                   <h1>
-                    대여 코드를
+                    {mode === 'return' ? '반납 코드를' : '대여 코드를'}
                     <br />
                     입력해 주세요.
                   </h1>
                   <p>
                     모바일 웹에 로그인한 뒤<br />
-                    <strong>‘대여 코드’</strong>에서 확인할 수 있어요.
+                    <strong>‘이용 코드’</strong>에서 확인할 수 있어요.
                   </p>
+                  {mode === 'return' && <div className="selected-kind">
+                    <ProductArt kind={kind?.art || 'calculator'} />
+                    <div>
+                      <span>반납할 물품 · {condition === 'damaged' ? '손상' : '정상'}</span>
+                      <strong>{item?.label}</strong>
+                    </div>
+                  </div>}
                   {!KIOSK_BRIDGE && <div className="selected-kind">
                     <ProductArt kind={kind?.art || 'calculator'} />
                     <div>
@@ -496,7 +544,7 @@ export default function KioskApp() {
                       <strong>{kind?.name}</strong>
                     </div>
                   </div>}
-                  {KIOSK_BRIDGE && <p>코드를 확인한 뒤 물품 종류를 선택합니다.</p>}
+                  {KIOSK_BRIDGE && mode === 'rent' && <p>코드를 확인한 뒤 물품 종류를 선택합니다.</p>}
                   <div className="note">
                     <ShieldCheck size={20} />
                     <p>코드는 본인만 사용해 주세요.</p>
@@ -506,18 +554,19 @@ export default function KioskApp() {
                   className="keypad-panel"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    if (code.length === MOCK.codeLength)
-                      void run(
-                        () => api.verifyCode(code),
-                        (g) => {
-                          setGrant(g);
-                          setCode('');
-                          setStage(KIOSK_BRIDGE ? 'select' : 'scan');
-                        },
-                      );
+                    if (code.length !== MOCK.codeLength || unknown) return;
+                    if (mode === 'return') confirm();
+                    else void run(
+                      () => api.verifyCode(code),
+                      (g) => {
+                        setGrant(g);
+                        setCode('');
+                        setStage(KIOSK_BRIDGE ? 'select' : 'scan');
+                      },
+                    );
                   }}
                 >
-                  <label htmlFor="rental-code">일회성 대여 코드</label>
+                  <label htmlFor="rental-code">일회성 {mode === 'return' ? '반납' : '대여'} 코드</label>
                   <input
                     id="rental-code"
                     className="kiosk-code-input"
@@ -527,7 +576,7 @@ export default function KioskApp() {
                     maxLength={MOCK.codeLength}
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
                     placeholder="000000"
-                    disabled={busy}
+                    disabled={busy || unknown}
                   />
                   <div className="keypad">
                     {['1', '2', '3', '4', '5', '6', '7', '8', '9', '지우기', '0', 'back'].map(
@@ -535,7 +584,7 @@ export default function KioskApp() {
                         <button
                           type="button"
                           key={key}
-                          disabled={busy}
+                          disabled={busy || unknown}
                           aria-label={key === 'back' ? '한 자리 지우기' : key}
                           onClick={() =>
                             setCode((c) =>
@@ -553,13 +602,20 @@ export default function KioskApp() {
                     )}
                   </div>
                   <ErrorBox error={error} />
-                  <button
-                    className="primary full"
-                    disabled={busy || code.length !== MOCK.codeLength}
-                  >
-                    {busy ? '코드 확인 중…' : '코드 확인'}
-                    <ArrowRight size={22} />
-                  </button>
+                  {returnNeedsRescan ? (
+                    <button type="button" className="primary full" onClick={() => start('return')}>
+                      물품 다시 인식하기
+                    </button>
+                  ) : unknown ? (
+                    <button type="button" className="primary full" disabled={busy} onClick={recover}>
+                      {busy ? '반납 결과 확인 중…' : '반납 결과 다시 확인'}
+                    </button>
+                  ) : (
+                    <button className="primary full" disabled={busy || code.length !== MOCK.codeLength}>
+                      {busy ? '처리 중…' : mode === 'return' ? '코드 확인하고 반납 완료' : '코드 확인'}
+                      <ArrowRight size={22} />
+                    </button>
+                  )}
                 </form>
               </div>
             )}
@@ -652,7 +708,7 @@ export default function KioskApp() {
                 <button
                   className="primary centered"
                   disabled={!condition}
-                  onClick={() => setStage('confirm')}
+                  onClick={() => setStage('code')}
                 >
                   선택한 상태로 계속
                   <ArrowRight size={22} />

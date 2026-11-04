@@ -319,23 +319,39 @@ describe('Mock service contract — not real server verification', () => {
     expect((await api.catalog()).items.find((i) => i.id === 'calc-1')?.status).toBe('rented');
   });
   it('동일 요청 ID 재전송은 동일 결과', async () => {
-    const { grant } = await prepare();
+    const { token, grant } = await prepare();
     const first = await api.rent('same', grant, 'calc-1', 'calc');
     const second = await api.rent('same', grant, 'calc-1', 'calc');
     expect(second).toEqual(first);
-    const returned = await api.returnItem('return', 'calc-1', 'normal');
-    expect(await api.returnItem('return', 'calc-1', 'normal')).toEqual(returned);
-    await expect(api.returnItem('another', 'calc-1', 'normal')).rejects.toMatchObject({
+    const returnCode = (await api.code(token, true)).value;
+    const returned = await api.returnItem('return', 'calc-1', first.rental.id, first.item.tag, undefined, undefined, 'normal', returnCode);
+    expect(await api.returnItem('return', 'calc-1', first.rental.id, first.item.tag, undefined, undefined, 'normal', returnCode)).toEqual(returned);
+    await expect(api.returnItem('another', 'calc-1', first.rental.id, first.item.tag, undefined, undefined, 'normal', returnCode)).rejects.toMatchObject({
       code: 'CONFLICT',
     });
   });
   it('정상 반납은 재고 회복, 손상 반납은 점검 분리', async () => {
-    const { grant } = await prepare();
-    await api.rent('r', grant, 'calc-1', 'calc');
-    await api.returnItem('n', 'calc-1', 'normal');
+    const { token, grant } = await prepare();
+    const normalRental = await api.rent('r', grant, 'calc-1', 'calc');
+    await api.returnItem('n', 'calc-1', normalRental.rental.id, normalRental.item.tag, undefined, undefined, 'normal',
+      (await api.code(token, true)).value);
     expect((await api.catalog()).items.find((i) => i.id === 'calc-1')?.status).toBe('available');
-    await api.returnItem('d', 'calc-6', 'damaged');
+    await api.returnItem('d', 'calc-6', 'seed-active', 'CALC-6', undefined, undefined, 'damaged',
+      (await api.code(token, true)).value);
     expect((await api.catalog()).items.find((i) => i.id === 'calc-6')?.status).toBe('inspection');
+  });
+  it('다른 사용자의 코드로는 반납할 수 없고 대여자 코드는 한 번만 소비한다', async () => {
+    const { token, grant } = await prepare();
+    const rental = await api.rent('borrow', grant, 'calc-1', 'calc');
+    const other = await signup('01088887777');
+    const wrongCode = (await api.code(other)).value;
+    await expect(api.returnItem('wrong', 'calc-1', rental.rental.id, rental.item.tag,
+      undefined, undefined, 'normal', wrongCode)).rejects.toMatchObject({ code: 'RETURN_CODE_INVALID' });
+    expect((await api.catalog()).items.find((i) => i.id === 'calc-1')?.status).toBe('rented');
+    const ownerCode = (await api.code(token, true)).value;
+    await api.returnItem('right', 'calc-1', rental.rental.id, rental.item.tag,
+      undefined, undefined, 'normal', ownerCode);
+    expect((await api.code(token)).used).toBe(true);
   });
   it('잘못된 종류·태그·대여소·비활성·없는 기록 거절', async () => {
     await expect(api.scan('UNKNOWN', 'rent', 'calc')).rejects.toMatchObject({

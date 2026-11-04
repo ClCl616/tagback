@@ -2,7 +2,7 @@ package com.tagback.exception;
 
 import java.time.Instant;
 
-/** Rental authentication and checkout failures with safe public messages. */
+/** Rental authentication and operation failures with safe public messages. */
 public class RentalException extends RuntimeException {
     private final String code;
     private final int status;
@@ -34,6 +34,21 @@ public class RentalException extends RuntimeException {
     public static RentalException activeRental() {
         return new RentalException("RENTAL_ALREADY_ACTIVE", "이미 진행 중인 대여가 있는 물품입니다.", 409);
     }
+    public static RentalException noActiveRental() {
+        return new RentalException("RENTAL_NOT_ACTIVE", "반납할 진행 중 대여가 없습니다.", 409);
+    }
+    public static RentalException returnStateConflict() {
+        return new RentalException("RENTAL_STATE_CONFLICT", "대여와 물품 상태가 일치하지 않아 반납할 수 없습니다.", 409);
+    }
+    public static RentalException rentalChanged() {
+        return new RentalException("RENTAL_CHANGED", "대여 정보가 변경되었습니다. 태그를 다시 인식해 주세요.", 409);
+    }
+    public static RentalException invalidScanProof() {
+        return new RentalException("NFC_SCAN_REQUIRED", "실물 태그를 리더기에 인식한 뒤 다시 진행해 주세요.", 403);
+    }
+    public static RentalException scanProofUsed() {
+        return new RentalException("NFC_SCAN_ALREADY_USED", "이미 사용한 태그 인식입니다. 태그를 다시 인식해 주세요.", 409);
+    }
     public static RentalException grantRequired() {
         return new RentalException("RENTAL_GRANT_REQUIRED", "반출 인증이 필요합니다.", 401);
     }
@@ -57,5 +72,8 @@ public class RentalException extends RuntimeException {
     }
     public static RentalException codeUnavailable() {
         return new RentalException("RENTAL_CODE_UNAVAILABLE", "대여 코드를 발급할 수 없습니다. 잠시 후 다시 시도해 주세요.", 503);
+    }
+    public static RentalException returnCodeInvalid() {
+        return new RentalException("RETURN_CODE_INVALID", "반납 코드가 유효하지 않거나 이 물품의 대여자와 일치하지 않습니다.", 401);
     }
 }

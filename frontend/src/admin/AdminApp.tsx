@@ -696,9 +696,9 @@ function ItemEditor({
   }, []);
   useEffect(() => {
     if (original?.tag || busy || imageLoading || checking || retryingTag) return;
-    return nfc.subscribe((value) => {
+    return nfc.subscribe((read) => {
       try {
-        const tag = normalizeUid(value);
+        const tag = normalizeUid(read.uid);
         setDraft((v) => ({ ...v, tag }));
         setError(undefined);
       } catch (e) {

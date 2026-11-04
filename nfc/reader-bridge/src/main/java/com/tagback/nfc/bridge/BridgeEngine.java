@@ -5,12 +5,14 @@ import com.tagback.nfc.reader.ReaderSource;
 import com.tagback.nfc.reader.UidNormalizer;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /** Converts repeated polling snapshots into state-transition events. */
 public final class BridgeEngine {
     private final ReaderSource source;
     private final Consumer<BridgeEvent> events;
     private final int emptyPollsToRemove;
+    private final Function<String, BridgeEvent> tagReadEvent;
     private Boolean connected;
     private String lastUid;
     private int emptyPolls;
@@ -20,8 +22,14 @@ public final class BridgeEngine {
     }
 
     public BridgeEngine(ReaderSource source, Consumer<BridgeEvent> events, int emptyPollsToRemove) {
+        this(source, events, emptyPollsToRemove, BridgeEvent::tagRead);
+    }
+
+    public BridgeEngine(ReaderSource source, Consumer<BridgeEvent> events, int emptyPollsToRemove,
+                        Function<String, BridgeEvent> tagReadEvent) {
         this.source = Objects.requireNonNull(source);
         this.events = Objects.requireNonNull(events);
+        this.tagReadEvent = Objects.requireNonNull(tagReadEvent);
         if (emptyPollsToRemove < 1) throw new IllegalArgumentException("emptyPollsToRemove must be positive");
         this.emptyPollsToRemove = emptyPollsToRemove;
     }
@@ -58,6 +66,6 @@ public final class BridgeEngine {
         if (Objects.equals(lastUid, uid)) return;
         if (lastUid != null) events.accept(BridgeEvent.tagRemoved());
         lastUid = uid;
-        if (uid != null) events.accept(BridgeEvent.tagRead(uid));
+        if (uid != null) events.accept(tagReadEvent.apply(uid));
     }
 }

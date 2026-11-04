@@ -1,6 +1,7 @@
 package com.tagback.dto.rental;
 
 import com.fasterxml.jackson.annotation.JsonAnySetter;
+import com.tagback.domain.entity.ReturnCondition;
 import com.tagback.dto.item.StrictStringDeserializer;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.NotBlank;
@@ -17,6 +18,25 @@ public final class RentalRequests {
             @NotBlank @Pattern(regexp = "[1-9][0-9]{0,18}") @DecimalMax("9223372036854775807") String itemTypeId) {
         @JsonAnySetter public void rejectUnknown(String name, Object value) {
             throw new IllegalArgumentException("Unknown checkout field");
+        }
+    }
+
+    public record Return(
+            @JsonDeserialize(using = StrictStringDeserializer.class)
+        @NotBlank @Pattern(regexp = "[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}") String scanTicketId,
+        @jakarta.validation.constraints.NotNull NfcScanProof proof,
+        @jakarta.validation.constraints.NotNull ReturnCondition condition,
+        @JsonDeserialize(using = StrictStringDeserializer.class)
+        @NotBlank @Pattern(regexp = "[0-9]{6}") String returnCode) {
+        @JsonAnySetter public void rejectUnknown(String name, Object value) {
+            throw new IllegalArgumentException("Unknown return field");
+        }
+    }
+
+    public record ReturnScan(
+            @jakarta.validation.constraints.NotNull NfcScanProof proof) {
+        @JsonAnySetter public void rejectUnknown(String name, Object value) {
+            throw new IllegalArgumentException("Unknown return scan field");
         }
     }
 
