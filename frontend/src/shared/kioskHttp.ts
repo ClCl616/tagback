@@ -53,7 +53,7 @@ const timestamp = (value: unknown) => {
   return parsed;
 };
 
-function mapError(action: Action, status: number, code: unknown, message: unknown): never {
+export function mapError(action: Action, status: number, code: unknown, message: unknown): never {
   const safe = typeof message === 'string' ? message : '요청을 처리하지 못했습니다.';
   if (action === 'rent' && status >= 500)
     throw new ServiceError('UNKNOWN', '처리 결과를 확인하지 못했습니다. 같은 요청으로 결과를 확인해 주세요.');

@@ -6,6 +6,16 @@ const response = (status: number, data: unknown) => ({ ok: status >= 200 && stat
 afterEach(() => vi.unstubAllGlobals());
 
 describe('return integration boundary', () => {
+  it.each([
+    [410, 'RENTAL_GRANT_EXPIRED', 'AUTH', '코드 인증 시간이 지났어요. 새 코드를 받아 다시 입력해 주세요.'],
+    [409, 'RENTAL_CODE_CONSUMED', 'CODE_USED', '이미 사용한 코드예요. 새 코드를 받아 입력해 주세요.'],
+    [429, 'RENTAL_VERIFICATION_LIMITED', 'RENTAL_VERIFICATION_LIMITED', '잠시 후 코드를 다시 확인해 주세요.'],
+  ])('handles return code error %s %s', async (status, code, expected, message) => {
+    const retryAt = '2026-11-04T12:00:00Z';
+    const client = createReturnClient(async () => response(status, { error: { code, retryAt } }), async () => ({}));
+    await expect(client.returnItem('12')).rejects.toMatchObject({ code: expected, message,
+      ...(status === 429 ? { retryAt: Date.parse(retryAt) } : {}) });
+  });
   it('classifies a non-JSON 500 as a disconnected server', async () => {
     const states: string[] = [];
     const stop = subscribeServerConnection(state => states.push(state));
