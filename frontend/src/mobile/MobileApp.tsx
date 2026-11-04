@@ -503,6 +503,7 @@ function Rentals({ history = false }: { history?: boolean }) {
             const item = r.data!.catalog.items.find((i) => i.id === row.itemId)!;
             const kind = r.data!.catalog.kinds.find((k) => k.id === item.kindId)!;
             const overdue = !row.returnedAt && row.dueAt < Date.now();
+            const returnedOverdue = row.returnedAt != null && row.returnedAt > row.dueAt;
             return (
               <article className="rental-card" key={row.id}>
                 <div className="rental-title">
@@ -510,9 +511,7 @@ function Rentals({ history = false }: { history?: boolean }) {
                   <div>
                     <Badge tone={history ? 'gray' : overdue ? 'orange' : 'green'}>
                       {history
-                        ? row.condition === 'damaged'
-                          ? '반납 완료 · 점검 접수'
-                          : '반납 완료'
+                        ? `반납 완료${returnedOverdue ? ' · 연체 반납' : ''}${row.condition === 'damaged' ? ' · 점검 접수' : ''}`
                         : overdue
                           ? '연체'
                           : '대여 중'}
