@@ -24,11 +24,11 @@ public final class RentalResponses {
     }
 
     public record Returned(String rentalId, String itemId, RentalStatus rentalStatus, ItemStatus itemStatus,
-                           ReturnCondition condition, Instant rentedAt, Instant dueAt, Instant returnedAt) {
+                           ReturnCondition condition, Instant rentedAt, Instant dueAt, Instant returnedAt, boolean overdue) {
         public static Returned from(ReturnResult result) {
             return new Returned(result.rentalId().toString(), result.itemId().toString(),
                     result.rentalStatus(), result.itemStatus(), result.condition(), result.rentedAt(), result.dueAt(),
-                    result.returnedAt());
+                    result.returnedAt(), result.returnedAt().isAfter(result.dueAt()));
         }
     }
 
@@ -42,14 +42,15 @@ public final class RentalResponses {
 
     public record Summary(String rentalId, String itemId, String itemName,
                           String itemTypeId, String itemTypeName, RentalStatus rentalStatus,
-                          Instant rentedAt, Instant dueAt, Instant returnedAt) {
+                          Instant rentedAt, Instant dueAt, Instant returnedAt, boolean overdue) {
         public static Summary from(Rental rental, Instant evaluatedAt) {
             var item = rental.getItem();
             var status = rental.getReturnedAt() != null ? RentalStatus.RETURNED
                     : evaluatedAt.isAfter(rental.getDueAt()) ? RentalStatus.OVERDUE : RentalStatus.RENTED;
             return new Summary(rental.getId().toString(), item.getId().toString(), item.getItemName(),
                     item.getItemType().getId().toString(), item.getItemType().getName(), status,
-                    rental.getRentedAt(), rental.getDueAt(), rental.getReturnedAt());
+                    rental.getRentedAt(), rental.getDueAt(), rental.getReturnedAt(),
+                    (rental.getReturnedAt() != null ? rental.getReturnedAt() : evaluatedAt).isAfter(rental.getDueAt()));
         }
     }
 
