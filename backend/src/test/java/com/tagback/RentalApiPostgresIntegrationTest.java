@@ -324,6 +324,81 @@ class RentalApiPostgresIntegrationTest {
                 Long.class, itemId));
     }
 
+    @Test void overdueReturnIsRecordedAndShownInHistory() throws Exception {
+        perform(verify(issue(member)), key(), body(itemId)).andExpect(status().isCreated());
+        jdbc.update("update rentals set due_at = ? where item_id = ?", Timestamp.from(NOW), itemId);
+        clock.set(NOW.plusSeconds(1));
+        returnCode = issue(member);
+        var proof = scanProof("04A23B1C5D6E80");
+        String requestBody = returnBody(scanFor(proof), proof, "NORMAL");
+        mvc.perform(post("/api/v1/rentals/return").contentType("application/json").content(requestBody))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.rentalStatus").value("RETURNED"))
+                .andExpect(jsonPath("$.overdue").value(true));
+        mvc.perform(get("/api/v1/rentals/me").cookie(member).param("scope", "HISTORY"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.rentals[0].rentalStatus").value("RETURNED"))
+                .andExpect(jsonPath("$.rentals[0].overdue").value(true));
+        assertEquals(2, count("item_status_history"));
+    }
+
+    @Test void oldReturnRequestsCannotReturnAReborrowedItem() throws Exception {
+        perform(verify(issue(member)), key(), body(itemId)).andExpect(status().isCreated());
+        returnCode = issue(member);
+        var completedProof = scanProof("04A23B1C5D6E80");
+        var staleProof = scanProof("04A23B1C5D6E80");
+        String completedTicket = scanFor(completedProof);
+        String staleTicket = scanFor(staleProof);
+        String completedBody = returnBody(completedTicket, completedProof, "NORMAL");
+        String completed = mvc.perform(post("/api/v1/rentals/return").contentType("application/json").content(completedBody))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        perform(verify(issue(member)), key(), body(itemId)).andExpect(status().isCreated());
+        returnCode = issue(member);
+        mvc.perform(post("/api/v1/rentals/return").contentType("application/json")
+                        .content(returnBody(staleTicket, staleProof, "NORMAL")))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("RENTAL_CHANGED"));
+        String replay = mvc.perform(post("/api/v1/rentals/return").contentType("application/json").content(completedBody))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertEquals(json.readTree(completed), json.readTree(replay));
+        assertEquals(2, count("rentals"));
+        assertEquals(3, count("item_status_history"));
+        assertEquals(1, jdbc.queryForObject("select count(*) from rentals where item_id = ? and returned_at is null", Integer.class, itemId));
+        assertEquals("RENTED", jdbc.queryForObject("select status from items where item_id = ?", String.class, itemId));
+    }
+
+    @Test void concurrentIdenticalReturnsReplayWithoutDuplicatingChanges() throws Exception {
+        perform(verify(issue(member)), key(), body(itemId)).andExpect(status().isCreated());
+        returnCode = issue(member);
+        var proof = scanProof("04A23B1C5D6E80");
+        String requestBody = returnBody(scanFor(proof), proof, "NORMAL");
+        var responses = race(
+                () -> mvc.perform(post("/api/v1/rentals/return").contentType("application/json").content(requestBody)).andReturn(),
+                () -> mvc.perform(post("/api/v1/rentals/return").contentType("application/json").content(requestBody)).andReturn());
+        assertEquals(200, responses.get(0).getResponse().getStatus());
+        assertEquals(200, responses.get(1).getResponse().getStatus());
+        assertEquals(json.readTree(responses.get(0).getResponse().getContentAsString()),
+                json.readTree(responses.get(1).getResponse().getContentAsString()));
+        assertEquals(1, count("rentals"));
+        assertEquals(2, count("item_status_history"));
+        assertEquals("AVAILABLE", jdbc.queryForObject("select status from items where item_id = ?", String.class, itemId));
+    }
+
+    @Test void concurrentDifferentTicketsCannotReturnOneRentalTwice() throws Exception {
+        perform(verify(issue(member)), key(), body(itemId)).andExpect(status().isCreated());
+        returnCode = issue(member);
+        var firstProof = scanProof("04A23B1C5D6E80");
+        var secondProof = scanProof("04A23B1C5D6E80");
+        String firstBody = returnBody(scanFor(firstProof), firstProof, "NORMAL");
+        String secondBody = returnBody(scanFor(secondProof), secondProof, "NORMAL");
+        var responses = race(
+                () -> mvc.perform(post("/api/v1/rentals/return").contentType("application/json").content(firstBody)).andReturn(),
+                () -> mvc.perform(post("/api/v1/rentals/return").contentType("application/json").content(secondBody)).andReturn());
+        assertEquals(1, responses.stream().filter(r -> r.getResponse().getStatus() == 200).count());
+        assertEquals(1, responses.stream().filter(r -> r.getResponse().getStatus() >= 400 && r.getResponse().getStatus() < 500).count());
+        assertEquals(1, count("rentals"));
+        assertEquals(2, count("item_status_history"));
+        assertEquals("RETURNED", jdbc.queryForObject("select status from rentals where item_id = ?", String.class, itemId));
+        assertEquals("AVAILABLE", jdbc.queryForObject("select status from items where item_id = ?", String.class, itemId));
+    }
+
     @Test void rejectsDirectUidUnsignedForgedWrongKioskAndExpiredScanTickets() throws Exception {
         String token = verify(issue(member));
         perform(token, key(), body(itemId)).andExpect(status().isCreated());

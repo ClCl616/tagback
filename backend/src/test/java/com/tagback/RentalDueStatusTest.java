@@ -9,6 +9,8 @@ import java.time.Instant;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -32,8 +34,15 @@ class RentalDueStatusTest {
         assertEquals(RentalStatus.RENTED, RentalResponses.Summary.from(rental, DUE.minusNanos(1)).rentalStatus());
         assertEquals(RentalStatus.RENTED, RentalResponses.Summary.from(rental, DUE).rentalStatus());
         assertEquals(RentalStatus.OVERDUE, RentalResponses.Summary.from(rental, DUE.plusNanos(1)).rentalStatus());
+        assertFalse(RentalResponses.Summary.from(rental, DUE).overdue());
+        assertTrue(RentalResponses.Summary.from(rental, DUE.plusNanos(1)).overdue());
+        when(rental.getReturnedAt()).thenReturn(DUE.minusNanos(1));
+        assertFalse(RentalResponses.Summary.from(rental, DUE.plusSeconds(20)).overdue());
+        when(rental.getReturnedAt()).thenReturn(DUE);
+        assertFalse(RentalResponses.Summary.from(rental, DUE.plusSeconds(20)).overdue());
         when(rental.getReturnedAt()).thenReturn(DUE.plusSeconds(10));
         assertEquals(RentalStatus.RETURNED, RentalResponses.Summary.from(rental, DUE.plusSeconds(20)).rentalStatus());
+        assertTrue(RentalResponses.Summary.from(rental, DUE.plusSeconds(20)).overdue());
         assertEquals(DUE, RentalResponses.Summary.from(rental, DUE.plusSeconds(20)).dueAt());
     }
 }
