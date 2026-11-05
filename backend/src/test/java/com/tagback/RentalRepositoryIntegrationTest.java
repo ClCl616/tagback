@@ -3,6 +3,7 @@ package com.tagback;
 import com.tagback.domain.entity.*;
 import com.tagback.domain.repository.*;
 import com.tagback.service.RentalQueryService;
+import com.tagback.service.AdminQueryService;
 import jakarta.persistence.EntityManager;
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -38,6 +39,7 @@ class RentalRepositoryIntegrationTest {
     @Autowired EntityManager em;
     @Autowired JdbcTemplate jdbc;
     @Autowired RentalQueryService queries;
+    @Autowired AdminQueryService adminQueries;
     @Autowired Clock clock;
 
     private static final Instant RENTED_AT = Instant.parse("2026-10-14T03:00:00Z");
@@ -45,6 +47,26 @@ class RentalRepositoryIntegrationTest {
     private User user;
     private Item item;
     private Item otherItem;
+
+    @Test
+    void adminListsIncludeActiveAndReturnedRentalsInStablePages() {
+        var earlier = rentals.saveAndFlush(new Rental(user, item, RENTED_AT, DUE_AT));
+        earlier.markReturned(RENTED_AT.plusSeconds(3600), ReturnCondition.NORMAL);
+        rentals.saveAndFlush(earlier);
+        var later = rentals.saveAndFlush(new Rental(user, otherItem, RENTED_AT, DUE_AT));
+        em.clear();
+
+        var first = adminQueries.rentals(0, 1);
+        var second = adminQueries.rentals(1, 1);
+        assertEquals(2, first.totalElements());
+        assertEquals(2, first.totalPages());
+        assertEquals(later.getId().toString(), first.rentals().get(0).rentalId());
+        assertEquals(user.getId().toString(), first.rentals().get(0).userId());
+        assertEquals(earlier.getId().toString(), second.rentals().get(0).rentalId());
+        assertEquals(RentalStatus.RETURNED, second.rentals().get(0).rentalStatus());
+        assertTrue(adminQueries.rentals(2, 1).rentals().isEmpty());
+        assertEquals(user.getId().toString(), adminQueries.users(0, 1).users().get(0).userId());
+    }
 
     @BeforeEach
     void fixtures() {
