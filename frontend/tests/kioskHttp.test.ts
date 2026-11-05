@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { checkoutRental, lookupRentalTag, probeServerConnection, rentalCatalog, returnRental, subscribeServerConnection, verifyRentalCode } from '../src/shared/kioskHttp';
+import { checkoutRental, lookupRentalTag, lookupReturnTag, probeServerConnection, rentalCatalog, returnRental, subscribeServerConnection, verifyRentalCode } from '../src/shared/kioskHttp';
 import type { Grant } from '../src/shared/types';
 import { issueRentalCode } from '../src/shared/rentalCodeHttp';
 
@@ -213,5 +213,36 @@ describe('real kiosk HTTP contract', () => {
     await expect(checkoutRental(key, grant, '5', '12')).rejects.toMatchObject({ code: 'UNKNOWN' });
     await expect(checkoutRental(key, grant, '5', '12')).rejects.toMatchObject({ code: 'GRANT_EXPIRED' });
     expect(fetch.mock.calls[1][1].headers['Idempotency-Key']).toBe(key);
+  });
+});
+
+
+describe('return exception messages', () => {
+  const proof = { bridgeId: 'reader', uid: '04A23B1C5D6E80', issuedAt: 1790000000000,
+    nonce: '98f6da84-f149-4e1d-b6f5-370523b76d2b', signature: 'a'.repeat(64) };
+  const key = '4d36c088-5b23-4960-a7e3-c4f98101ac0e';
+  const ticket = '6fa7b810-77bd-4f49-8cf9-e9bd457f1101';
+  const reject = (code: string, status = 409, retryAt?: string) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ error: { code, message: 'server', retryAt } }, status)));
+  };
+  it('스캔과 최종 반납에서 대여 없음 안내를 구분한다', async () => {
+    reject('RENTAL_NOT_ACTIVE');
+    await expect(lookupReturnTag(proof)).rejects.toMatchObject({ code: 'RENTAL_NOT_ACTIVE', message: '등록되지 않았거나 반납할 대여가 없는 태그입니다. 태그를 확인해 주세요.' });
+    await expect(returnRental(key, ticket, '9', proof, 'normal', '000000')).rejects.toMatchObject({ code: 'RENTAL_NOT_ACTIVE', message: '이미 반납되었거나 진행 중인 대여가 없습니다.' });
+  });
+  it('물품 상태 충돌은 관리자 문의를 안내한다', async () => {
+    reject('RENTAL_STATE_CONFLICT');
+    await expect(returnRental(key, ticket, '9', proof, 'normal', '000000')).rejects.toMatchObject({ code: 'RENTAL_STATE_CONFLICT', message: '물품 상태가 변경되었습니다. 관리자에게 문의해 주세요.' });
+  });
+  it('반납 인식 증명이 만료되거나 유효하지 않으면 재인식을 안내한다', async () => {
+    reject('NFC_SCAN_REQUIRED', 403);
+    await expect(returnRental(key, ticket, '9', proof, 'normal', '000000')).rejects.toMatchObject({ code: 'NFC_SCAN_REQUIRED', message: '인식 정보가 만료되었거나 올바르지 않아요. 물품을 다시 인식해 주세요.' });
+  });
+  it('요청 제한에서 재시도 시각을 보존하고 표시한다', async () => {
+    const retry = '2026-11-04T08:00:00Z';
+    reject('RENTAL_VERIFICATION_LIMITED', 429, retry);
+    await expect(returnRental(key, ticket, '9', proof, 'normal', '000000')).rejects.toMatchObject({ code: 'RENTAL_VERIFICATION_LIMITED', retryAt: Date.parse(retry), message: expect.stringContaining('이후 다시 시도해 주세요.') });
+    reject('RENTAL_VERIFICATION_LIMITED', 429);
+    await expect(returnRental(key, ticket, '9', proof, 'normal', '000000')).rejects.toMatchObject({ message: '요청이 많습니다. 잠시 후 다시 시도해 주세요.' });
   });
 });

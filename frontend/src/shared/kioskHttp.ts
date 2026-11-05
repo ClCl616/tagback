@@ -44,7 +44,7 @@ const timestamp = (value: unknown) => {
   return parsed;
 };
 
-function mapError(action: Action, status: number, code: unknown, message: unknown): never {
+function mapError(action: Action, status: number, code: unknown, message: unknown, retryAt: unknown): never {
   const safe = typeof message === 'string' ? message : '요청을 처리하지 못했습니다.';
   if ((action === 'rent' || action === 'return') && status >= 500)
     throw new ServiceError('UNKNOWN', '처리 결과를 확인하지 못했습니다. 같은 요청으로 결과를 확인해 주세요.');
@@ -63,12 +63,28 @@ function mapError(action: Action, status: number, code: unknown, message: unknow
     case 'ITEM_NOT_AVAILABLE': throw new ServiceError(action === 'scan' ? 'UNAVAILABLE' : 'CONFLICT', safe);
     case 'ITEM_TYPE_MISMATCH': throw new ServiceError('MISMATCH', '선택한 종류와 다른 물품입니다.');
     case 'RENTAL_ALREADY_ACTIVE': throw new ServiceError('CONFLICT', safe);
+    case 'RENTAL_NOT_ACTIVE':
+      if (action === 'return-scan') throw new ServiceError('RENTAL_NOT_ACTIVE', '등록되지 않았거나 반납할 대여가 없는 태그입니다. 태그를 확인해 주세요.');
+      if (action === 'return') throw new ServiceError('RENTAL_NOT_ACTIVE', '이미 반납되었거나 진행 중인 대여가 없습니다.');
+      break;
+    case 'RENTAL_STATE_CONFLICT':
+      if (action === 'return' || action === 'return-scan')
+        throw new ServiceError('RENTAL_STATE_CONFLICT', '물품 상태가 변경되었습니다. 관리자에게 문의해 주세요.');
+      break;
+    case 'RENTAL_VERIFICATION_LIMITED': {
+      if (action !== 'return') break;
+      const parsed = typeof retryAt === 'string' ? Date.parse(retryAt) : NaN;
+      const time = Number.isFinite(parsed) ? new Date(parsed).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }) : undefined;
+      throw new ServiceError('RENTAL_VERIFICATION_LIMITED', time ? `요청이 많습니다. ${time} 이후 다시 시도해 주세요.` : '요청이 많습니다. 잠시 후 다시 시도해 주세요.', Number.isFinite(parsed) ? parsed : undefined);
+    }
     case 'NFC_SCAN_REQUIRED':
-    case 'NFC_SCAN_ALREADY_USED': throw new ServiceError('NFC_SCAN_REQUIRED', safe);
+    case 'NFC_SCAN_ALREADY_USED':
+      throw new ServiceError('NFC_SCAN_REQUIRED', action === 'return' ? '인식 정보가 만료되었거나 올바르지 않아요. 물품을 다시 인식해 주세요.' : safe);
     default:
       if (status === 401) throw new ServiceError('AUTH', '대여 코드를 다시 확인해 주세요.');
       throw new ServiceError(typeof code === 'string' ? code : 'UNKNOWN', safe);
   }
+  throw new ServiceError(typeof code === 'string' ? code : 'UNKNOWN', safe);
 }
 
 async function request(path: string, action: Action, method = 'GET', grant?: Grant,
@@ -101,7 +117,7 @@ async function request(path: string, action: Action, method = 'GET', grant?: Gra
   updateServerConnection(proxyFailure ? 'disconnected' : 'connected');
   if (proxyFailure && action !== 'rent' && action !== 'return')
     throw new ServiceError('SERVER_UNAVAILABLE', SERVER_UNAVAILABLE_MESSAGE);
-  if (!response.ok) mapError(action, response.status, data?.error?.code, data?.error?.message);
+  if (!response.ok) mapError(action, response.status, data?.error?.code, data?.error?.message, data?.error?.retryAt);
   if (action === 'rent' && response.status !== 200 && response.status !== 201)
     throw new ServiceError('UNKNOWN', '반출 결과를 확인하지 못했습니다. 같은 요청으로 결과를 확인해 주세요.');
   if (!data || typeof data !== 'object')

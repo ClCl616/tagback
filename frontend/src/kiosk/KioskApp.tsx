@@ -530,6 +530,7 @@ export default function KioskApp() {
                     모바일 웹에 로그인한 뒤<br />
                     <strong>‘이용 코드’</strong>에서 확인할 수 있어요.
                   </p>
+                  {mode === 'return' && KIOSK_BRIDGE && <p>태그 인식 후 60초 안에 반납을 완료해 주세요.</p>}
                   {mode === 'return' && <div className="selected-kind">
                     <ProductArt kind={kind?.art || 'calculator'} />
                     <div>
@@ -602,7 +603,9 @@ export default function KioskApp() {
                     )}
                   </div>
                   <ErrorBox error={error} />
-                  {returnNeedsRescan ? (
+                  {mode === 'return' && errorCode === 'RENTAL_STATE_CONFLICT' ? (
+                    <button type="button" className="primary full" onClick={() => reset()}>처음으로 돌아가기</button>
+                  ) : returnNeedsRescan ? (
                     <button type="button" className="primary full" onClick={() => start('return')}>
                       물품 다시 인식하기
                     </button>
@@ -654,7 +657,10 @@ export default function KioskApp() {
                     ? '인식만으로 대여되지 않습니다. 다음 화면에서 대여를 확정해 주세요.'
                     : '인식 후 물품 상태를 확인하고 반납을 확정해 주세요.'}
                 </p>
-                {!!error && (
+                {mode === 'return' && errorCode === 'RENTAL_STATE_CONFLICT' && (
+                  <button className="secondary" onClick={() => reset()}>처음으로 돌아가기</button>
+                )}
+                {!!error && errorCode !== 'RENTAL_STATE_CONFLICT' && (
                   <button
                     className="secondary"
                     onClick={() => {
