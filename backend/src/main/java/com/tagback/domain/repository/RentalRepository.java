@@ -18,4 +18,8 @@ public interface RentalRepository extends JpaRepository<Rental, Long> {
 
     @EntityGraph(attributePaths = {"item", "item.itemType"})
     Page<Rental> findByUser_IdAndReturnedAtIsNotNull(Long userId, Pageable pageable);
+
+    @Override
+    @EntityGraph(attributePaths = {"user", "item", "item.itemType"})
+    Page<Rental> findAll(Pageable pageable);
 }
