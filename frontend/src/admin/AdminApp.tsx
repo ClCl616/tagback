@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Box,
+  Users,
   Upload,
   Trash2,
   CalendarDays,
@@ -24,6 +25,8 @@ import { adminApi, type ItemDraft } from './adminApi';
 import { ItemRegistration, normalizeUid } from './itemRegistration';
 import { readItemImage } from './itemImage';
 import { CategorySelect } from './CategorySelect';
+import AdminRecords from './AdminRecords';
+import { HTTP_AUTH } from '../shared/authMode';
 import './admin.css';
 import './reference.css';
 
@@ -94,7 +97,13 @@ export default function AdminApp() {
     key: 'name' | 'number' | 'tag' | 'status';
     direction: 'ascending' | 'descending';
   }>();
-  const [section, setSection] = useState('items');
+  const [section, updateSection] = useState('items');
+  const [recordFilter, setRecordFilter] = useState('');
+  const setSection = (next: string, filter = '') => {
+    updateSection(next);
+    setRecordFilter(filter);
+  };
+  const recordsView = HTTP_AUTH || section === 'users' || section === 'rentals';
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   async function load(quiet = false) {
@@ -118,6 +127,7 @@ export default function AdminApp() {
     }
   }
   useEffect(() => {
+    if (HTTP_AUTH) return;
     void load();
     const refresh = () => {
       void load(true);
@@ -171,11 +181,18 @@ export default function AdminApp() {
   const selectedKind = catalog?.kinds.find((k) => k.id === selected?.kindId);
   const station = catalog?.stations.find((s) => s.id === selected?.stationId);
   return (
-    <div className="admin-shell has-detail">
+    <div className={`admin-shell${recordsView ? '' : ' has-detail'}`}>
       <aside className="admin-sidebar">
         <Brand />
         <span className="admin-workspace">관리자</span>
         <nav aria-label="관리자 메뉴">
+          <button
+            className={section === 'users' ? 'active' : ''}
+            onClick={() => setSection('users')}
+          >
+            <Users size={20} />
+            사용자 관리
+          </button>
           <button
             className={section === 'items' ? 'active' : ''}
             onClick={() => {
@@ -213,352 +230,383 @@ export default function AdminApp() {
           </button>
         </nav>
         <div className="admin-profile">
-          <span>홍</span>
+          <span>{HTTP_AUTH ? '관' : '홍'}</span>
           <div>
-            <strong>홍길동</strong>
+            <strong>{HTTP_AUTH ? '관리자' : '홍길동'}</strong>
             <small>관리자</small>
           </div>
         </div>
       </aside>
       <main className="admin-main">
         <header className="admin-topbar">
-          <span>운영 관리 / 물품 관리</span>
+          <span>
+            운영 관리 /{' '}
+            {section === 'users'
+              ? '사용자 관리'
+              : section === 'rentals'
+                ? '대여 현황'
+                : section === 'maintenance'
+                  ? '점검·수리'
+                  : '물품 관리'}
+          </span>
           <span>
             <MapPin size={15} />
             {catalog?.stations[0]?.name || '대여소'}
             <ChevronDown size={16} />
           </span>
         </header>
-        <div className="admin-title">
-          <div>
-            <h1>
-              {section === 'rentals'
-                ? '대여 현황'
-                : section === 'maintenance'
-                  ? '점검·수리'
-                  : '물품 관리'}
-            </h1>
-            <p>대여소의 물품과 상태를 관리하세요.</p>
-          </div>
-          <button
-            className="primary"
-            disabled={!catalog || loading}
-            onClick={() => {
-              setEditing(null);
-            }}
-          >
-            <Plus size={18} />
-            물품 등록
-          </button>
-        </div>
-        <section className="admin-stats" aria-label="물품 현황">
-          {[['', '전체 물품'], ...Object.entries(labels)].map(([value, label]) => (
-            <button
-              key={value}
-              className={status === value ? 'selected' : ''}
-              onClick={() => setStatus(value)}
-              aria-pressed={status === value}
-            >
-              <span>{label}</span>
-              <strong>
-                {catalog ? catalog.items.filter((i) => !value || i.status === value).length : '—'}
-                <small>개</small>
-              </strong>
-            </button>
-          ))}
-        </section>
-        <section className="admin-inventory">
-          <div className="admin-toolbar">
-            <label className="admin-search">
-              <Search size={19} />
-              <input
-                aria-label="물품 검색"
-                placeholder="물품명 또는 태그 ID 검색"
-                value={query}
-                onChange={(e) => {
-                  setSelectedId(null);
-                  setQuery(e.target.value);
+        {recordsView ? (
+          <AdminRecords
+            key={section + recordFilter}
+            initialFilter={recordFilter}
+            section={section}
+            onSection={setSection}
+          />
+        ) : (
+          <>
+            <div className="admin-title">
+              <div>
+                <h1>
+                  {section === 'rentals'
+                    ? '대여 현황'
+                    : section === 'maintenance'
+                      ? '점검·수리'
+                      : '물품 관리'}
+                </h1>
+                <p>대여소의 물품과 상태를 관리하세요.</p>
+              </div>
+              <button
+                className="primary"
+                disabled={!catalog || loading}
+                onClick={() => {
+                  setEditing(null);
                 }}
-              />
-            </label>
-            <CategorySelect
-              filter
-              value={kind}
-              options={catalog?.categories || [...new Set(catalog?.kinds.map((k) => k.category))]}
-              onChange={(value) => {
-                setSelectedId(null);
-                setKind(value);
-              }}
-              onAdded={(name) =>
-                setCatalog(
-                  (c) =>
-                    c && {
-                      ...c,
-                      categories: [
-                        ...new Set([...(c.categories || c.kinds.map((k) => k.category)), name]),
-                      ],
-                    },
-                )
-              }
-            />
-            <select
-              aria-label="물품 상태 필터"
-              value={status}
-              onChange={(e) => {
-                setSelectedId(null);
-                setStatus(e.target.value);
-              }}
-            >
-              <option value="">전체 상태</option>
-              {Object.entries(labels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
+              >
+                <Plus size={18} />
+                물품 등록
+              </button>
+            </div>
+            <section className="admin-stats" aria-label="물품 현황">
+              {[['', '전체 물품'], ...Object.entries(labels)].map(([value, label]) => (
+                <button
+                  key={value}
+                  className={status === value ? 'selected' : ''}
+                  onClick={() => setStatus(value)}
+                  aria-pressed={status === value}
+                >
+                  <span>{label}</span>
+                  <strong>
+                    {catalog
+                      ? catalog.items.filter((i) => !value || i.status === value).length
+                      : '—'}
+                    <small>개</small>
+                  </strong>
+                </button>
               ))}
-            </select>
-            <button
-              className="admin-refresh"
-              aria-label="새로고침"
-              title="새로고침"
-              onClick={() => void load()}
-              disabled={loading}
-            >
-              <RefreshCw size={16} />
-            </button>
-          </div>
-          <ErrorBox error={syncError} retry={() => void load(true)} />
-          <ErrorBox error={error} retry={() => void load()} />
-          {loading ? (
-            <Loading />
-          ) : (
-            !error && (
-              <>
-                <div className="admin-list-heading">
-                  물품 목록 <span>{items.length}</span>
-                </div>
-                <div className="admin-table-scroll">
-                  <table className="admin-table">
-                    <thead>
-                      <tr>
-                        {(
-                          [
-                            { key: 'name', label: '물품명' },
-                            { key: 'number', label: '관리번호' },
-                            { key: 'tag', label: '태그 ID' },
-                            { key: 'status', label: '상태' },
-                          ] as const
-                        ).map((column) => (
-                          <th
-                            key={column.key}
-                            aria-sort={sort?.key === column.key ? sort.direction : 'none'}
-                          >
-                            <button
-                              className="admin-sort"
-                              onClick={() => {
-                                setSort((current) =>
-                                  current?.key !== column.key
-                                    ? { key: column.key, direction: 'ascending' }
-                                    : current.direction === 'ascending'
-                                      ? { key: column.key, direction: 'descending' }
-                                      : undefined,
-                                );
-                              }}
-                            >
-                              <span className="admin-sort-label">{column.label}</span>
-                              <span className="admin-sort-icon" aria-hidden="true">
-                                {sort?.key === column.key
-                                  ? sort.direction === 'ascending'
-                                    ? '↑'
-                                    : '↓'
-                                  : '↕'}
-                              </span>
-                            </button>
-                          </th>
-                        ))}
-
-                        <th aria-label="물품 작업"></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {visibleItems.map((i) => (
-                        <tr
-                          key={i.id}
-                          tabIndex={0}
-                          aria-label={i.label + ' 선택'}
-                          onClick={() => {
-                            setSelectedId(i.id);
-                            setMenu(undefined);
-                          }}
-                          onKeyDown={(e) => {
-                            if (
-                              e.target === e.currentTarget &&
-                              (e.key === 'Enter' || e.key === ' ')
-                            ) {
-                              e.preventDefault();
-                              setSelectedId(i.id);
-                            }
-                          }}
-                          className={selected?.id === i.id ? 'is-selected' : ''}
-                        >
-                          <td>
-                            <button
-                              className="admin-item-cell"
-                              aria-label={`${i.label} 상세 보기`}
-                              aria-pressed={selected?.id === i.id}
-                              onClick={() => setSelectedId(i.id)}
-                            >
-                              <span className="admin-thumbnail">
-                                {i.image ? (
-                                  <img
-                                    className="admin-uploaded-image"
-                                    src={i.image}
-                                    alt={`${i.label} 이미지`}
-                                  />
-                                ) : (
-                                  <AssetPhoto
-                                    kind={
-                                      catalog?.kinds.find((k) => k.id === i.kindId)?.art ||
-                                      'calculator'
-                                    }
-                                  />
-                                )}
-                              </span>
-                              <span>
-                                <strong>{itemName(i)}</strong>
-                                <small>
-                                  {catalog?.kinds.find((k) => k.id === i.kindId)?.category}
-                                </small>
-                              </span>
-                            </button>
-                          </td>
-                          <td className="admin-number">{itemNumber(i) || '—'}</td>
-                          <td>
-                            <code>{i.tag || '태그 미등록'}</code>
-                            {!!i.tag && !i.active && <small>태그 비활성</small>}
-                          </td>
-                          <td>
-                            <span className={`admin-status ${i.status}`}>{labels[i.status]}</span>
-                          </td>
-                          <td>
-                            <div className="admin-row-actions" onClick={(e) => e.stopPropagation()}>
-                              <button
-                                className="admin-edit"
-                                aria-label={i.label + ' 메뉴'}
-                                aria-expanded={menu === i.id}
-                                onClick={() => setMenu(menu === i.id ? undefined : i.id)}
+            </section>
+            <section className="admin-inventory">
+              <div className="admin-toolbar">
+                <label className="admin-search">
+                  <Search size={19} />
+                  <input
+                    aria-label="물품 검색"
+                    placeholder="물품명 또는 태그 ID 검색"
+                    value={query}
+                    onChange={(e) => {
+                      setSelectedId(null);
+                      setQuery(e.target.value);
+                    }}
+                  />
+                </label>
+                <CategorySelect
+                  filter
+                  value={kind}
+                  options={
+                    catalog?.categories || [...new Set(catalog?.kinds.map((k) => k.category))]
+                  }
+                  onChange={(value) => {
+                    setSelectedId(null);
+                    setKind(value);
+                  }}
+                  onAdded={(name) =>
+                    setCatalog(
+                      (c) =>
+                        c && {
+                          ...c,
+                          categories: [
+                            ...new Set([...(c.categories || c.kinds.map((k) => k.category)), name]),
+                          ],
+                        },
+                    )
+                  }
+                />
+                <select
+                  aria-label="물품 상태 필터"
+                  value={status}
+                  onChange={(e) => {
+                    setSelectedId(null);
+                    setStatus(e.target.value);
+                  }}
+                >
+                  <option value="">전체 상태</option>
+                  {Object.entries(labels).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="admin-refresh"
+                  aria-label="새로고침"
+                  title="새로고침"
+                  onClick={() => void load()}
+                  disabled={loading}
+                >
+                  <RefreshCw size={16} />
+                </button>
+              </div>
+              <ErrorBox error={syncError} retry={() => void load(true)} />
+              <ErrorBox error={error} retry={() => void load()} />
+              {loading ? (
+                <Loading />
+              ) : (
+                !error && (
+                  <>
+                    <div className="admin-list-heading">
+                      물품 목록 <span>{items.length}</span>
+                    </div>
+                    <div className="admin-table-scroll">
+                      <table className="admin-table">
+                        <thead>
+                          <tr>
+                            {(
+                              [
+                                { key: 'name', label: '물품명' },
+                                { key: 'number', label: '관리번호' },
+                                { key: 'tag', label: '태그 ID' },
+                                { key: 'status', label: '상태' },
+                              ] as const
+                            ).map((column) => (
+                              <th
+                                key={column.key}
+                                aria-sort={sort?.key === column.key ? sort.direction : 'none'}
                               >
-                                ···
-                              </button>
-                              {menu === i.id && (
-                                <div className="admin-action-menu">
+                                <button
+                                  className="admin-sort"
+                                  onClick={() => {
+                                    setSort((current) =>
+                                      current?.key !== column.key
+                                        ? { key: column.key, direction: 'ascending' }
+                                        : current.direction === 'ascending'
+                                          ? { key: column.key, direction: 'descending' }
+                                          : undefined,
+                                    );
+                                  }}
+                                >
+                                  <span className="admin-sort-label">{column.label}</span>
+                                  <span className="admin-sort-icon" aria-hidden="true">
+                                    {sort?.key === column.key
+                                      ? sort.direction === 'ascending'
+                                        ? '↑'
+                                        : '↓'
+                                      : '↕'}
+                                  </span>
+                                </button>
+                              </th>
+                            ))}
+
+                            <th aria-label="물품 작업"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {visibleItems.map((i) => (
+                            <tr
+                              key={i.id}
+                              tabIndex={0}
+                              aria-label={i.label + ' 선택'}
+                              onClick={() => {
+                                setSelectedId(i.id);
+                                setMenu(undefined);
+                              }}
+                              onKeyDown={(e) => {
+                                if (
+                                  e.target === e.currentTarget &&
+                                  (e.key === 'Enter' || e.key === ' ')
+                                ) {
+                                  e.preventDefault();
+                                  setSelectedId(i.id);
+                                }
+                              }}
+                              className={selected?.id === i.id ? 'is-selected' : ''}
+                            >
+                              <td>
+                                <button
+                                  className="admin-item-cell"
+                                  aria-label={`${i.label} 상세 보기`}
+                                  aria-pressed={selected?.id === i.id}
+                                  onClick={() => setSelectedId(i.id)}
+                                >
+                                  <span className="admin-thumbnail">
+                                    {i.image ? (
+                                      <img
+                                        className="admin-uploaded-image"
+                                        src={i.image}
+                                        alt={`${i.label} 이미지`}
+                                      />
+                                    ) : (
+                                      <AssetPhoto
+                                        kind={
+                                          catalog?.kinds.find((k) => k.id === i.kindId)?.art ||
+                                          'calculator'
+                                        }
+                                      />
+                                    )}
+                                  </span>
+                                  <span>
+                                    <strong>{itemName(i)}</strong>
+                                    <small>
+                                      {catalog?.kinds.find((k) => k.id === i.kindId)?.category}
+                                    </small>
+                                  </span>
+                                </button>
+                              </td>
+                              <td className="admin-number">{itemNumber(i) || '—'}</td>
+                              <td>
+                                <code>{i.tag || '태그 미등록'}</code>
+                                {!!i.tag && !i.active && <small>태그 비활성</small>}
+                              </td>
+                              <td>
+                                <span className={`admin-status ${i.status}`}>
+                                  {labels[i.status]}
+                                </span>
+                              </td>
+                              <td>
+                                <div
+                                  className="admin-row-actions"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
                                   <button
-                                    onClick={() => {
-                                      setEditing(i);
-                                      setMenu(undefined);
-                                    }}
+                                    className="admin-edit"
+                                    aria-label={i.label + ' 메뉴'}
+                                    aria-expanded={menu === i.id}
+                                    onClick={() => setMenu(menu === i.id ? undefined : i.id)}
                                   >
-                                    수정
+                                    ···
                                   </button>
-                                  <button
-                                    className="danger"
-                                    onClick={() => {
-                                      setDeleting(i);
-                                      setMenu(undefined);
-                                    }}
-                                  >
-                                    삭제
-                                  </button>
+                                  {menu === i.id && (
+                                    <div className="admin-action-menu">
+                                      <button
+                                        onClick={() => {
+                                          setEditing(i);
+                                          setMenu(undefined);
+                                        }}
+                                      >
+                                        수정
+                                      </button>
+                                      <button
+                                        className="danger"
+                                        onClick={() => {
+                                          setDeleting(i);
+                                          setMenu(undefined);
+                                        }}
+                                      >
+                                        삭제
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                {!!items.length && (
-                  <footer className="admin-pagination">
-                    <span>총 {items.length}개 물품</span>
-                  </footer>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {!!items.length && (
+                      <footer className="admin-pagination">
+                        <span>총 {items.length}개 물품</span>
+                      </footer>
+                    )}
+                    {!items.length && (
+                      <div className="admin-empty">
+                        <Box size={34} />
+                        <h2>조건에 맞는 물품이 없어요</h2>
+                        <p>검색어나 필터를 변경해 보세요.</p>
+                      </div>
+                    )}
+                  </>
+                )
+              )}
+            </section>
+          </>
+        )}
+      </main>
+      {!recordsView && (
+        <aside className="admin-detail" aria-label="물품 상세">
+          <header>
+            <h2>물품 상세</h2>
+          </header>
+          {selected ? (
+            <>
+              <div className="admin-detail-art">
+                {selected.image ? (
+                  <img
+                    className="admin-uploaded-image"
+                    src={selected.image}
+                    alt={`${selected.label} 이미지`}
+                  />
+                ) : (
+                  <AssetPhoto kind={selectedKind?.art || 'calculator'} large />
                 )}
-                {!items.length && (
-                  <div className="admin-empty">
-                    <Box size={34} />
-                    <h2>조건에 맞는 물품이 없어요</h2>
-                    <p>검색어나 필터를 변경해 보세요.</p>
+              </div>
+              <span className={`admin-status ${selected.status}`}>{labels[selected.status]}</span>
+              <h3>{itemName(selected)}</h3>
+              <p>{selectedKind?.category}</p>
+              <dl>
+                <div>
+                  <dt>관리번호</dt>
+                  <dd>{itemNumber(selected) || '—'}</dd>
+                </div>
+                <div>
+                  <dt>태그 ID</dt>
+                  <dd>{selected.tag || '태그 미등록'}</dd>
+                </div>
+                <div>
+                  <dt>대여소</dt>
+                  <dd>{station?.name}</dd>
+                </div>
+                <div>
+                  <dt>위치</dt>
+                  <dd>{station?.location}</dd>
+                </div>
+                {!!selected.tag && !selected.active && (
+                  <div>
+                    <dt>태그 상태</dt>
+                    <dd>비활성</dd>
                   </div>
                 )}
-              </>
-            )
-          )}
-        </section>
-      </main>
-      <aside className="admin-detail" aria-label="물품 상세">
-        <header>
-          <h2>물품 상세</h2>
-        </header>
-        {selected ? (
-          <>
-            <div className="admin-detail-art">
-              {selected.image ? (
-                <img
-                  className="admin-uploaded-image"
-                  src={selected.image}
-                  alt={`${selected.label} 이미지`}
-                />
-              ) : (
-                <AssetPhoto kind={selectedKind?.art || 'calculator'} large />
+              </dl>
+              <button className="primary" onClick={() => setEditing(selected)}>
+                {selected.tag ? '물품 수정' : 'NFC 태그 연결 / 물품 수정'}
+              </button>
+              <button
+                className="secondary"
+                disabled={selected.status === 'rented'}
+                onClick={() => setEditing(selected)}
+              >
+                상태 변경
+              </button>
+              {selected.status === 'rented' && (
+                <p className="admin-help">상태 변경은 반납 후 가능합니다.</p>
               )}
+            </>
+          ) : (
+            <div className="admin-detail-empty">
+              <Box size={48} strokeWidth={1.3} />
+              <p>물품을 선택해 주세요</p>
             </div>
-            <span className={`admin-status ${selected.status}`}>{labels[selected.status]}</span>
-            <h3>{itemName(selected)}</h3>
-            <p>{selectedKind?.category}</p>
-            <dl>
-              <div>
-                <dt>관리번호</dt>
-                <dd>{itemNumber(selected) || '—'}</dd>
-              </div>
-              <div>
-                <dt>태그 ID</dt>
-                <dd>{selected.tag || '태그 미등록'}</dd>
-              </div>
-              <div>
-                <dt>대여소</dt>
-                <dd>{station?.name}</dd>
-              </div>
-              <div>
-                <dt>위치</dt>
-                <dd>{station?.location}</dd>
-              </div>
-              {!!selected.tag && !selected.active && (
-                <div>
-                  <dt>태그 상태</dt>
-                  <dd>비활성</dd>
-                </div>
-              )}
-            </dl>
-            <button className="primary" onClick={() => setEditing(selected)}>
-              {selected.tag ? '물품 수정' : 'NFC 태그 연결 / 물품 수정'}
-            </button>
-            <button
-              className="secondary"
-              disabled={selected.status === 'rented'}
-              onClick={() => setEditing(selected)}
-            >
-              상태 변경
-            </button>
-            {selected.status === 'rented' && (
-              <p className="admin-help">상태 변경은 반납 후 가능합니다.</p>
-            )}
-          </>
-        ) : (
-          <div className="admin-detail-empty">
-            <Box size={48} strokeWidth={1.3} />
-            <p>물품을 선택해 주세요</p>
-          </div>
-        )}
-      </aside>
+          )}
+        </aside>
+      )}
       {deleting && (
         <DeleteItem
           item={deleting}
