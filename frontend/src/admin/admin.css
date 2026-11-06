@@ -587,6 +587,14 @@
   background: var(--green);
   color: white;
 }
+.server-admin .admin-pagination {
+  padding: 18px 24px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.server-admin .admin-pagination span { margin-right: auto; }
+.server-admin .admin-pagination button { width: auto; min-width: 54px; padding: 0 10px; }
+.server-admin .admin-pagination button:disabled { opacity: 0.45; }
 .admin-detail {
   position: sticky;
   top: 0;

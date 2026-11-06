@@ -108,6 +108,21 @@ public class ItemService {
                 page, size, result.getTotalElements(), result.getTotalPages());
     }
 
+    @Transactional(readOnly = true)
+    public ItemResponses.ItemPage search(int page, int size, Long itemTypeId, ItemStatus status,
+                                         String keyword, boolean includeTag) {
+        keyword = SearchQuery.keyword(keyword);
+        if (keyword == null) return list(page, size, itemTypeId, status);
+        SearchQuery.page(page, size);
+        String tag = keyword.replaceAll("(?U)[\\s:-]", "").toUpperCase(java.util.Locale.ROOT);
+        String tagPattern = includeTag && !tag.isEmpty() ? SearchQuery.pattern(tag) : null;
+        var result = items.searchFiltered(itemTypeId, status,
+                SearchQuery.pattern(keyword.toLowerCase(java.util.Locale.ROOT)), tagPattern,
+                PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "id")));
+        return new ItemResponses.ItemPage(result.getContent().stream().map(ItemResponses.Detail::from).toList(),
+                page, size, result.getTotalElements(), result.getTotalPages());
+    }
+
     @Transactional
     public void delete(long itemId) {
         var item = items.findForUpdate(itemId).orElseThrow(ItemException::itemNotFound);

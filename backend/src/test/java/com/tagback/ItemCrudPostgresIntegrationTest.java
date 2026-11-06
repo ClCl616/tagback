@@ -196,6 +196,73 @@ class ItemCrudPostgresIntegrationTest {
                 .andExpect(jsonPath("$.items[0].itemId").value(rented));
     }
 
+    @Test void searchAndPublicCatalogApplyCombinedConditionsAndPermissions() throws Exception {
+        String available = create("Blue umbrella", typeId);
+        create("Other umbrella", typeId);
+        create("Blue calculator", otherTypeId);
+        markAvailable(available, "04A1B2C3");
+        jdbc.update("insert into nfc_tags(item_id, tag_uid, deactivated_at) values (?, ?, current_timestamp)",
+                Long.valueOf(available), "DEADBEEF");
+        em.clear();
+
+        mvc.perform(get("/api/v1/items").cookie(member).param("keyword", " BLUE ")
+                .param("itemTypeId", Long.toString(typeId)).param("status", "AVAILABLE"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items[0].itemId").value(available));
+        mvc.perform(get("/api/v1/items").cookie(member).param("keyword", "04A1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
+        mvc.perform(get("/api/v1/admin/items").cookie(admin).param("keyword", "04:a1")
+                .param("status", "AVAILABLE").param("itemTypeId", Long.toString(typeId)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1));
+        mvc.perform(get("/api/v1/admin/items").cookie(admin).param("keyword", "DEAD"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
+        mvc.perform(get("/api/v1/admin/items").cookie(member)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/admin/items")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/catalog/item-types").param("keyword", "blue")
+                .param("availableOnly", "true"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.itemTypes[0].totalCount").value(2))
+                .andExpect(jsonPath("$.itemTypes[0].availableCount").value(1))
+                .andExpect(jsonPath("$.itemTypes[0].tag").doesNotExist());
+        mvc.perform(get("/api/v1/catalog/item-types/" + typeId))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalCount").value(2));
+        mvc.perform(get("/api/v1/catalog/item-types").param("availableOnly", ""))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/items").cookie(member).param("keyword", "%"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
+        mvc.perform(get("/api/v1/items").cookie(member).param("status", "AVAILABLE", "RENTED"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test void adminSearchBoundaryAndSingleConditionsUseActualSessionAndDatabase() throws Exception {
+        String first = create("Blue umbrella", typeId);
+        create("Red umbrella", typeId);
+        create("Blue calculator", otherTypeId);
+        markAvailable(first, "04AABBCC");
+        String root = "/api/v1/admin/items";
+        mvc.perform(get(root).cookie(admin).param("keyword", "blue"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2));
+        mvc.perform(get(root).cookie(admin).param("itemTypeId", Long.toString(typeId)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2));
+        mvc.perform(get(root).cookie(admin).param("status", "AVAILABLE"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1));
+        mvc.perform(get(root).cookie(admin).param("keyword", "  "))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(3));
+        mvc.perform(get(root).cookie(admin).param("keyword", "missing"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items").isEmpty())
+                .andExpect(jsonPath("$.totalElements").value(0)).andExpect(jsonPath("$.totalPages").value(0));
+        mvc.perform(get(root).cookie(admin).param("status", "available"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error.code").value("INVALID_INPUT"));
+        mvc.perform(get(root).cookie(admin).param("page", "1").param("size", "1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.page").value(1));
+        mvc.perform(get(root).cookie(admin).param("keyword", "Blue").param("status", "AVAILABLE")
+                        .param("itemTypeId", Long.toString(typeId)).param("page", "0").param("size", "1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].itemId").value(first));
+        mvc.perform(get(root)).andExpect(status().isUnauthorized());
+        mvc.perform(get(root).cookie(member)).andExpect(status().isForbidden());
+    }
+
     @Test void realTagRentalAndInspectionReferencesPreventDeletionAndHistoryPreventsTypeChange() throws Exception {
         String tagItem = create("태그 물품", typeId);
         String rentalItem = create("대여 물품", typeId);

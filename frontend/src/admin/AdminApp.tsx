@@ -24,6 +24,8 @@ import { adminApi, type ItemDraft } from './adminApi';
 import { ItemRegistration, normalizeUid } from './itemRegistration';
 import { readItemImage } from './itemImage';
 import { CategorySelect } from './CategorySelect';
+import { HTTP_AUTH } from '../shared/authMode';
+import ServerAdminApp from './ServerAdminApp';
 import './admin.css';
 import './reference.css';
 
@@ -45,6 +47,10 @@ function AssetPhoto({ large = false }: { kind?: string; large?: boolean }) {
   );
 }
 export default function AdminApp() {
+  return HTTP_AUTH ? <ServerAdminApp /> : <MockAdminApp />;
+}
+
+function MockAdminApp() {
   const [menu, setMenu] = useState<string>();
   useEffect(() => {
     const outside = (e: PointerEvent) => {

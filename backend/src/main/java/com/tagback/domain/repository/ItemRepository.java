@@ -45,4 +45,14 @@ public interface ItemRepository extends JpaRepository<Item, Long> {
             + "and (:status is null or i.status = :status)")
     Page<Item> findFiltered(@Param("itemTypeId") Long itemTypeId,
                             @Param("status") ItemStatus status, Pageable pageable);
+
+    @EntityGraph(attributePaths = "itemType")
+    @Query("select i from Item i where (:itemTypeId is null or i.itemType.id = :itemTypeId) "
+            + "and (:status is null or i.status = :status) and "
+            + "(lower(i.itemName) like :pattern escape '!' or lower(i.itemType.name) like :pattern escape '!' "
+            + "or (:tagPattern is not null and exists (select t.id from NfcTag t where t.item = i "
+            + "and t.deactivatedAt is null and upper(t.uid) like :tagPattern escape '!')))")
+    Page<Item> searchFiltered(@Param("itemTypeId") Long itemTypeId, @Param("status") ItemStatus status,
+                              @Param("pattern") String pattern, @Param("tagPattern") String tagPattern,
+                              Pageable pageable);
 }
