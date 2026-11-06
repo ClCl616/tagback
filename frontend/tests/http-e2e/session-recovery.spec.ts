@@ -30,6 +30,7 @@ async function server(page: import('@playwright/test').Page) {
 }
 
 test('initial connection failure remains recoverable after closing popup', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await server(page);
   await page.route('**/api/v1/auth/session', (route) => route.abort());
   await page.goto('/mobile');

@@ -11,10 +11,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <Routes>
         <Route path="/mobile/*" element={<MobileApp />} />
         <Route path="/kiosk/*" element={<KioskApp />} />
-        <>
-          <Route path="/admin" element={<AdminApp />} />
-          <Route path="/admin/items" element={<AdminApp />} />
-        </>
+        <Route path="/admin/*" element={<AdminApp />} />
         <Route path="*" element={<Navigate to="/mobile" replace />} />
       </Routes>
     </BrowserRouter>

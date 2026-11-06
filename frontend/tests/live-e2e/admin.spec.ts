@@ -53,7 +53,7 @@ test('real database: admin authorization, item CRUD, tag retry, state history, a
   });
   expect(signup.status(), await signup.text()).toBe(201);
   expect((await request.get('/api/items/1/tag')).status()).toBe(403);
-  await page.goto('/admin');
+  await page.goto('/admin/items');
   await expect(page.getByRole('alert')).toContainText('관리자 계정');
   sql(`update users set role='ADMIN' where phone_number='+82${phone.slice(1)}'`);
   const typeId = sql(
@@ -75,7 +75,7 @@ test('real database: admin authorization, item CRUD, tag retry, state history, a
   const id = sql(`select item_id from items where item_name='${name}'`);
   expect(sql(`select status from items where item_id=${id}`)).toBe('TAG_PENDING');
   expect((await request.get(`/api/items/${id}/tag`)).status()).toBe(200);
-  await page.getByRole('cell', { name, exact: true }).click();
+  await page.getByRole('button', { name: name + ' 상세 보기', exact: true }).click();
   await page.getByRole('button', { name: /물품 수정/ }).click();
   dialog = page.getByRole('dialog', { name: '물품 수정', exact: true });
   await dialog.getByLabel('물품명', { exact: true }).fill(name + '-수정');
@@ -86,7 +86,7 @@ test('real database: admin authorization, item CRUD, tag retry, state history, a
   expect(sql(`select status from items where item_id=${id}`)).toBe('AVAILABLE');
   expect((await request.post(`/api/items/${id}/tag`, { data: { uid } })).status()).toBe(200);
   await page.reload();
-  await page.getByRole('cell', { name: name + '-수정', exact: true }).click();
+  await page.getByRole('button', { name: name + '-수정 상세 보기', exact: true }).click();
   await expect(page.getByRole('complementary', { name: '물품 상세' })).toContainText(uid);
   await page.getByRole('button', { name: '상태 변경', exact: true }).click();
   dialog = page.getByRole('dialog', { name: '상태 변경', exact: true });
@@ -98,25 +98,15 @@ test('real database: admin authorization, item CRUD, tag retry, state history, a
   expect(
     sql(`select count(*) from item_status_history where item_id=${id} and reason='실연동 점검'`),
   ).toBe('1');
-  await page.getByRole('cell', { name: name + '-수정', exact: true }).click();
-  await page.getByRole('button', { name: '물품 삭제', exact: true }).click();
-  await page.getByRole('button', { name: '삭제 확인', exact: true }).click();
-  await expect(page.getByRole('alert')).toBeVisible();
-  expect(sql(`select count(*) from items where item_id=${id}`)).toBe('1');
-  await page
-    .getByRole('dialog', { name: '확인해 주세요' })
-    .getByRole('button', { name: '확인', exact: true })
-    .click();
-  await page
-    .getByRole('dialog', { name: '물품 삭제' })
-    .getByRole('button', { name: '닫기', exact: true })
-    .click();
+  await page.getByRole('button', { name: name + '-수정 상세 보기', exact: true }).click();
+  await expect(page.getByRole('button', { name: '물품 삭제', exact: true })).toBeDisabled();
+  expect((await request.delete('/api/v1/items/' + id)).ok()).toBeFalsy();
   const disposable = await request.post('/api/v1/items', {
     data: { itemName: name + '-삭제', itemTypeId: typeId },
   });
   const disposableId = (await disposable.json()).itemId;
   await page.getByRole('button', { name: '새로고침', exact: true }).click();
-  await page.getByRole('cell', { name: name + '-삭제', exact: true }).click();
+  await page.getByRole('button', { name: name + '-삭제 상세 보기', exact: true }).click();
   await page.getByRole('button', { name: '물품 삭제', exact: true }).click();
   await page.getByRole('button', { name: '삭제 확인', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
@@ -128,10 +118,6 @@ test('real database: admin authorization, item CRUD, tag retry, state history, a
   await dialog.getByLabel('NFC 태그 UID', { exact: true }).fill(uid);
   await dialog.getByRole('button', { name: '등록하기' }).click();
   await expect(dialog.getByRole('button', { name: '태그 연결 재시도' })).toBeVisible();
-  await page
-    .getByRole('dialog', { name: '확인해 주세요' })
-    .getByRole('button', { name: '확인', exact: true })
-    .click();
   await dialog.getByLabel('NFC 태그 UID', { exact: true }).fill('05' + uid.slice(2));
   await dialog.getByRole('button', { name: '태그 연결 재시도' }).click();
   await expect(dialog).toHaveCount(0);
@@ -153,8 +139,10 @@ test('real database: admin authorization, item CRUD, tag retry, state history, a
   await page.reload();
   await page
     .getByRole('navigation', { name: '관리자 메뉴' })
-    .getByRole('button', { name: '사용자 관리' })
+    .getByRole('link', { name: '사용자', exact: true })
     .click();
-  await expect(page.getByRole('cell', { name: '실연동 검증', exact: true }).first()).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: '실연동 검증 상세 보기', exact: true }).first(),
+  ).toBeVisible();
   await page.screenshot({ path: 'test-results/admin-live/users.png', fullPage: true });
 });

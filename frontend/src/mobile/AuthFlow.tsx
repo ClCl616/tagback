@@ -32,21 +32,25 @@ export default function AuthFlow({
   token,
   onLogin,
   onClear,
+  adminDestination,
 }: {
   mode: Mode;
   token: string;
   onLogin: (value: string) => void;
   onClear: () => void;
+  adminDestination?: string;
 }) {
   const nav = useNavigate(),
     [params] = useSearchParams();
   const next = params.get('next');
+  const authBase = adminDestination ? '/admin' : '/mobile';
   const destination =
-    next &&
+    adminDestination ||
+    (next &&
     /^\/mobile(?:\/|$)/.test(next) &&
     !/^\/mobile\/(login|signup|recover|change-phone)/.test(next)
       ? next
-      : '/mobile/account';
+      : '/mobile');
   const [name, setName] = useState('');
   const [occupation, setOccupation] = useState('');
   const [step, setStep] = useState<Step>('boot');
@@ -118,7 +122,14 @@ export default function AuthFlow({
           reset: 'recover',
           change: 'change-phone',
         }[saved.mode];
-        nav('/mobile/' + route + '?next=' + encodeURIComponent(destination), { replace: true });
+        nav(
+          (adminDestination && ['login', 'recover'].includes(route) ? authBase : '/mobile') +
+            '/' +
+            route +
+            '?next=' +
+            encodeURIComponent(destination),
+          { replace: true },
+        );
       }
       setUnknown(saved.id);
       setStep('phone');
@@ -278,7 +289,7 @@ export default function AuthFlow({
     setFirstPin('');
     if ('token' in result) {
       onLogin(result.token);
-      nav('/mobile', { replace: true });
+      nav(destination, { replace: true });
     } else {
       onClear();
       setStep('done');
@@ -426,6 +437,8 @@ export default function AuthFlow({
       </div>
     );
   const isPin = ['pin', 'setup', 'confirm'].includes(step);
+  const fieldError =
+    error instanceof Error ? error.message : typeof error === 'string' ? error : '';
   return (
     <div className="page-content auth-flow">
       <div className="auth-topline">
@@ -435,7 +448,7 @@ export default function AuthFlow({
             disabled={busy || !!unknown}
             onClick={() => {
               if (mode === 'reset') {
-                nav('/mobile/account');
+                nav(adminDestination ? '/admin/login' : '/mobile/account');
                 return;
               }
               if (step === 'confirm') {
@@ -443,7 +456,7 @@ export default function AuthFlow({
                 setPin('');
                 setFirstPin('');
               } else if (isPin) startPhone();
-              else nav('/mobile');
+              else nav(adminDestination ? '/admin' : '/mobile');
             }}
             aria-label="이전"
           >
@@ -452,6 +465,15 @@ export default function AuthFlow({
         )}
         <span>{mode === 'reset' ? 'PIN 재설정' : mode === 'signup' ? '회원가입' : '로그인'}</span>
       </div>
+      {mode === 'signup' && !unknown && ['phone', 'setup', 'confirm'].includes(step) && (
+        <p className="signup-progress">
+          {step === 'phone'
+            ? '2 / 4 · 본인 인증'
+            : step === 'setup'
+              ? '3 / 4 · PIN 설정'
+              : '4 / 4 · PIN 확인'}
+        </p>
+      )}
       {unknown ? (
         <>
           <h1>처리 결과를 확인해 주세요.</h1>
@@ -561,7 +583,7 @@ export default function AuthFlow({
           <ShieldCheck className="auth-symbol" />
           <h1>{'PIN이 재설정되었습니다.'}</h1>
           <p>{'새 PIN으로 다시 로그인해 주세요.'}</p>
-          <Link className="primary full" to="/mobile/login">
+          <Link className="primary full" to={authBase + '/login'}>
             로그인으로
           </Link>
         </>
@@ -574,7 +596,7 @@ export default function AuthFlow({
               ? 'PIN 찾기에서 등록된 전화번호로 문자를 인증한 뒤 새 PIN을 설정해 주세요.'
               : '등록된 전화번호를 확인한 뒤 다시 인증해 주세요.'}
           </p>
-          <Link className="primary full" to="/mobile/login">
+          <Link className="primary full" to={authBase + '/login'}>
             로그인으로 돌아가기
           </Link>
           {mode === 'reset' ? (
@@ -582,7 +604,7 @@ export default function AuthFlow({
               전화번호 다시 입력
             </button>
           ) : (
-            <Link className="text-link" to="/mobile/recover">
+            <Link className="text-link" to={authBase + '/recover'}>
               PIN 찾기로
             </Link>
           )}
@@ -625,6 +647,8 @@ export default function AuthFlow({
                 </div>
                 <input
                   aria-label="PIN 번호"
+                  aria-invalid={!!fieldError}
+                  aria-describedby={fieldError ? 'user-pin-error' : undefined}
                   type="password"
                   inputMode="numeric"
                   autoComplete={step === 'pin' ? 'current-password' : 'new-password'}
@@ -634,6 +658,11 @@ export default function AuthFlow({
                   onChange={(e) => editPin(e.target.value)}
                 />
               </div>
+              {fieldError && (
+                <p className="uw-field-error" id="user-pin-error">
+                  {fieldError}
+                </p>
+              )}
               <div className="pin-keypad" aria-label="숫자 키패드">
                 {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clear', '0', 'delete'].map(
                   (key) => (
@@ -675,7 +704,7 @@ export default function AuthFlow({
                 <button
                   className="primary full"
                   type="submit"
-                  disabled={busy || wait > 0 || locked || proofExpired}
+                  disabled={busy || wait > 0 || locked || proofExpired || pin.length !== 6}
                 >
                   {busy
                     ? '확인 중…'
@@ -698,8 +727,10 @@ export default function AuthFlow({
 
           {step === 'pin' && (
             <div className="auth-links">
-              <Link to="/mobile/recover">PIN 찾기</Link>
-              <Link to={'/mobile/signup?next=' + encodeURIComponent(destination)}>회원가입</Link>
+              <Link to={authBase + '/recover'}>PIN 찾기</Link>
+              {!adminDestination && (
+                <Link to={'/mobile/signup?next=' + encodeURIComponent(destination)}>회원가입</Link>
+              )}
             </div>
           )}
         </>
@@ -731,6 +762,8 @@ export default function AuthFlow({
                   type="tel"
                   autoComplete="tel"
                   placeholder="010-0000-0000"
+                  aria-invalid={!!fieldError && !challenge}
+                  aria-describedby={fieldError && !challenge ? 'user-phone-error' : undefined}
                   value={phone}
                   disabled={busy}
                   onChange={(e) => {
@@ -747,6 +780,11 @@ export default function AuthFlow({
                   }}
                 />
               </label>
+              {fieldError && !challenge && (
+                <p className="uw-field-error" id="user-phone-error">
+                  {fieldError}
+                </p>
+              )}
               {mode === 'access' ? (
                 <button className="primary full" type="submit" disabled={busy}>
                   다음
@@ -770,6 +808,10 @@ export default function AuthFlow({
                         </div>
                         <input
                           id="sms-code"
+                          aria-invalid={!!fieldError || remaining === 0}
+                          aria-describedby={
+                            fieldError || remaining === 0 ? 'user-sms-error' : undefined
+                          }
                           inputMode="numeric"
                           autoComplete="one-time-code"
                           maxLength={6}
@@ -778,6 +820,11 @@ export default function AuthFlow({
                           disabled={busy || smsRestart || remaining === 0}
                           onChange={(e) => setSms(e.target.value.replace(/\D/g, ''))}
                         />
+                        {(fieldError || remaining === 0) && (
+                          <p className="uw-field-error" id="user-sms-error">
+                            {fieldError || '인증번호가 만료되었어요. 새 인증번호를 받아 주세요.'}
+                          </p>
+                        )}
                       </div>
                       <div className={mode === 'signup' ? 'signup-actions' : undefined}>
                         {mode === 'signup' && (
@@ -834,9 +881,9 @@ export default function AuthFlow({
 
           {mode !== 'reset' && (
             <div className="auth-links">
-              {mode !== 'access' && <Link to="/mobile/login">로그인</Link>}
-              <Link to="/mobile/recover">PIN 찾기</Link>
-              {mode !== 'signup' && <Link to="/mobile/signup">회원가입</Link>}
+              {mode !== 'access' && <Link to={authBase + '/login'}>로그인</Link>}
+              <Link to={authBase + '/recover'}>PIN 찾기</Link>
+              {!adminDestination && mode !== 'signup' && <Link to="/mobile/signup">회원가입</Link>}
             </div>
           )}
         </>
@@ -883,7 +930,7 @@ export default function AuthFlow({
             label: '로그인하기',
             onClick: () => {
               clearDraft(mode);
-              nav('/mobile/login', { replace: true });
+              nav(authBase + '/login', { replace: true });
             },
           }}
         >
@@ -900,9 +947,17 @@ export default function AuthFlow({
             setMissingAccount(false);
             startPhone();
           }}
-          action={{ label: '회원가입', onClick: () => nav('/mobile/signup') }}
+          action={
+            adminDestination
+              ? undefined
+              : { label: '회원가입', onClick: () => nav('/mobile/signup') }
+          }
         >
-          <p>전화번호를 다시 확인하거나 회원가입을 진행해 주세요.</p>
+          <p>
+            {adminDestination
+              ? '관리자 계정의 전화번호를 다시 확인해 주세요.'
+              : '전화번호를 다시 확인하거나 회원가입을 진행해 주세요.'}
+          </p>
         </MessagePopup>
       )}
     </div>
