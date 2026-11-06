@@ -42,6 +42,14 @@ public class TagRegistrationService {
             return result;
         }
         if (tagRepository.findByUid(uid).isPresent()) {
+            // Another request may have committed this exact pair after the first lookup.
+            // Re-read the active tag: UID history alone also includes deactivated tags.
+            Optional<NfcTag> current = tagRepository.findByItem_Id(itemId);
+            if (current.isPresent() && uid.equals(current.get().getUid())) {
+                RegistrationResult result = existingOrConflict(current.get(), itemId, uid);
+                writer.makeAvailableIfTagged(itemId, actorUserId);
+                return result;
+            }
             throw alreadyRegistered();
         }
 
