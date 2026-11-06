@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { HTTP_AUTH } from '../shared/authMode';
 import { loadAdminData, type AdminData } from './adminQueries';
 import './admin-records.css';
-
 const labels: Record<string, string> = {
   AVAILABLE: '대여 가능',
   TAG_PENDING: '태그 등록 대기',
@@ -103,11 +101,7 @@ export default function AdminRecords({
                     ? '점검·수리'
                     : '물품 관리'}
             </h1>
-            <p>
-              {HTTP_AUTH
-                ? '물품과 사용자, 대여 현황을 한곳에서 확인하세요.'
-                : '개발용 모의 데이터 · 실제 운영 정보가 아닙니다.'}
-            </p>
+            <p>{'물품과 사용자, 대여 현황을 한곳에서 확인하세요.'}</p>
           </div>
           <button onClick={() => setReload((v) => v + 1)}>새로고침</button>
         </div>

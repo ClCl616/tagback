@@ -1,6 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 
 async function mockServer(page: Page, role = 'ADMIN') {
+  await page.route('**/api/v1/item-types', (route) =>
+    route.fulfill({ json: { itemTypes: [{ itemTypeId: '1', itemTypeName: '장비' }] } }),
+  );
   const requests: string[] = [];
   const date = '2026-11-06T03:00:00Z';
   await page.route('**/api/v1/auth/session', (route) =>
@@ -29,6 +32,7 @@ async function mockServer(page: Page, role = 'ADMIN') {
         itemId: String(i + 1),
         itemName: `물품 ${i + 1}`,
         itemTypeName: '장비',
+        itemTypeId: '1',
         status: i === 104 ? 'TAG_PENDING' : 'AVAILABLE',
       }));
     else if (key === 'users')
@@ -63,16 +67,19 @@ test('global search includes later server pages, filters reset pagination, and c
 }) => {
   const requests = await mockServer(page);
   await page.goto('/admin');
-  await expect(page.getByText('검색 결과 105건 / 전체 105건')).toBeVisible();
+  await expect(page.getByText('총 105개 물품')).toBeVisible();
   expect(requests.some((r) => r.includes('items?page=1'))).toBeTruthy();
   await page.getByRole('button', { name: '다음', exact: true }).click();
-  await expect(page.getByText('2 / 6 페이지')).toBeVisible();
-  await page.getByLabel('검색', { exact: true }).fill('물품 105');
+  await expect(page.getByText('2 / 6')).toBeVisible();
+  await page.getByLabel('물품 검색', { exact: true }).fill('물품 105');
   await expect(page.getByRole('cell', { name: '물품 105', exact: true })).toBeVisible();
-  await expect(page.getByText('1 / 1 페이지')).toBeVisible();
-  await page.getByLabel('상태', { exact: true }).selectOption('AVAILABLE');
-  await expect(page.getByText('조건에 맞는 결과가 없습니다.')).toBeVisible();
-  await page.getByRole('button', { name: '조건 초기화' }).click();
+  await expect(page.getByText('1 / 1')).toBeVisible();
+  await page.getByLabel('상태 필터', { exact: true }).selectOption('available');
+  await expect(page.getByText('조건에 맞는 물품이 없어요')).toBeVisible();
+  await page
+    .getByRole('navigation', { name: '관리자 메뉴' })
+    .getByRole('button', { name: '대여 현황', exact: true })
+    .click();
   await page
     .getByRole('region', { name: '전체 현황' })
     .getByRole('button', { name: '대여 중 2' })
@@ -95,19 +102,27 @@ test('ordinary users never request administrator data', async ({ page }) => {
 test('expired session clears displayed data and retry recovers', async ({ page }) => {
   await mockServer(page);
   await page.goto('/admin');
-  await expect(page.getByText('검색 결과 105건 / 전체 105건')).toBeVisible();
+  await page
+    .getByRole('navigation', { name: '관리자 메뉴' })
+    .getByRole('button', { name: '사용자 관리', exact: true })
+    .click();
+  await expect(page.getByText('검색 결과 1건 / 전체 1건')).toBeVisible();
   await page.route('**/api/v1/admin/users?**', (route) => route.fulfill({ status: 401, json: {} }));
   await page.getByRole('button', { name: '새로고침', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('로그인이 만료');
+  await expect(page.getByRole('alert')).toContainText('로그인이 필요');
   await expect(page.getByRole('table')).toHaveCount(0);
   await page.unroute('**/api/v1/admin/users?**');
   await page.getByRole('button', { name: '다시 시도' }).click();
-  await expect(page.getByText('검색 결과 105건 / 전체 105건')).toBeVisible();
+  await expect(page.getByText('검색 결과 1건 / 전체 1건')).toBeVisible();
 });
 test('partial responses are rejected and narrow layout stays within viewport', async ({ page }) => {
   await mockServer(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/admin');
+  await page
+    .getByRole('navigation', { name: '관리자 메뉴' })
+    .getByRole('button', { name: '사용자 관리', exact: true })
+    .click();
   await expect(page.getByRole('table')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: 'test-results/admin-records-mobile.png', fullPage: true });

@@ -6,16 +6,15 @@ import {
   writeSmsDraft,
   phoneKey,
 } from '../shared/authDraft';
-import { HTTP_AUTH, COOKIE_SESSION } from '../shared/authMode';
+import { COOKIE_SESSION } from '../shared/authMode';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Delete, LockKeyhole, Smartphone, ShieldCheck } from 'lucide-react';
 import { authApi } from '../shared/auth';
 import { api, phoneValid, ServiceError } from '../shared/api';
-import { browserSource, pinError, REGISTRATION_KEY } from '../shared/authPolicy';
+import { pinError } from '../shared/authPolicy';
 import type { AuthResult, Challenge, Purpose, Verification } from '../shared/authTypes';
 import { ErrorBox, Loading, MessagePopup } from '../shared/ui';
-
 type Mode = 'access' | 'signup' | 'reset' | 'change';
 type Step =
   | 'profile'
@@ -27,7 +26,7 @@ type Step =
   | 'blocked'
   | 'change-confirm'
   | 'done';
-const PENDING = HTTP_AUTH ? 'tagback.http.pending-auth' : 'tagback.mobile.pending-auth';
+const PENDING = 'tagback.http.pending-auth';
 export default function AuthFlow({
   mode,
   token,
@@ -78,7 +77,7 @@ export default function AuthFlow({
   const [retryAt, setRetryAt] = useState(0),
     [locked, setLocked] = useState(false);
   const [now, setNow] = useState(Date.now()),
-    [source] = useState(browserSource);
+    [source] = useState('');
   const alive = useRef(true),
     running = useRef(false),
     operationId = useRef('');
@@ -100,7 +99,10 @@ export default function AuthFlow({
     const timer = setInterval(() => setNow(Date.now()), 1000);
     const pending = sessionStorage.getItem(PENDING);
     if (pending) {
-      let saved: { id: string; mode: Mode };
+      let saved: {
+        id: string;
+        mode: Mode;
+      };
       try {
         const parsed = JSON.parse(pending);
         if (!parsed.id || !['access', 'signup', 'reset', 'change'].includes(parsed.mode))
@@ -130,7 +132,7 @@ export default function AuthFlow({
               setStep('pin');
             }
           } else if (mode === 'access') {
-            const value = HTTP_AUTH ? COOKIE_SESSION : localStorage.getItem(REGISTRATION_KEY) || '';
+            const value = COOKIE_SESSION;
             const reg = value ? await authApi.registration(value) : null;
             if (!alive.current) return;
             if (reg) {
@@ -140,7 +142,6 @@ export default function AuthFlow({
               setLocked(reg.locked);
               setStep('pin');
             } else {
-              localStorage.removeItem(REGISTRATION_KEY);
               setStep('phone');
             }
           } else {
@@ -241,7 +242,7 @@ export default function AuthFlow({
             startPhone();
             setError(e);
           }
-          if (HTTP_AUTH) operationId.current = '';
+          operationId.current = '';
         }
         if (
           [
@@ -276,11 +277,9 @@ export default function AuthFlow({
     setPin('');
     setFirstPin('');
     if ('token' in result) {
-      if (!HTTP_AUTH) localStorage.setItem(REGISTRATION_KEY, result.registration);
       onLogin(result.token);
-      nav(HTTP_AUTH || mode === 'access' ? '/mobile' : destination, { replace: true });
+      nav('/mobile', { replace: true });
     } else {
-      localStorage.removeItem(REGISTRATION_KEY);
       onClear();
       setStep('done');
     }
@@ -342,16 +341,7 @@ export default function AuthFlow({
       setMask(v.maskedPhone);
       setPin('');
       setNotice('');
-      if (HTTP_AUTH) setStep('setup');
-      else if (mode === 'reset') setStep(v.existing ? 'setup' : 'blocked');
-      else if (mode === 'change') setStep('change-confirm');
-      else if (v.needsPin) {
-        setStep('blocked');
-        setNotice('PIN 설정이 필요합니다. PIN 찾기에서 문자 인증 후 설정해 주세요.');
-      } else {
-        setStep(v.existing ? 'pin' : 'setup');
-        setNotice(v.existing ? '기존 계정을 확인했습니다. 기존 PIN으로 로그인해 주세요.' : '');
-      }
+      setStep('setup');
     });
   }
   async function submitPin(e?: React.FormEvent) {
@@ -428,7 +418,7 @@ export default function AuthFlow({
       setStep('profile');
     } else nav('/mobile/login');
   }
-  if (HTTP_AUTH && mode === 'change')
+  if (mode === 'change')
     return (
       <div className="page-content">
         <p>전화번호 변경은 아직 지원하지 않습니다.</p>
@@ -452,7 +442,7 @@ export default function AuthFlow({
                 setStep('setup');
                 setPin('');
                 setFirstPin('');
-              } else if (isPin && mode !== 'change') startPhone();
+              } else if (isPin) startPhone();
               else nav('/mobile');
             }}
             aria-label="이전"
@@ -460,15 +450,7 @@ export default function AuthFlow({
             <ArrowLeft size={20} />
           </button>
         )}
-        <span>
-          {mode === 'reset'
-            ? 'PIN 재설정'
-            : mode === 'change'
-              ? '전화번호 변경'
-              : mode === 'signup'
-                ? '회원가입'
-                : '로그인'}
-        </span>
+        <span>{mode === 'reset' ? 'PIN 재설정' : mode === 'signup' ? '회원가입' : '로그인'}</span>
       </div>
       {unknown ? (
         <>
@@ -488,11 +470,7 @@ export default function AuthFlow({
                   sessionStorage.removeItem(PENDING);
                   setUnknown('');
                   startPhone();
-                  setNotice(
-                    HTTP_AUTH
-                      ? '로그인 세션을 확인하지 못했습니다. 이미 가입했다면 로그인해 주세요.'
-                      : '저장된 결과가 없습니다. 인증부터 다시 진행해 주세요.',
-                  );
+                  setNotice('로그인 세션을 확인하지 못했습니다. 이미 가입했다면 로그인해 주세요.');
                 }
               })
             }
@@ -581,12 +559,8 @@ export default function AuthFlow({
       ) : step === 'done' ? (
         <>
           <ShieldCheck className="auth-symbol" />
-          <h1>{mode === 'change' ? '전화번호가 변경되었습니다.' : 'PIN이 재설정되었습니다.'}</h1>
-          <p>
-            {mode === 'change'
-              ? '변경한 전화번호로 다시 로그인해 주세요.'
-              : '새 PIN으로 다시 로그인해 주세요.'}
-          </p>
+          <h1>{'PIN이 재설정되었습니다.'}</h1>
+          <p>{'새 PIN으로 다시 로그인해 주세요.'}</p>
           <Link className="primary full" to="/mobile/login">
             로그인으로
           </Link>
@@ -715,16 +689,14 @@ export default function AuthFlow({
                           ? mode === 'reset'
                             ? 'PIN 재설정'
                             : '가입 완료'
-                          : mode === 'change'
-                            ? '계정 확인'
-                            : '로그인'}
+                          : '로그인'}
                   <ArrowRight size={18} />
                 </button>
               </div>
             </form>
           </section>
 
-          {step === 'pin' && mode !== 'change' && (
+          {step === 'pin' && (
             <div className="auth-links">
               <Link to="/mobile/recover">PIN 찾기</Link>
               <Link to={'/mobile/signup?next=' + encodeURIComponent(destination)}>회원가입</Link>
@@ -736,11 +708,7 @@ export default function AuthFlow({
           <section className="auth-login-card">
             <Smartphone className="auth-symbol" />
             <h1>
-              {mode === 'change'
-                ? '새 전화번호를 입력해 주세요.'
-                : mode === 'reset'
-                  ? '등록된 전화번호를 확인해 주세요.'
-                  : '전화번호를 입력해 주세요.'}
+              {mode === 'reset' ? '등록된 전화번호를 확인해 주세요.' : '전화번호를 입력해 주세요.'}
             </h1>
             <form
               onSubmit={(e) => {

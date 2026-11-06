@@ -1,4 +1,4 @@
-export type ItemStatus = 'available' | 'rented' | 'inspection' | 'repair';
+export type ItemStatus = 'pending' | 'available' | 'rented' | 'inspection' | 'repair';
 export type Station = { id: string; name: string; location: string };
 export type Kind = {
   id: string;
@@ -16,6 +16,7 @@ export type Item = {
   stationId: string;
   tag: string;
   active: boolean;
+  tagKnown?: boolean;
   deleted?: boolean;
   status: ItemStatus;
   image?: string;
@@ -29,6 +30,9 @@ export type Rental = {
   dueAt: number;
   returnedAt?: number;
   condition?: 'normal' | 'damaged';
+  itemName?: string;
+  itemTypeName?: string;
+  overdue?: boolean;
 };
 export type User = {
   id: string;
@@ -47,18 +51,16 @@ export type Grant = {
   expiresAt: number;
   maskedPhone: string;
 };
-export type NfcScanProof = { bridgeId: string; uid: string; issuedAt: number; nonce: string; signature: string };
+export type NfcScanProof = {
+  bridgeId: string;
+  uid: string;
+  issuedAt: number;
+  nonce: string;
+  signature: string;
+};
 export type NfcRead = { uid: string; proof?: NfcScanProof };
 export type Catalog = { categories?: string[]; kinds: Kind[]; items: Item[]; stations: Station[] };
 export type Receipt = { operationId: string; item: Item; rental: Rental; type: 'rent' | 'return' };
-export type Fault = '' | 'network' | 'timeout' | 'save' | 'unknown' | 'conflict';
-export type DemoControls = {
-  reader: boolean;
-  service: boolean;
-  nextFault: Fault;
-  nextTarget: 'any' | 'read' | 'auth' | 'verify' | 'scan' | 'save';
-  sessionSeconds: number;
-};
 export interface ServiceApi {
   catalog(grant?: Grant): Promise<Catalog>;
   logout(token: string): Promise<void>;
@@ -72,7 +74,12 @@ export interface ServiceApi {
     kindId?: string,
     grant?: Grant,
     proof?: NfcScanProof,
-  ): Promise<{ item: Item; rental?: Rental; returnScanTicketId?: string; returnScanProof?: NfcScanProof }>;
+  ): Promise<{
+    item: Item;
+    rental?: Rental;
+    returnScanTicketId?: string;
+    returnScanProof?: NfcScanProof;
+  }>;
   rent(operationId: string, grant: Grant, itemId: string, kindId: string): Promise<Receipt>;
   returnItem(
     operationId: string,

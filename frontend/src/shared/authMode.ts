@@ -1,3 +1,2 @@
-export const HTTP_AUTH = import.meta.env.VITE_AUTH_MODE === 'http';
-// UI-only marker. Never a credential and never persisted.
+// UI marker only; the authenticated session is held by the server cookie.
 export const COOKIE_SESSION = 'cookie-session';

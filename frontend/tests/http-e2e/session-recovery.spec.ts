@@ -89,3 +89,12 @@ test('an existing session does not prove a lost PIN reset completed after reload
   await expect(page).toHaveURL(/\/mobile\/recover$/);
   await expect(page.getByRole('heading', { name: 'PIN이 재설정되었습니다.' })).toHaveCount(0);
 });
+
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/v1/items?**', (route) =>
+    route.fulfill({ json: { items: [], page: 0, size: 100, totalElements: 0, totalPages: 0 } }),
+  );
+  await page.route('**/api/v1/rentals/me?**', (route) =>
+    route.fulfill({ json: { rentals: [], page: 0, size: 100, totalElements: 0, totalPages: 0 } }),
+  );
+});

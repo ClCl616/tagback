@@ -41,14 +41,12 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build and typecheck
         run: pnpm build
-      - name: Test mock API contracts
+      - name: Test API adapters
         run: pnpm test
       - name: Install Chromium and system dependencies
         run: pnpm exec playwright install --with-deps chromium
       - name: Test browser flows
         run: pnpm test:e2e
-      - name: Test HTTP authentication flows
-        run: pnpm test:http
       - name: Test NFC bridge browser flows
         run: pnpm exec playwright test -c playwright.bridge.config.ts
       - name: Upload browser test results

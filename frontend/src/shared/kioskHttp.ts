@@ -1,4 +1,4 @@
-import { MOCK } from './config';
+import { KIOSK } from './config';
 import { ServiceError } from './serviceError';
 import type { Catalog, Grant, Item, Receipt, NfcScanProof } from './types';
 
@@ -8,10 +8,14 @@ export type ServerConnection = 'unknown' | 'connected' | 'disconnected';
 let serverConnection: ServerConnection = 'unknown';
 let connectionRevision = 0;
 const connectionListeners = new Set<(status: ServerConnection) => void>();
-export function subscribeServerConnection(listener: (status: ServerConnection) => void): () => void {
+export function subscribeServerConnection(
+  listener: (status: ServerConnection) => void,
+): () => void {
   connectionListeners.add(listener);
   listener(serverConnection);
-  return () => { connectionListeners.delete(listener); };
+  return () => {
+    connectionListeners.delete(listener);
+  };
 }
 function updateServerConnection(status: ServerConnection) {
   connectionRevision++;
@@ -22,7 +26,9 @@ export async function probeServerConnection(): Promise<void> {
   const revision = connectionRevision;
   try {
     const response = await fetch('/api/v1/kiosk/health', {
-      cache: 'no-store', credentials: 'omit', signal: AbortSignal.timeout(3_000),
+      cache: 'no-store',
+      credentials: 'omit',
+      signal: AbortSignal.timeout(3_000),
     });
     if (revision === connectionRevision)
       updateServerConnection(response.ok ? 'connected' : 'disconnected');
@@ -30,56 +36,104 @@ export async function probeServerConnection(): Promise<void> {
     if (revision === connectionRevision) updateServerConnection('disconnected');
   }
 }
-function hasBackendErrorShape(data: unknown): data is { error: { code: string; message?: unknown } } {
+function hasBackendErrorShape(
+  data: unknown,
+): data is { error: { code: string; message?: unknown } } {
   if (!data || typeof data !== 'object' || !('error' in data)) return false;
   const error = data.error;
   return !!error && typeof error === 'object' && 'code' in error && typeof error.code === 'string';
 }
 const positiveId = (value: unknown): value is string =>
-  typeof value === 'string' && /^[1-9][0-9]*$/.test(value) &&
+  typeof value === 'string' &&
+  /^[1-9][0-9]*$/.test(value) &&
   (value.length < 19 || (value.length === 19 && value <= '9223372036854775807'));
 const timestamp = (value: unknown) => {
   const parsed = typeof value === 'string' ? Date.parse(value) : NaN;
-  if (!Number.isFinite(parsed)) throw new ServiceError('UNKNOWN', '서버 응답을 확인하지 못했습니다.');
+  if (!Number.isFinite(parsed))
+    throw new ServiceError('UNKNOWN', '서버 응답을 확인하지 못했습니다.');
   return parsed;
 };
 
-function mapError(action: Action, status: number, code: unknown, message: unknown, retryAt: unknown): never {
+function mapError(
+  action: Action,
+  status: number,
+  code: unknown,
+  message: unknown,
+  retryAt: unknown,
+): never {
   const safe = typeof message === 'string' ? message : '요청을 처리하지 못했습니다.';
   if ((action === 'rent' || action === 'return') && status >= 500)
-    throw new ServiceError('UNKNOWN', '처리 결과를 확인하지 못했습니다. 같은 요청으로 결과를 확인해 주세요.');
+    throw new ServiceError(
+      'UNKNOWN',
+      '처리 결과를 확인하지 못했습니다. 같은 요청으로 결과를 확인해 주세요.',
+    );
   switch (code) {
-    case 'RENTAL_CODE_INVALID': throw new ServiceError('CODE_INVALID', safe);
-    case 'RENTAL_CODE_CONSUMED': throw new ServiceError('CODE_USED', safe);
-    case 'RENTAL_CODE_EXPIRED': throw new ServiceError('CODE_EXPIRED', safe);
-    case 'RETURN_CODE_INVALID': throw new ServiceError('RETURN_CODE_INVALID', safe);
+    case 'RENTAL_CODE_INVALID':
+      throw new ServiceError('CODE_INVALID', safe);
+    case 'RENTAL_CODE_CONSUMED':
+      throw new ServiceError('CODE_USED', safe);
+    case 'RENTAL_CODE_EXPIRED':
+      throw new ServiceError('CODE_EXPIRED', safe);
+    case 'RETURN_CODE_INVALID':
+      throw new ServiceError('RETURN_CODE_INVALID', safe);
     case 'RENTAL_GRANT_REQUIRED':
     case 'RENTAL_GRANT_INVALID':
       throw new ServiceError('AUTH', safe);
     case 'RENTAL_GRANT_EXPIRED':
       throw new ServiceError(action === 'rent' ? 'GRANT_EXPIRED' : 'AUTH', safe);
-    case 'TAG_NOT_FOUND': throw new ServiceError('TAG_UNKNOWN', '등록되지 않은 태그입니다.');
-    case 'TAG_INACTIVE': throw new ServiceError('TAG_INACTIVE', '사용 중지된 태그입니다.');
-    case 'ITEM_NOT_AVAILABLE': throw new ServiceError(action === 'scan' ? 'UNAVAILABLE' : 'CONFLICT', safe);
-    case 'ITEM_TYPE_MISMATCH': throw new ServiceError('MISMATCH', '선택한 종류와 다른 물품입니다.');
-    case 'RENTAL_ALREADY_ACTIVE': throw new ServiceError('CONFLICT', safe);
+    case 'TAG_NOT_FOUND':
+      throw new ServiceError('TAG_UNKNOWN', '등록되지 않은 태그입니다.');
+    case 'TAG_INACTIVE':
+      throw new ServiceError('TAG_INACTIVE', '사용 중지된 태그입니다.');
+    case 'ITEM_NOT_AVAILABLE':
+      throw new ServiceError(action === 'scan' ? 'UNAVAILABLE' : 'CONFLICT', safe);
+    case 'ITEM_TYPE_MISMATCH':
+      throw new ServiceError('MISMATCH', '선택한 종류와 다른 물품입니다.');
+    case 'RENTAL_ALREADY_ACTIVE':
+      throw new ServiceError('CONFLICT', safe);
     case 'RENTAL_NOT_ACTIVE':
-      if (action === 'return-scan') throw new ServiceError('RENTAL_NOT_ACTIVE', '등록되지 않았거나 반납할 대여가 없는 태그입니다. 태그를 확인해 주세요.');
-      if (action === 'return') throw new ServiceError('RENTAL_NOT_ACTIVE', '이미 반납되었거나 진행 중인 대여가 없습니다.');
+      if (action === 'return-scan')
+        throw new ServiceError(
+          'RENTAL_NOT_ACTIVE',
+          '등록되지 않았거나 반납할 대여가 없는 태그입니다. 태그를 확인해 주세요.',
+        );
+      if (action === 'return')
+        throw new ServiceError('RENTAL_NOT_ACTIVE', '이미 반납되었거나 진행 중인 대여가 없습니다.');
       break;
     case 'RENTAL_STATE_CONFLICT':
       if (action === 'return' || action === 'return-scan')
-        throw new ServiceError('RENTAL_STATE_CONFLICT', '물품 상태가 변경되었습니다. 관리자에게 문의해 주세요.');
+        throw new ServiceError(
+          'RENTAL_STATE_CONFLICT',
+          '물품 상태가 변경되었습니다. 관리자에게 문의해 주세요.',
+        );
       break;
     case 'RENTAL_VERIFICATION_LIMITED': {
       if (action !== 'return') break;
       const parsed = typeof retryAt === 'string' ? Date.parse(retryAt) : NaN;
-      const time = Number.isFinite(parsed) ? new Date(parsed).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }) : undefined;
-      throw new ServiceError('RENTAL_VERIFICATION_LIMITED', time ? `요청이 많습니다. ${time} 이후 다시 시도해 주세요.` : '요청이 많습니다. 잠시 후 다시 시도해 주세요.', Number.isFinite(parsed) ? parsed : undefined);
+      const time = Number.isFinite(parsed)
+        ? new Date(parsed).toLocaleTimeString('ko-KR', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hourCycle: 'h23',
+          })
+        : undefined;
+      throw new ServiceError(
+        'RENTAL_VERIFICATION_LIMITED',
+        time
+          ? `요청이 많습니다. ${time} 이후 다시 시도해 주세요.`
+          : '요청이 많습니다. 잠시 후 다시 시도해 주세요.',
+        Number.isFinite(parsed) ? parsed : undefined,
+      );
     }
     case 'NFC_SCAN_REQUIRED':
     case 'NFC_SCAN_ALREADY_USED':
-      throw new ServiceError('NFC_SCAN_REQUIRED', action === 'return' ? '인식 정보가 만료되었거나 올바르지 않아요. 물품을 다시 인식해 주세요.' : safe);
+      throw new ServiceError(
+        'NFC_SCAN_REQUIRED',
+        action === 'return'
+          ? '인식 정보가 만료되었거나 올바르지 않아요. 물품을 다시 인식해 주세요.'
+          : safe,
+      );
     default:
       if (status === 401) throw new ServiceError('AUTH', '대여 코드를 다시 확인해 주세요.');
       throw new ServiceError(typeof code === 'string' ? code : 'UNKNOWN', safe);
@@ -87,8 +141,14 @@ function mapError(action: Action, status: number, code: unknown, message: unknow
   throw new ServiceError(typeof code === 'string' ? code : 'UNKNOWN', safe);
 }
 
-async function request(path: string, action: Action, method = 'GET', grant?: Grant,
-                       body?: unknown, key?: string): Promise<any> {
+async function request(
+  path: string,
+  action: Action,
+  method = 'GET',
+  grant?: Grant,
+  body?: unknown,
+  key?: string,
+): Promise<any> {
   let response: Response;
   try {
     response = await fetch(path, {
@@ -106,7 +166,10 @@ async function request(path: string, action: Action, method = 'GET', grant?: Gra
   } catch (error) {
     updateServerConnection('disconnected');
     if (action === 'rent' || action === 'return')
-      throw new ServiceError('UNKNOWN', '응답을 받지 못했습니다. 같은 요청으로 결과를 확인해 주세요.');
+      throw new ServiceError(
+        'UNKNOWN',
+        '응답을 받지 못했습니다. 같은 요청으로 결과를 확인해 주세요.',
+      );
     if (error instanceof Error && error.name === 'TimeoutError')
       throw new ServiceError('TIMEOUT', SERVER_UNAVAILABLE_MESSAGE);
     throw new ServiceError('NETWORK', SERVER_UNAVAILABLE_MESSAGE);
@@ -117,9 +180,19 @@ async function request(path: string, action: Action, method = 'GET', grant?: Gra
   updateServerConnection(proxyFailure ? 'disconnected' : 'connected');
   if (proxyFailure && action !== 'rent' && action !== 'return')
     throw new ServiceError('SERVER_UNAVAILABLE', SERVER_UNAVAILABLE_MESSAGE);
-  if (!response.ok) mapError(action, response.status, data?.error?.code, data?.error?.message, data?.error?.retryAt);
+  if (!response.ok)
+    mapError(
+      action,
+      response.status,
+      data?.error?.code,
+      data?.error?.message,
+      data?.error?.retryAt,
+    );
   if (action === 'rent' && response.status !== 200 && response.status !== 201)
-    throw new ServiceError('UNKNOWN', '반출 결과를 확인하지 못했습니다. 같은 요청으로 결과를 확인해 주세요.');
+    throw new ServiceError(
+      'UNKNOWN',
+      '반출 결과를 확인하지 못했습니다. 같은 요청으로 결과를 확인해 주세요.',
+    );
   if (!data || typeof data !== 'object')
     throw new ServiceError('UNKNOWN', '서버 응답을 확인하지 못했습니다.');
   return data;
@@ -129,41 +202,77 @@ export async function verifyRentalCode(code: string): Promise<Grant> {
   const data = await request('/api/v1/kiosk/rental-grants', 'verify', 'POST', undefined, { code });
   if (typeof data.token !== 'string' || typeof data.maskedPhoneNumber !== 'string')
     throw new ServiceError('UNKNOWN', '코드 확인 응답을 확인하지 못했습니다.');
-  return { token: data.token, maskedPhone: data.maskedPhoneNumber,
-    expiresAt: timestamp(data.expiresAt) };
+  return {
+    token: data.token,
+    maskedPhone: data.maskedPhoneNumber,
+    expiresAt: timestamp(data.expiresAt),
+  };
 }
 
 export async function rentalCatalog(grant: Grant): Promise<Catalog> {
   const data = await request('/api/v1/item-types', 'catalog', 'GET', grant);
-  if (!Array.isArray(data.itemTypes) || !data.itemTypes.every((row: any) =>
-    positiveId(row?.itemTypeId) && typeof row?.itemTypeName === 'string'))
+  if (
+    !Array.isArray(data.itemTypes) ||
+    !data.itemTypes.every(
+      (row: any) => positiveId(row?.itemTypeId) && typeof row?.itemTypeName === 'string',
+    )
+  )
     throw new ServiceError('UNKNOWN', '물품 종류 목록을 확인하지 못했습니다.');
   return {
-    kinds: data.itemTypes.map((row: any) => ({ id: row.itemTypeId, name: row.itemTypeName,
-      category: '공용 물품', description: '', art: 'generic' as const })),
+    kinds: data.itemTypes.map((row: any) => ({
+      id: row.itemTypeId,
+      name: row.itemTypeName,
+      category: '공용 물품',
+      description: '',
+      art: 'generic' as const,
+    })),
     items: [], // The type API intentionally does not expose individual inventory.
-    stations: [{ id: MOCK.stationId, name: '대전대 융합과학관', location: '융합과학관 2층 학생 라운지' }],
+    stations: [
+      { id: KIOSK.stationId, name: '대전대 융합과학관', location: '융합과학관 2층 학생 라운지' },
+    ],
   };
 }
 
-export async function lookupRentalTag(uid: string, grant: Grant, selectedTypeId: string): Promise<Item> {
-  if (!positiveId(selectedTypeId)) throw new ServiceError('MISMATCH', '물품 종류를 다시 선택해 주세요.');
+export async function lookupRentalTag(
+  uid: string,
+  grant: Grant,
+  selectedTypeId: string,
+): Promise<Item> {
+  if (!positiveId(selectedTypeId))
+    throw new ServiceError('MISMATCH', '물품 종류를 다시 선택해 주세요.');
   uid = uid.replace(/[\s:-]/g, '').toUpperCase();
   if (!/^(?:[0-9A-F]{8}|[0-9A-F]{14}|[0-9A-F]{20})$/.test(uid))
     throw new ServiceError('INVALID_UID_FORMAT', '태그 UID 형식을 확인해 주세요.');
   const data = await request(`/api/tags/${encodeURIComponent(uid)}`, 'scan', 'GET', grant);
   const row = data.item;
-  if (!Number.isSafeInteger(row?.itemId) || row.itemId <= 0 || !positiveId(row.itemTypeId) ||
-      typeof row.name !== 'string' || typeof row.itemTypeName !== 'string' ||
-      typeof row.status !== 'string' ||
-      typeof row.rentable !== 'boolean' || data.tag?.status !== 'ACTIVE' ||
-      data.tag?.uid !== uid)
+  if (
+    !Number.isSafeInteger(row?.itemId) ||
+    row.itemId <= 0 ||
+    !positiveId(row.itemTypeId) ||
+    typeof row.name !== 'string' ||
+    typeof row.itemTypeName !== 'string' ||
+    typeof row.status !== 'string' ||
+    typeof row.rentable !== 'boolean' ||
+    data.tag?.status !== 'ACTIVE' ||
+    data.tag?.uid !== uid
+  )
     throw new ServiceError('UNKNOWN', '태그 조회 응답을 확인하지 못했습니다.');
   if (row.itemTypeId !== selectedTypeId)
-    throw new ServiceError('MISMATCH', '선택한 종류와 다른 물품입니다. 선택한 종류의 물품을 접촉해 주세요.');
+    throw new ServiceError(
+      'MISMATCH',
+      '선택한 종류와 다른 물품입니다. 선택한 종류의 물품을 접촉해 주세요.',
+    );
   if (!row.rentable) throw new ServiceError('UNAVAILABLE', '현재 대여할 수 없는 물품입니다.');
-  return { id: String(row.itemId), label: row.name, name: row.name,
-    kindId: row.itemTypeId, stationId: MOCK.stationId, tag: uid, active: true, status: 'available' };
+  return {
+    id: String(row.itemId),
+    label: row.name,
+    name: row.name,
+    kindId: row.itemTypeId,
+    stationId: KIOSK.stationId,
+    tag: uid,
+    active: true,
+    status: 'available',
+  };
 }
 
 export async function lookupReturnTag(proof: NfcScanProof): Promise<{
@@ -172,64 +281,140 @@ export async function lookupReturnTag(proof: NfcScanProof): Promise<{
   scanTicketId: string;
   proof: NfcScanProof;
 }> {
-  if (!/^[A-Za-z0-9._-]{1,64}$/.test(proof.bridgeId) ||
-      !/^(?:[0-9A-F]{8}|[0-9A-F]{14}|[0-9A-F]{20})$/.test(proof.uid) ||
-      !Number.isSafeInteger(proof.issuedAt) ||
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(proof.nonce) ||
-      !/^[0-9a-f]{64}$/i.test(proof.signature))
+  if (
+    !/^[A-Za-z0-9._-]{1,64}$/.test(proof.bridgeId) ||
+    !/^(?:[0-9A-F]{8}|[0-9A-F]{14}|[0-9A-F]{20})$/.test(proof.uid) ||
+    !Number.isSafeInteger(proof.issuedAt) ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      proof.nonce,
+    ) ||
+    !/^[0-9a-f]{64}$/i.test(proof.signature)
+  )
     throw new ServiceError('NFC_SCAN_REQUIRED', '실물 태그를 리더기에 인식해 주세요.');
-  const data = await request('/api/v1/rentals/return/scan', 'return-scan', 'POST', undefined, { proof });
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(data?.scanTicketId) ||
-      !positiveId(data?.rentalId) || !positiveId(data?.itemId) ||
-      typeof data?.itemName !== 'string' || !positiveId(data?.itemTypeId) ||
-      typeof data?.itemTypeName !== 'string')
+  const data = await request('/api/v1/rentals/return/scan', 'return-scan', 'POST', undefined, {
+    proof,
+  });
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      data?.scanTicketId,
+    ) ||
+    !positiveId(data?.rentalId) ||
+    !positiveId(data?.itemId) ||
+    typeof data?.itemName !== 'string' ||
+    !positiveId(data?.itemTypeId) ||
+    typeof data?.itemTypeName !== 'string'
+  )
     throw new ServiceError('UNKNOWN', '태그 인식 결과를 확인하지 못했습니다.');
   const item: Item = {
-    id: data.itemId, label: data.itemName, name: data.itemName,
-    kindId: data.itemTypeId, stationId: MOCK.stationId, tag: proof.uid,
-    active: true, status: 'rented',
+    id: data.itemId,
+    label: data.itemName,
+    name: data.itemName,
+    kindId: data.itemTypeId,
+    stationId: KIOSK.stationId,
+    tag: proof.uid,
+    active: true,
+    status: 'rented',
   };
   return { item, rentalId: data.rentalId, scanTicketId: data.scanTicketId, proof };
 }
 
-export async function checkoutRental(key: string, grant: Grant, itemId: string,
-                                     itemTypeId: string): Promise<Receipt> {
-  if (!positiveId(itemId) || !positiveId(itemTypeId) ||
-      !/^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$/.test(key))
+export async function checkoutRental(
+  key: string,
+  grant: Grant,
+  itemId: string,
+  itemTypeId: string,
+): Promise<Receipt> {
+  if (
+    !positiveId(itemId) ||
+    !positiveId(itemTypeId) ||
+    !/^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$/.test(key)
+  )
     throw new ServiceError('INVALID_INPUT', '물품 또는 요청 정보가 올바르지 않습니다.');
-  const data = await request('/api/v1/rentals', 'rent', 'POST', grant,
-    { itemId, itemTypeId }, key);
-  if (!positiveId(data.rentalId) || data.itemId !== itemId || data.itemTypeId !== itemTypeId ||
-      data.rentalStatus !== 'RENTED' || data.itemStatus !== 'RENTED')
-    throw new ServiceError('UNKNOWN', '반출 결과를 확인하지 못했습니다. 같은 요청으로 결과를 확인해 주세요.');
+  const data = await request('/api/v1/rentals', 'rent', 'POST', grant, { itemId, itemTypeId }, key);
+  if (
+    !positiveId(data.rentalId) ||
+    data.itemId !== itemId ||
+    data.itemTypeId !== itemTypeId ||
+    data.rentalStatus !== 'RENTED' ||
+    data.itemStatus !== 'RENTED'
+  )
+    throw new ServiceError(
+      'UNKNOWN',
+      '반출 결과를 확인하지 못했습니다. 같은 요청으로 결과를 확인해 주세요.',
+    );
   const rentedAt = timestamp(data.rentedAt);
   const dueAt = timestamp(data.dueAt);
-  return { operationId: key, type: 'rent',
-    item: { id: itemId, label: `물품 ${itemId}`, kindId: itemTypeId,
-      stationId: MOCK.stationId, tag: '', active: true, status: 'rented' },
-    rental: { id: data.rentalId, userId: '', itemId, stationId: MOCK.stationId, rentedAt, dueAt } };
+  return {
+    operationId: key,
+    type: 'rent',
+    item: {
+      id: itemId,
+      label: `물품 ${itemId}`,
+      kindId: itemTypeId,
+      stationId: KIOSK.stationId,
+      tag: '',
+      active: true,
+      status: 'rented',
+    },
+    rental: { id: data.rentalId, userId: '', itemId, stationId: KIOSK.stationId, rentedAt, dueAt },
+  };
 }
 
-export async function returnRental(key: string, scanTicketId: string,
-                                   rentalId: string, proof: NfcScanProof,
-                                   condition: 'normal' | 'damaged', returnCode: string): Promise<Receipt> {
-  if (!/^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$/.test(key) ||
-      !positiveId(rentalId) ||
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(scanTicketId))
+export async function returnRental(
+  key: string,
+  scanTicketId: string,
+  rentalId: string,
+  proof: NfcScanProof,
+  condition: 'normal' | 'damaged',
+  returnCode: string,
+): Promise<Receipt> {
+  if (
+    !/^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$/.test(key) ||
+    !positiveId(rentalId) ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(scanTicketId)
+  )
     throw new ServiceError('NFC_SCAN_REQUIRED', '태그를 다시 인식한 뒤 반납을 확정해 주세요.');
   if (!/^[0-9]{6}$/.test(returnCode))
     throw new ServiceError('RETURN_CODE_INVALID', '6자리 반납 코드를 입력해 주세요.');
-  const data = await request('/api/v1/rentals/return', 'return', 'POST', undefined,
-    { scanTicketId, proof, condition: condition.toUpperCase(), returnCode });
+  const data = await request('/api/v1/rentals/return', 'return', 'POST', undefined, {
+    scanTicketId,
+    proof,
+    condition: condition.toUpperCase(),
+    returnCode,
+  });
   const expectedStatus = condition === 'normal' ? 'AVAILABLE' : 'INSPECTION';
-  if (data?.rentalId !== rentalId || !positiveId(data?.itemId) ||
-      data?.rentalStatus !== 'RETURNED' || data?.itemStatus !== expectedStatus ||
-      data?.condition !== condition.toUpperCase())
-    throw new ServiceError('UNKNOWN', '반납 결과를 확인하지 못했습니다. 같은 요청으로 결과를 다시 확인해 주세요.');
-  return { operationId: key, type: 'return',
-    item: { id: data.itemId, label: `물품 ${data.itemId}`, kindId: '', stationId: MOCK.stationId,
-      tag: '', active: true, status: condition === 'normal' ? 'available' : 'inspection' },
-    rental: { id: data.rentalId, userId: '', itemId: data.itemId, stationId: MOCK.stationId,
-      rentedAt: timestamp(data.rentedAt), dueAt: timestamp(data.dueAt),
-      returnedAt: timestamp(data.returnedAt), condition } };
+  if (
+    data?.rentalId !== rentalId ||
+    !positiveId(data?.itemId) ||
+    data?.rentalStatus !== 'RETURNED' ||
+    data?.itemStatus !== expectedStatus ||
+    data?.condition !== condition.toUpperCase()
+  )
+    throw new ServiceError(
+      'UNKNOWN',
+      '반납 결과를 확인하지 못했습니다. 같은 요청으로 결과를 다시 확인해 주세요.',
+    );
+  return {
+    operationId: key,
+    type: 'return',
+    item: {
+      id: data.itemId,
+      label: `물품 ${data.itemId}`,
+      kindId: '',
+      stationId: KIOSK.stationId,
+      tag: '',
+      active: true,
+      status: condition === 'normal' ? 'available' : 'inspection',
+    },
+    rental: {
+      id: data.rentalId,
+      userId: '',
+      itemId: data.itemId,
+      stationId: KIOSK.stationId,
+      rentedAt: timestamp(data.rentedAt),
+      dueAt: timestamp(data.dueAt),
+      returnedAt: timestamp(data.returnedAt),
+      condition,
+    },
+  };
 }

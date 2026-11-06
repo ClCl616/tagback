@@ -28,6 +28,13 @@ public class TagRegistrationController {
     }
 
     @AdminOnly
+    @org.springframework.web.bind.annotation.GetMapping("/{itemId}/tag")
+    public ResponseEntity<TagRegistrationResponse> current(@PathVariable Long itemId) {
+        return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(registrationService.current(itemId));
+    }
+
+    @AdminOnly
     @PostMapping("/{itemId}/tag")
     public ResponseEntity<TagRegistrationResponse> register(@PathVariable Long itemId,
                                                              @RequestBody(required = false) RegisterTagRequest request,

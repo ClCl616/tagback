@@ -1,191 +1,127 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  Box,
-  Users,
-  Upload,
-  Trash2,
-  CalendarDays,
-  Wrench,
-  Settings,
-  ChevronDown,
-  MapPin,
-  Plus,
-  RefreshCw,
-  Search,
-  X,
-} from 'lucide-react';
-import { nfc } from '../shared/nfc';
-import { itemName, itemNumber } from './itemIdentity';
-import { api } from '../shared/api';
-import { DB_KEY } from '../shared/config';
+import { Box, Users, CalendarDays, Wrench, MapPin, Plus, RefreshCw, Search, X } from 'lucide-react';
 import { Brand, ErrorBox, Loading } from '../shared/ui';
+import { serverSession } from '../shared/httpAuth';
+import { ServiceError } from '../shared/serviceError';
+import { nfc } from '../shared/nfc';
+import { normalizeUid } from '../shared/nfcUid';
 import type { Catalog, Item, ItemStatus } from '../shared/types';
 import { adminApi, type ItemDraft } from './adminApi';
-import { ItemRegistration, normalizeUid } from './itemRegistration';
-import { readItemImage } from './itemImage';
-import { CategorySelect } from './CategorySelect';
 import AdminRecords from './AdminRecords';
-import { HTTP_AUTH } from '../shared/authMode';
 import './admin.css';
 import './reference.css';
 
 const labels: Record<ItemStatus, string> = {
+  pending: '태그 등록 대기',
   available: '대여 가능',
   rented: '대여 중',
   inspection: '점검 중',
   repair: '수리 중',
 };
-function AssetPhoto({ large = false }: { kind?: string; large?: boolean }) {
-  return (
-    <div
-      className={'admin-placeholder ' + (large ? 'large' : '')}
-      role="img"
-      aria-label="기본 물품 이미지"
-    >
-      <Box size={large ? 88 : 38} strokeWidth={1.3} />
-    </div>
-  );
-}
 export default function AdminApp() {
-  const [menu, setMenu] = useState<string>();
-  useEffect(() => {
-    const outside = (e: PointerEvent) => {
-      if (!(e.target as Element).closest('.admin-row-actions')) setMenu(undefined);
-    };
-    const escape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setMenu(undefined);
-    };
-    document.addEventListener('pointerdown', outside);
-    document.addEventListener('keydown', escape);
-    return () => {
-      document.removeEventListener('pointerdown', outside);
-      document.removeEventListener('keydown', escape);
-    };
-  }, []);
-  const [deleting, setDeleting] = useState<Item>();
+  const [section, updateSection] = useState('items');
+  const [recordFilter, setRecordFilter] = useState('');
+  const setSection = (next: string, filter = '') => {
+    detailRevision.current++;
+    setDetailLoading(false);
+    updateSection(next);
+    setRecordFilter(filter);
+    setSelected(undefined);
+    setQuery('');
+    setStatus('');
+  };
+  const recordsView = section === 'users' || section === 'rentals';
   const [catalog, setCatalog] = useState<Catalog>();
+  const [operator, setOperator] = useState('관리자');
   const [error, setError] = useState<unknown>();
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('');
   const [kind, setKind] = useState('');
+  const [selected, setSelected] = useState<Item>();
+  const [detailLoading, setDetailLoading] = useState(false);
   const [editing, setEditing] = useState<Item | null | undefined>();
-  const requestVersion = useRef(0);
-  const [syncError, setSyncError] = useState<unknown>();
-  const [selectedId, setSelectedId] = useState<string | null | undefined>();
-  useEffect(() => {
-    const deselect = (event: MouseEvent) => {
-      const target = event.target;
-      if (
-        !(target instanceof Element) ||
-        event
-          .composedPath()
-          .some(
-            (node) =>
-              node instanceof Element &&
-              node.matches('.admin-table tbody tr, .admin-detail, dialog'),
-          )
-      )
-        return;
-      setSelectedId(null);
-    };
-    document.addEventListener('click', deselect);
-    return () => document.removeEventListener('click', deselect);
-  }, []);
-  const [sort, setSort] = useState<{
-    key: 'name' | 'number' | 'tag' | 'status';
-    direction: 'ascending' | 'descending';
-  }>();
-  const [section, updateSection] = useState('items');
-  const [recordFilter, setRecordFilter] = useState('');
-  const setSection = (next: string, filter = '') => {
-    updateSection(next);
-    setRecordFilter(filter);
-  };
-  const recordsView = HTTP_AUTH || section === 'users' || section === 'rentals';
-  const [settingsOpen, setSettingsOpen] = useState(false);
-
-  async function load(quiet = false) {
-    const version = ++requestVersion.current;
-    if (!quiet) {
-      setLoading(true);
-      setError(undefined);
-    }
+  const [changing, setChanging] = useState<Item>();
+  const [deleting, setDeleting] = useState<Item>();
+  const [page, setPage] = useState(0);
+  const revision = useRef(0);
+  const detailRevision = useRef(0);
+  async function load() {
+    const seq = ++revision.current;
+    setLoading(true);
+    setError(undefined);
+    setCatalog(undefined);
+    setSelected(undefined);
+    detailRevision.current++;
+    setDetailLoading(false);
     try {
-      const result = await api.catalog();
-      if (version !== requestVersion.current) return;
-      setCatalog(result);
-      setError(undefined);
-      setSyncError(undefined);
+      const session = await serverSession();
+      if (session.user.role !== 'ADMIN')
+        throw new ServiceError('FORBIDDEN', '관리자 계정으로 로그인해 주세요.');
+      const data = await adminApi.catalog();
+      if (seq !== revision.current) return;
+      setOperator(session.user.name || '관리자');
+      setCatalog(data);
+      setPage(0);
     } catch (e) {
-      if (version !== requestVersion.current) return;
-      if (quiet) setSyncError(e);
-      else setError(e);
+      if (seq === revision.current) setError(e);
     } finally {
-      if (version === requestVersion.current) setLoading(false);
+      if (seq === revision.current) setLoading(false);
     }
   }
   useEffect(() => {
-    if (HTTP_AUTH) return;
     void load();
-    const refresh = () => {
-      void load(true);
-    };
-    const storage = (event: StorageEvent) => {
-      if (event.key === DB_KEY || event.key === null) refresh();
-    };
-    window.addEventListener('tagback-change', refresh);
-    window.addEventListener('storage', storage);
-    window.addEventListener('focus', refresh);
     return () => {
-      requestVersion.current++;
-      window.removeEventListener('tagback-change', refresh);
-      window.removeEventListener('storage', storage);
-      window.removeEventListener('focus', refresh);
+      revision.current++;
+      detailRevision.current++;
     };
   }, []);
-  const items = (catalog?.items || []).filter(
+  useEffect(() => {
+    setPage(0);
+  }, [query, status, kind, section]);
+  async function select(item: Item) {
+    const seq = ++detailRevision.current;
+    setSelected(undefined);
+    setDetailLoading(true);
+    setError(undefined);
+    try {
+      const result = await adminApi.getItem(item.id);
+      if (seq === detailRevision.current) setSelected(result);
+    } catch (e) {
+      if (seq === detailRevision.current) setError(e);
+    } finally {
+      if (seq === detailRevision.current) setDetailLoading(false);
+    }
+  }
+  const rows = (catalog?.items || []).filter(
     (i) =>
       (!status || i.status === status) &&
+      (!kind || i.kindId === kind) &&
       (section !== 'maintenance' || ['inspection', 'repair'].includes(i.status)) &&
-      (!kind || catalog?.kinds.find((k) => k.id === i.kindId)?.category === kind) &&
-      `${i.label} ${i.tag} ${catalog?.kinds.find((k) => k.id === i.kindId)?.name}`
-        .toLowerCase()
-        .includes(query.trim().toLowerCase()),
+      `${i.name} ${i.id}`.toLowerCase().includes(query.trim().toLowerCase()),
   );
-  const priority = ['calc-1', 'calc-2', 'calc-6', 'calc-7', 'umbrella-1', 'battery-1', 'cable-1'];
-  items.sort((a, b) => {
-    const rank = (id: string) => (priority.includes(id) ? priority.indexOf(id) : priority.length);
-    return rank(a.id) - rank(b.id);
-  });
-  if (sort) {
-    const collator = new Intl.Collator('ko', { numeric: true, sensitivity: 'base' });
-    const field = (item: Item) =>
-      sort.key === 'name'
-        ? itemName(item)
-        : sort.key === 'number'
-          ? itemNumber(item)
-          : sort.key === 'status'
-            ? labels[item.status]
-            : item.tag;
-    items.sort(
-      (a, b) => collator.compare(field(a), field(b)) * (sort.direction === 'ascending' ? 1 : -1),
-    );
-  }
-  const visibleItems = items;
-  const selected =
-    selectedId === null
-      ? undefined
-      : items.find((i) => i.id === selectedId) || (selectedId === undefined ? items[0] : undefined);
-  const selectedKind = catalog?.kinds.find((k) => k.id === selected?.kindId);
-  const station = catalog?.stations.find((s) => s.id === selected?.stationId);
+  const pages = Math.max(1, Math.ceil(rows.length / 20));
+  const currentPage = Math.min(page, pages - 1);
+  const saved = () => {
+    setEditing(undefined);
+    setChanging(undefined);
+    setDeleting(undefined);
+    void load();
+  };
   return (
     <div className={`admin-shell${recordsView ? '' : ' has-detail'}`}>
       <aside className="admin-sidebar">
         <Brand />
         <span className="admin-workspace">관리자</span>
         <nav aria-label="관리자 메뉴">
+          <button
+            className={section === 'items' ? 'active' : ''}
+            onClick={() => setSection('items')}
+          >
+            <Box size={20} />
+            물품 관리
+          </button>
           <button
             className={section === 'users' ? 'active' : ''}
             onClick={() => setSection('users')}
@@ -194,48 +130,30 @@ export default function AdminApp() {
             사용자 관리
           </button>
           <button
-            className={section === 'items' ? 'active' : ''}
-            onClick={() => {
-              setSection('items');
-              setStatus('');
-            }}
-          >
-            <Box size={20} />
-            물품 관리
-          </button>
-          <button
             className={section === 'rentals' ? 'active' : ''}
-            onClick={() => {
-              setSection('rentals');
-              setStatus('rented');
-            }}
+            onClick={() => setSection('rentals')}
           >
             <CalendarDays size={23} />
             대여 현황
           </button>
           <button
             className={section === 'maintenance' ? 'active' : ''}
-            onClick={() => {
-              setSection('maintenance');
-              setStatus('');
-            }}
+            onClick={() => setSection('maintenance')}
           >
             <Wrench size={23} />
             점검·수리
           </button>
-          <hr />
-          <button onClick={() => setSettingsOpen(true)}>
-            <Settings size={23} />
-            설정
-          </button>
         </nav>
         <div className="admin-profile">
-          <span>{HTTP_AUTH ? '관' : '홍'}</span>
+          <span>관</span>
           <div>
-            <strong>{HTTP_AUTH ? '관리자' : '홍길동'}</strong>
+            <strong>{operator}</strong>
             <small>관리자</small>
           </div>
         </div>
+        <Link className="admin-mobile-link" to="/mobile">
+          사용자 화면 · 로그인
+        </Link>
       </aside>
       <main className="admin-main">
         <header className="admin-topbar">
@@ -252,7 +170,6 @@ export default function AdminApp() {
           <span>
             <MapPin size={15} />
             {catalog?.stations[0]?.name || '대여소'}
-            <ChevronDown size={16} />
           </span>
         </header>
         {recordsView ? (
@@ -266,21 +183,13 @@ export default function AdminApp() {
           <>
             <div className="admin-title">
               <div>
-                <h1>
-                  {section === 'rentals'
-                    ? '대여 현황'
-                    : section === 'maintenance'
-                      ? '점검·수리'
-                      : '물품 관리'}
-                </h1>
+                <h1>{section === 'maintenance' ? '점검·수리' : '물품 관리'}</h1>
                 <p>대여소의 물품과 상태를 관리하세요.</p>
               </div>
               <button
                 className="primary"
                 disabled={!catalog || loading}
-                onClick={() => {
-                  setEditing(null);
-                }}
+                onClick={() => setEditing(null)}
               >
                 <Plus size={18} />
                 물품 등록
@@ -290,9 +199,9 @@ export default function AdminApp() {
               {[['', '전체 물품'], ...Object.entries(labels)].map(([value, label]) => (
                 <button
                   key={value}
+                  aria-pressed={status === value}
                   className={status === value ? 'selected' : ''}
                   onClick={() => setStatus(value)}
-                  aria-pressed={status === value}
                 >
                   <span>{label}</span>
                   <strong>
@@ -310,233 +219,109 @@ export default function AdminApp() {
                   <Search size={19} />
                   <input
                     aria-label="물품 검색"
-                    placeholder="물품명 또는 태그 ID 검색"
+                    placeholder="물품명 또는 물품 ID 검색"
                     value={query}
-                    onChange={(e) => {
-                      setSelectedId(null);
-                      setQuery(e.target.value);
-                    }}
+                    onChange={(e) => setQuery(e.target.value)}
                   />
                 </label>
-                <CategorySelect
-                  filter
-                  value={kind}
-                  options={
-                    catalog?.categories || [...new Set(catalog?.kinds.map((k) => k.category))]
-                  }
-                  onChange={(value) => {
-                    setSelectedId(null);
-                    setKind(value);
-                  }}
-                  onAdded={(name) =>
-                    setCatalog(
-                      (c) =>
-                        c && {
-                          ...c,
-                          categories: [
-                            ...new Set([...(c.categories || c.kinds.map((k) => k.category)), name]),
-                          ],
-                        },
-                    )
-                  }
-                />
                 <select
-                  aria-label="물품 상태 필터"
+                  aria-label="물품 종류 필터"
+                  value={kind}
+                  onChange={(e) => setKind(e.target.value)}
+                >
+                  <option value="">전체 종류</option>
+                  {catalog?.kinds.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="상태 필터"
                   value={status}
-                  onChange={(e) => {
-                    setSelectedId(null);
-                    setStatus(e.target.value);
-                  }}
+                  onChange={(e) => setStatus(e.target.value)}
                 >
                   <option value="">전체 상태</option>
-                  {Object.entries(labels).map(([value, label]) => (
-                    <option key={value} value={value}>
+                  {Object.entries(labels).map(([key, label]) => (
+                    <option key={key} value={key}>
                       {label}
                     </option>
                   ))}
                 </select>
-                <button
-                  className="admin-refresh"
-                  aria-label="새로고침"
-                  title="새로고침"
-                  onClick={() => void load()}
-                  disabled={loading}
-                >
-                  <RefreshCw size={16} />
+                <button aria-label="새로고침" onClick={() => void load()}>
+                  <RefreshCw size={18} />
                 </button>
               </div>
-              <ErrorBox error={syncError} retry={() => void load(true)} />
-              <ErrorBox error={error} retry={() => void load()} />
               {loading ? (
                 <Loading />
+              ) : !catalog ? (
+                <div className="admin-empty">
+                  <p>물품을 불러오지 못했습니다.</p>
+                  <button onClick={() => void load()}>다시 조회</button>
+                  <Link to="/mobile/login">로그인</Link>
+                </div>
               ) : (
-                !error && (
-                  <>
-                    <div className="admin-list-heading">
-                      물품 목록 <span>{items.length}</span>
-                    </div>
-                    <div className="admin-table-scroll">
-                      <table className="admin-table">
-                        <thead>
-                          <tr>
-                            {(
-                              [
-                                { key: 'name', label: '물품명' },
-                                { key: 'number', label: '관리번호' },
-                                { key: 'tag', label: '태그 ID' },
-                                { key: 'status', label: '상태' },
-                              ] as const
-                            ).map((column) => (
-                              <th
-                                key={column.key}
-                                aria-sort={sort?.key === column.key ? sort.direction : 'none'}
-                              >
-                                <button
-                                  className="admin-sort"
-                                  onClick={() => {
-                                    setSort((current) =>
-                                      current?.key !== column.key
-                                        ? { key: column.key, direction: 'ascending' }
-                                        : current.direction === 'ascending'
-                                          ? { key: column.key, direction: 'descending' }
-                                          : undefined,
-                                    );
-                                  }}
-                                >
-                                  <span className="admin-sort-label">{column.label}</span>
-                                  <span className="admin-sort-icon" aria-hidden="true">
-                                    {sort?.key === column.key
-                                      ? sort.direction === 'ascending'
-                                        ? '↑'
-                                        : '↓'
-                                      : '↕'}
-                                  </span>
-                                </button>
-                              </th>
-                            ))}
-
-                            <th aria-label="물품 작업"></th>
+                <>
+                  <div className="admin-table-wrap">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>물품명</th>
+                          <th>물품 ID</th>
+                          <th>물품 종류</th>
+                          <th>상태</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.slice(currentPage * 20, currentPage * 20 + 20).map((i) => (
+                          <tr
+                            key={i.id}
+                            tabIndex={0}
+                            className={selected?.id === i.id ? 'selected' : ''}
+                            onClick={() => void select(i)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                void select(i);
+                              }
+                            }}
+                          >
+                            <td>{i.name}</td>
+                            <td>{i.id}</td>
+                            <td>{catalog.kinds.find((k) => k.id === i.kindId)?.name}</td>
+                            <td>
+                              <span className={`admin-status ${i.status}`}>{labels[i.status]}</span>
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {visibleItems.map((i) => (
-                            <tr
-                              key={i.id}
-                              tabIndex={0}
-                              aria-label={i.label + ' 선택'}
-                              onClick={() => {
-                                setSelectedId(i.id);
-                                setMenu(undefined);
-                              }}
-                              onKeyDown={(e) => {
-                                if (
-                                  e.target === e.currentTarget &&
-                                  (e.key === 'Enter' || e.key === ' ')
-                                ) {
-                                  e.preventDefault();
-                                  setSelectedId(i.id);
-                                }
-                              }}
-                              className={selected?.id === i.id ? 'is-selected' : ''}
-                            >
-                              <td>
-                                <button
-                                  className="admin-item-cell"
-                                  aria-label={`${i.label} 상세 보기`}
-                                  aria-pressed={selected?.id === i.id}
-                                  onClick={() => setSelectedId(i.id)}
-                                >
-                                  <span className="admin-thumbnail">
-                                    {i.image ? (
-                                      <img
-                                        className="admin-uploaded-image"
-                                        src={i.image}
-                                        alt={`${i.label} 이미지`}
-                                      />
-                                    ) : (
-                                      <AssetPhoto
-                                        kind={
-                                          catalog?.kinds.find((k) => k.id === i.kindId)?.art ||
-                                          'calculator'
-                                        }
-                                      />
-                                    )}
-                                  </span>
-                                  <span>
-                                    <strong>{itemName(i)}</strong>
-                                    <small>
-                                      {catalog?.kinds.find((k) => k.id === i.kindId)?.category}
-                                    </small>
-                                  </span>
-                                </button>
-                              </td>
-                              <td className="admin-number">{itemNumber(i) || '—'}</td>
-                              <td>
-                                <code>{i.tag || '태그 미등록'}</code>
-                                {!!i.tag && !i.active && <small>태그 비활성</small>}
-                              </td>
-                              <td>
-                                <span className={`admin-status ${i.status}`}>
-                                  {labels[i.status]}
-                                </span>
-                              </td>
-                              <td>
-                                <div
-                                  className="admin-row-actions"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <button
-                                    className="admin-edit"
-                                    aria-label={i.label + ' 메뉴'}
-                                    aria-expanded={menu === i.id}
-                                    onClick={() => setMenu(menu === i.id ? undefined : i.id)}
-                                  >
-                                    ···
-                                  </button>
-                                  {menu === i.id && (
-                                    <div className="admin-action-menu">
-                                      <button
-                                        onClick={() => {
-                                          setEditing(i);
-                                          setMenu(undefined);
-                                        }}
-                                      >
-                                        수정
-                                      </button>
-                                      <button
-                                        className="danger"
-                                        onClick={() => {
-                                          setDeleting(i);
-                                          setMenu(undefined);
-                                        }}
-                                      >
-                                        삭제
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {!rows.length && (
+                    <div className="admin-empty">
+                      <Box size={34} />
+                      <h2>조건에 맞는 물품이 없어요</h2>
                     </div>
-                    {!!items.length && (
-                      <footer className="admin-pagination">
-                        <span>총 {items.length}개 물품</span>
-                      </footer>
-                    )}
-                    {!items.length && (
-                      <div className="admin-empty">
-                        <Box size={34} />
-                        <h2>조건에 맞는 물품이 없어요</h2>
-                        <p>검색어나 필터를 변경해 보세요.</p>
-                      </div>
-                    )}
-                  </>
-                )
+                  )}
+                  <footer className="admin-pagination">
+                    <span>총 {rows.length}개 물품</span>
+                    <button disabled={!currentPage} onClick={() => setPage(currentPage - 1)}>
+                      이전
+                    </button>
+                    <span>
+                      {currentPage + 1} / {pages}
+                    </span>
+                    <button
+                      disabled={currentPage + 1 >= pages}
+                      onClick={() => setPage(currentPage + 1)}
+                    >
+                      다음
+                    </button>
+                  </footer>
+                </>
               )}
             </section>
+            <ErrorBox error={error} retry={() => void load()} />
           </>
         )}
       </main>
@@ -545,523 +330,338 @@ export default function AdminApp() {
           <header>
             <h2>물품 상세</h2>
           </header>
-          {selected ? (
+          {detailLoading ? (
+            <Loading />
+          ) : selected ? (
             <>
               <div className="admin-detail-art">
-                {selected.image ? (
-                  <img
-                    className="admin-uploaded-image"
-                    src={selected.image}
-                    alt={`${selected.label} 이미지`}
-                  />
-                ) : (
-                  <AssetPhoto kind={selectedKind?.art || 'calculator'} large />
-                )}
+                <Box size={88} strokeWidth={1.3} />
               </div>
               <span className={`admin-status ${selected.status}`}>{labels[selected.status]}</span>
-              <h3>{itemName(selected)}</h3>
-              <p>{selectedKind?.category}</p>
+              <h3>{selected.name}</h3>
               <dl>
                 <div>
-                  <dt>관리번호</dt>
-                  <dd>{itemNumber(selected) || '—'}</dd>
+                  <dt>물품 ID</dt>
+                  <dd>{selected.id}</dd>
+                </div>
+                <div>
+                  <dt>물품 종류</dt>
+                  <dd>{catalog?.kinds.find((k) => k.id === selected.kindId)?.name}</dd>
                 </div>
                 <div>
                   <dt>태그 ID</dt>
                   <dd>{selected.tag || '태그 미등록'}</dd>
                 </div>
-                <div>
-                  <dt>대여소</dt>
-                  <dd>{station?.name}</dd>
-                </div>
-                <div>
-                  <dt>위치</dt>
-                  <dd>{station?.location}</dd>
-                </div>
-                {!!selected.tag && !selected.active && (
-                  <div>
-                    <dt>태그 상태</dt>
-                    <dd>비활성</dd>
-                  </div>
-                )}
               </dl>
               <button className="primary" onClick={() => setEditing(selected)}>
-                {selected.tag ? '물품 수정' : 'NFC 태그 연결 / 물품 수정'}
+                물품 수정{!selected.tag ? ' / NFC 태그 연결' : ''}
               </button>
               <button
                 className="secondary"
-                disabled={selected.status === 'rented'}
-                onClick={() => setEditing(selected)}
+                disabled={!['available', 'inspection', 'repair'].includes(selected.status)}
+                onClick={() => setChanging(selected)}
               >
                 상태 변경
               </button>
-              {selected.status === 'rented' && (
-                <p className="admin-help">상태 변경은 반납 후 가능합니다.</p>
-              )}
+              <button
+                className="secondary danger"
+                disabled={selected.status === 'rented'}
+                onClick={() => setDeleting(selected)}
+              >
+                물품 삭제
+              </button>
             </>
           ) : (
             <div className="admin-detail-empty">
-              <Box size={48} strokeWidth={1.3} />
+              <Box size={48} />
               <p>물품을 선택해 주세요</p>
             </div>
           )}
         </aside>
       )}
-      {deleting && (
-        <DeleteItem
-          item={deleting}
-          close={() => setDeleting(undefined)}
-          removed={() => {
-            setDeleting(undefined);
-            setSelectedId(undefined);
-            void load(true);
-          }}
-        />
-      )}
       {editing !== undefined && catalog && (
         <ItemEditor
-          categoryRemoved={(name) =>
-            setCatalog(
-              (c) => c && { ...c, categories: (c.categories || []).filter((n) => n !== name) },
-            )
-          }
           original={editing}
           catalog={catalog}
-          categoryAdded={(name) =>
-            setCatalog(
-              (c) =>
-                c && {
-                  ...c,
-                  categories: [
-                    ...new Set([...(c.categories || c.kinds.map((k) => k.category)), name]),
-                  ],
-                },
-            )
-          }
-          close={() => setEditing(undefined)}
-          saved={(item) => {
-            setCatalog(
-              (c) =>
-                c && {
-                  ...c,
-                  items: c.items.some((i) => i.id === item.id)
-                    ? c.items.map((i) => (i.id === item.id ? item : i))
-                    : [...c.items, item],
-                },
-            );
-            setSelectedId(item.id);
-            if (!editing) {
-              setQuery(item.label);
-              setKind('');
-              setStatus('');
-            }
+          close={() => {
             setEditing(undefined);
-            void load(true);
+            void load();
           }}
+          saved={saved}
         />
       )}
-      {settingsOpen && (
-        <SettingsPanel
-          station={catalog?.stations[0]?.name || ''}
-          close={() => setSettingsOpen(false)}
-        />
+      {changing && (
+        <StatusEditor item={changing} close={() => setChanging(undefined)} saved={saved} />
+      )}
+      {deleting && (
+        <DeleteItem item={deleting} close={() => setDeleting(undefined)} saved={saved} />
       )}
     </div>
   );
 }
-
-function SettingsPanel({ station, close }: { station: string; close: () => void }) {
+function Dialog({
+  title,
+  children,
+  close,
+  busy,
+}: {
+  title: string;
+  children: React.ReactNode;
+  close: () => void;
+  busy: boolean;
+}) {
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     ref.current?.showModal();
   }, []);
   return (
-    <dialog ref={ref} className="admin-dialog" aria-label="설정" onCancel={close}>
-      <div className="admin-dialog-heading">
-        <h2>설정</h2>
-        <button aria-label="설정 닫기" onClick={close}>
-          <X />
-        </button>
-      </div>
-      <p className="admin-form-description">현재 대여소: {station}</p>
-      <p className="admin-help">관리자 인증과 대여소 설정 변경은 서버 연결 후 제공됩니다.</p>
-      <Link className="secondary" to="/mobile">
-        사용자 화면 보기
-      </Link>
-    </dialog>
-  );
-}
-
-function ItemEditor({
-  original,
-  catalog,
-  close,
-  saved,
-  categoryAdded,
-  categoryRemoved,
-}: {
-  original: Item | null;
-  catalog: Catalog;
-  close: () => void;
-  saved: (item: Item) => void;
-  categoryAdded: (name: string) => void;
-  categoryRemoved: (name: string) => void;
-}) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
-  const [dragging, setDragging] = useState(false);
-  const [registration] = useState(() => new ItemRegistration(adminApi, crypto.randomUUID()));
-  const [, refreshRegistration] = useState(0);
-  const submitting = useRef(false);
-  const pending = registration.item;
-  const checking = !!registration.checking;
-  const retryingTag = registration.retryingTag;
-  const [draft, setDraft] = useState<ItemDraft>(
-    original
-      ? {
-          ...original,
-          status: !original.tag && original.status === 'available' ? 'inspection' : original.status,
-          label: itemName(original),
-          inventoryNumber: itemNumber(original),
-          category: catalog.kinds.find((k) => k.id === original.kindId)?.category,
-        }
-      : {
-          category: '',
-          label: '',
-          inventoryNumber: '',
-          kindId: '',
-          stationId: catalog.stations[0]?.id || '',
-          tag: '',
-          status: 'inspection',
-        },
-  );
-  const [busy, setBusy] = useState(false);
-  const [imageLoading, setImageLoading] = useState(false);
-  const [imageError, setImageError] = useState<unknown>();
-  const [error, setError] = useState<unknown>();
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
-  useEffect(() => {
-    if (original?.tag || busy || imageLoading || checking || retryingTag) return;
-    return nfc.subscribe((read) => {
-      try {
-        const tag = normalizeUid(read.uid);
-        setDraft((v) => ({ ...v, tag }));
-        setError(undefined);
-      } catch (e) {
-        setError(e);
-      }
-    });
-  }, [original, busy, imageLoading, checking, retryingTag]);
-  const update = (patch: Partial<ItemDraft>) => {
-    setDraft((v) => ({ ...v, ...patch }));
-    setError(undefined);
-  };
-  async function acceptImage(file?: File) {
-    if (!file || busy || imageLoading || pending || checking) return;
-    setImageError(undefined);
-    setImageLoading(true);
-    try {
-      update({ image: await readItemImage(file) });
-    } catch (e) {
-      setImageError(e);
-    } finally {
-      setImageLoading(false);
-    }
-  }
-  return (
     <dialog
-      ref={dialog}
-      className="admin-dialog admin-item-dialog"
-      aria-labelledby="editor-title"
-      onCancel={(e) => {
-        // File inputs emit a bubbling cancel event when their picker is dismissed.
-        if (e.target !== e.currentTarget) return;
-        e.preventDefault();
-        if (!busy && !imageLoading) close();
-      }}
-    >
-      <form
-        onSubmit={async (e) => {
-          e.preventDefault();
-          if (submitting.current || imageLoading) return;
-          submitting.current = true;
-          setBusy(true);
-          setError(undefined);
-          try {
-            const item = await registration.submit(draft, original || undefined, () =>
-              refreshRegistration((v) => v + 1),
-            );
-            if (item) saved(item);
-          } catch (err) {
-            setError(err);
-          } finally {
-            submitting.current = false;
-            setBusy(false);
-          }
-        }}
-      >
-        <div className="admin-dialog-heading">
-          <div>
-            <p className="admin-eyebrow">{original ? 'EDIT ITEM' : 'NEW ITEM'}</p>
-            <h2 id="editor-title">{original ? '물품 수정' : '물품 등록'}</h2>
-          </div>
-          <button type="button" aria-label="닫기" disabled={busy || imageLoading} onClick={close}>
-            <X />
-          </button>
-        </div>
-        <p className="admin-form-description">개별 물품 한 개를 기준으로 정보를 입력해 주세요.</p>
-        <fieldset
-          className="admin-editor-grid"
-          disabled={busy || imageLoading || !!pending || checking}
-        >
-          <div className="admin-image-field">
-            <span>물품 이미지</span>
-            <button
-              type="button"
-              className={'admin-upload-card ' + (dragging ? 'dragging' : '')}
-              aria-label="물품 이미지 선택"
-              onClick={() => fileInput.current?.click()}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragging(true);
-              }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragging(false);
-                void acceptImage(e.dataTransfer.files[0]);
-              }}
-            >
-              {!draft.image && <AssetPhoto large />}
-              {draft.image && (
-                <img
-                  className="admin-image-preview"
-                  src={draft.image}
-                  alt="선택한 물품 이미지 미리보기"
-                />
-              )}
-              <span className="admin-upload-hint">
-                <Upload size={20} />
-                {draft.image ? '눌러서 이미지 변경' : '이미지를 끌어 놓거나 눌러서 추가'}
-              </span>
-            </button>
-            <input
-              ref={fileInput}
-              hidden
-              id="item-image"
-
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                e.target.value = '';
-                void acceptImage(file);
-              }}
-            />
-            {draft.image && (
-              <button
-                type="button"
-                className="admin-image-remove"
-                onClick={() => {
-                  update({ image: '', removeDefaultImage: true });
-                  setImageError(undefined);
-                }}
-              >
-                <Trash2 size={16} /> 이미지 삭제
-              </button>
-            )}
-            {imageLoading && <p role="status">이미지 처리 중…</p>}
-            <ErrorBox error={imageError} />
-          </div>
-          <div className="admin-field">
-            <span>카테고리</span>
-            <CategorySelect
-              value={draft.category || ''}
-              options={catalog.categories || [...new Set(catalog.kinds.map((k) => k.category))]}
-              disabled={
-                original?.status === 'rented' || busy || imageLoading || !!pending || checking
-              }
-              onAdded={categoryAdded}
-              onRemoved={categoryRemoved}
-              onChange={(category) => update({ category, kindId: '' })}
-            />
-          </div>
-          <label>
-            물품명
-            <input
-              required
-              maxLength={60}
-              value={draft.label}
-              placeholder="물품명을 입력해 주세요"
-              onChange={(e) => update({ label: e.target.value })}
-            />
-          </label>
-          <label>
-            관리번호
-            <input
-              required
-              maxLength={20}
-              value={draft.inventoryNumber || ''}
-              placeholder="예: 009"
-              onChange={(e) => update({ inventoryNumber: e.target.value })}
-            />
-          </label>
-          <label>
-            대여소
-            <select
-              disabled={!!original}
-              aria-label="대여소"
-              value={draft.stationId}
-              onChange={(e) => update({ stationId: e.target.value })}
-            >
-              {catalog.stations.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <fieldset className="admin-status-options" disabled={original?.status === 'rented'}>
-            <legend>물품 상태</legend>
-            <div>
-              {Object.entries(labels)
-                .filter(([key]) => key !== 'rented' || original?.status === 'rented')
-                .map(([key, label]) => (
-                  <label key={key}>
-                    <input
-                      type="radio"
-                      name="item-status"
-                      value={key}
-                      disabled={key === 'available' && !original?.tag}
-                      checked={draft.status === key}
-                      onChange={() => update({ status: key as ItemStatus })}
-                    />
-                    <span>{label}</span>
-                  </label>
-                ))}
-            </div>
-          </fieldset>
-          {!original?.tag && (
-            <p className="admin-help">태그 연결 후 대여 가능으로 변경할 수 있습니다.</p>
-          )}
-          {original?.status === 'rented' && (
-            <p className="admin-help">
-              대여 중인 물품은 반납 후 카테고리와 상태를 변경할 수 있습니다.
-            </p>
-          )}
-          {!!original?.tag && !original.active && (
-            <p className="admin-help">
-              태그가 비활성 상태입니다. 대여 가능으로 변경해도 태그는 활성화되지 않습니다.
-            </p>
-          )}
-        </fieldset>
-        {pending && !original?.tag && !pending.tag && (
-          <p className="admin-help" role="status">
-            {retryingTag
-              ? '물품 정보는 저장되었습니다. 태그 연결 결과 확인을 위해 같은 UID로 재시도합니다.'
-              : '물품 정보는 저장되었지만 태그 연결은 완료되지 않았습니다. 다시 시도하면 태그만 연결합니다.'}
-          </p>
-        )}
-        <fieldset
-          disabled={busy || imageLoading || checking || retryingTag}
-          className="admin-tag-field"
-        >
-          <label>
-            태그 ID
-            <input readOnly value={draft.tag} placeholder="NFC 태그를 리더기에 접촉해 주세요" />
-          </label>
-          {!original?.tag && (
-            <p className="admin-help">
-              {retryingTag
-                ? '연결 결과가 확인될 때까지 같은 UID를 유지합니다.'
-                : draft.tag
-                  ? '다른 태그를 접촉하면 입력된 UID가 변경됩니다.'
-                  : '태그 없이 등록한 뒤 나중에 연결할 수 있습니다.'}
-            </p>
-          )}
-        </fieldset>
-        <ErrorBox error={error} />
-        <footer>
-          <button
-            className="secondary"
-            type="button"
-            disabled={busy || imageLoading}
-            onClick={close}
-          >
-            취소
-          </button>
-          <button className="primary" disabled={busy || imageLoading} type="submit">
-            {busy
-              ? '처리 중…'
-              : checking
-                ? '결과 확인'
-                : pending && !original?.tag
-                  ? '태그 연결 재시도'
-                  : original
-                    ? original.tag || !draft.tag
-                      ? '변경사항 저장'
-                      : '태그 연결'
-                    : '등록하기'}
-          </button>
-        </footer>
-      </form>
-    </dialog>
-  );
-}
-
-function DeleteItem({
-  item,
-  close,
-  removed,
-}: {
-  item: Item;
-  close: () => void;
-  removed: () => void;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>();
-  useEffect(() => {
-    ref.current?.showModal();
-  }, []);
-  return (
-    <dialog
-      className="admin-dialog"
       ref={ref}
-      aria-label="물품 삭제"
+      className="admin-dialog"
+      aria-label={title}
       onCancel={(e) => {
         e.preventDefault();
         if (!busy) close();
       }}
     >
-      <h2>물품을 삭제할까요?</h2>
-      <p>{item.label}</p>
-      <p className="admin-help">목록에서 제외하며 기존 이용 이력은 보관합니다.</p>
-      <ErrorBox error={error} />
-      <div className="admin-confirm-actions">
-        <button disabled={busy} onClick={close}>
-          취소
-        </button>
-        <button
-          className="danger"
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            try {
-              await adminApi.remove(item);
-              removed();
-            } catch (e) {
-              setError(e);
-            } finally {
-              setBusy(false);
-            }
-          }}
-        >
-          {busy ? '삭제 중…' : '삭제'}
+      <div className="admin-dialog-heading">
+        <h2>{title}</h2>
+        <button type="button" aria-label="닫기" disabled={busy} onClick={close}>
+          <X />
         </button>
       </div>
+      {children}
     </dialog>
+  );
+}
+function ItemEditor({
+  original,
+  catalog,
+  close,
+  saved,
+}: {
+  original: Item | null;
+  catalog: Catalog;
+  close: () => void;
+  saved: () => void;
+}) {
+  const [draft, setDraft] = useState<ItemDraft>({
+    label: original?.name || '',
+    kindId: original?.kindId || '',
+  });
+  const [pending, setPending] = useState<Item>();
+  const [uid, setUid] = useState('');
+  const [retryUid, setRetryUid] = useState('');
+  const [reader, setReader] = useState('connecting');
+  const [busy, setBusy] = useState(false);
+  const lock = useRef(false);
+  const [error, setError] = useState<unknown>();
+  const [uncertainCreate, setUncertainCreate] = useState(false);
+  useEffect(() => {
+    if (original?.tag || busy || retryUid) return;
+    return nfc.subscribe((r) => setUid(r.uid), { onStatus: setReader });
+  }, [original?.tag, busy, retryUid]);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (lock.current || uncertainCreate) return;
+    lock.current = true;
+    setBusy(true);
+    setError(undefined);
+    let item = pending;
+    try {
+      if (!item) {
+        try {
+          item = await adminApi.save('', draft, original || undefined);
+          setPending(item);
+        } catch (e) {
+          if (!original && e instanceof ServiceError && e.code === 'UNKNOWN')
+            setUncertainCreate(true);
+          throw e;
+        }
+      }
+      if (!item.tag && (retryUid || uid)) {
+        const value = retryUid || normalizeUid(uid);
+        try {
+          await adminApi.attachTag(item.id, value);
+          setRetryUid('');
+        } catch (e) {
+          if (e instanceof ServiceError && e.code === 'UNKNOWN') setRetryUid(value);
+          throw e;
+        }
+      }
+      saved();
+    } catch (e) {
+      setError(e);
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+  return (
+    <Dialog title={original ? '물품 수정' : '물품 등록'} close={close} busy={busy}>
+      <form onSubmit={submit}>
+        <fieldset disabled={busy || !!pending || uncertainCreate}>
+          <label>
+            물품명
+            <input
+              required
+              maxLength={100}
+              value={draft.label}
+              onChange={(e) => setDraft({ ...draft, label: e.target.value })}
+            />
+          </label>
+          <label>
+            물품 종류
+            <select
+              required
+              aria-label="물품 종류"
+              value={draft.kindId}
+              onChange={(e) => setDraft({ ...draft, kindId: e.target.value })}
+            >
+              <option value="">선택해 주세요</option>
+              {catalog.kinds.map((k) => (
+                <option key={k.id} value={k.id}>
+                  {k.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {!catalog.kinds.length && (
+            <p role="status">등록된 물품 종류가 없습니다. 관리자에게 종류 등록을 요청해 주세요.</p>
+          )}
+        </fieldset>
+        {!original?.tag && (
+          <fieldset disabled={busy || uncertainCreate || !!retryUid}>
+            <label>
+              NFC 태그 UID
+              <input
+                aria-label="NFC 태그 UID"
+                value={uid}
+                onChange={(e) => setUid(e.target.value)}
+                placeholder="리더기에 태그를 대거나 UID 입력"
+              />
+            </label>
+            <p className="admin-help">
+              {reader === 'connected' ? '리더기 연결됨' : '리더기 연결을 확인해 주세요.'} 태그는
+              물품 생성 후 연결됩니다.
+            </p>
+          </fieldset>
+        )}
+        {pending && (
+          <p role="status">물품 ID {pending.id} 저장 완료. 다시 시도하면 태그만 연결합니다.</p>
+        )}
+        {uncertainCreate && (
+          <p role="alert">
+            생성 결과가 불명확합니다. 중복 생성을 막기 위해 다시 저장할 수 없습니다. 창을 닫고
+            목록에서 생성 여부를 확인해 주세요.
+          </p>
+        )}
+        <ErrorBox error={error} />
+        <div className="admin-dialog-actions">
+          <button type="button" disabled={busy} onClick={close}>
+            닫기
+          </button>
+          <button className="primary" disabled={busy || uncertainCreate || !draft.kindId}>
+            {busy
+              ? '저장 중…'
+              : pending
+                ? '태그 연결 재시도'
+                : original
+                  ? '변경사항 저장'
+                  : '등록하기'}
+          </button>
+        </div>
+      </form>
+    </Dialog>
+  );
+}
+function StatusEditor({
+  item,
+  close,
+  saved,
+}: {
+  item: Item;
+  close: () => void;
+  saved: () => void;
+}) {
+  const [status, setStatus] = useState<ItemStatus>(item.status),
+    [reason, setReason] = useState(''),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState<unknown>();
+  const lock = useRef(false);
+  return (
+    <Dialog title="상태 변경" close={close} busy={busy}>
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (lock.current) return;
+          lock.current = true;
+          setBusy(true);
+          setError(undefined);
+          try {
+            await adminApi.changeStatus(item.id, status, reason);
+            saved();
+          } catch (e) {
+            setError(e);
+          } finally {
+            lock.current = false;
+            setBusy(false);
+          }
+        }}
+      >
+        <label>
+          변경할 상태
+          <select value={status} onChange={(e) => setStatus(e.target.value as ItemStatus)}>
+            {['available', 'inspection', 'repair'].map((s) => (
+              <option key={s} value={s}>
+                {labels[s as ItemStatus]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          변경 사유
+          <textarea maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
+        </label>
+        <ErrorBox error={error} />
+        <button className="primary" disabled={busy}>
+          상태 저장
+        </button>
+      </form>
+    </Dialog>
+  );
+}
+function DeleteItem({ item, close, saved }: { item: Item; close: () => void; saved: () => void }) {
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState<unknown>();
+  const lock = useRef(false);
+  return (
+    <Dialog title="물품 삭제" close={close} busy={busy}>
+      <p>
+        {item.name}을 삭제할까요? 태그 또는 이용·상태 변경 이력이 있는 물품은 삭제할 수 없습니다.
+      </p>
+      <ErrorBox error={error} />
+      <button
+        className="danger"
+        disabled={busy}
+        onClick={async () => {
+          if (lock.current) return;
+          lock.current = true;
+          setBusy(true);
+          setError(undefined);
+          try {
+            await adminApi.remove(item);
+            saved();
+          } catch (e) {
+            setError(e);
+          } finally {
+            lock.current = false;
+            setBusy(false);
+          }
+        }}
+      >
+        삭제 확인
+      </button>
+    </Dialog>
   );
 }

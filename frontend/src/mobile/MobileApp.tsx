@@ -1,4 +1,4 @@
-import { HTTP_AUTH, COOKIE_SESSION } from '../shared/authMode';
+import { COOKIE_SESSION } from '../shared/authMode';
 import { serverSession } from '../shared/httpAuth';
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import {
@@ -28,7 +28,6 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { api, ServiceError } from '../shared/api';
-import { MOBILE_TOKEN_KEY } from '../shared/config';
 import AuthFlow from './AuthFlow';
 import { authApi } from '../shared/auth';
 import { Badge, Brand, date, ErrorBox, Loading, ProductArt, useResource } from '../shared/ui';
@@ -279,7 +278,7 @@ function Detail() {
       ) : (
         <>
           <div className="detail-art">
-            <ProductArt kind={kind.art} large />
+            <ProductArt kind={kind?.art || 'generic'} large />
           </div>
           <div className="page-content">
             <Badge tone={count ? 'green' : 'gray'}>{count ? '대여 가능' : '현재 대여 불가'}</Badge>
@@ -451,7 +450,10 @@ function CodePage() {
       </div>
       <div className="note">
         <ShieldCheck size={19} />
-        <p>반납할 때는 태그 인식과 물품 상태 선택 후 이 코드를 입력해 주세요. 대여자 본인의 코드만 사용할 수 있습니다.</p>
+        <p>
+          반납할 때는 태그 인식과 물품 상태 선택 후 이 코드를 입력해 주세요. 대여자 본인의 코드만
+          사용할 수 있습니다.
+        </p>
       </div>
       <div className="note">
         <ShieldCheck size={19} />
@@ -501,13 +503,13 @@ function Rentals({ history = false }: { history?: boolean }) {
         <div className="rental-list">
           {rows.map((row) => {
             const item = r.data!.catalog.items.find((i) => i.id === row.itemId)!;
-            const kind = r.data!.catalog.kinds.find((k) => k.id === item.kindId)!;
+            const kind = r.data!.catalog.kinds.find((k) => k.id === item?.kindId);
             const overdue = !row.returnedAt && row.dueAt < Date.now();
             const returnedOverdue = row.returnedAt != null && row.returnedAt > row.dueAt;
             return (
               <article className="rental-card" key={row.id}>
                 <div className="rental-title">
-                  <ProductArt kind={kind.art} />
+                  <ProductArt kind={kind?.art || 'generic'} />
                   <div>
                     <Badge tone={history ? 'gray' : overdue ? 'orange' : 'green'}>
                       {history
@@ -516,8 +518,8 @@ function Rentals({ history = false }: { history?: boolean }) {
                           ? '연체'
                           : '대여 중'}
                     </Badge>
-                    <h2>{kind.name}</h2>
-                    <p>{item.label}</p>
+                    <h2>{row.itemTypeName || kind?.name || '물품'}</h2>
+                    <p>{row.itemName || item?.label || row.itemId}</p>
                   </div>
                 </div>
                 <dl>
@@ -550,7 +552,7 @@ function Account() {
   const r = useResource(
     async () => ({
       ...(await api.me(token)),
-      rentals: HTTP_AUTH ? null : await api.rentals(token),
+      rentals: await api.rentals(token),
     }),
     [token],
     true,
@@ -594,15 +596,11 @@ function Account() {
           </section>
           <section className="account-summary" aria-label="대여 현황">
             <Link to="/mobile/rentals">
-              <strong>
-                {r.data?.rentals?.filter((x) => !x.returnedAt).length ?? (HTTP_AUTH ? '—' : 0)}
-              </strong>
+              <strong>{r.data?.rentals?.filter((x) => !x.returnedAt).length ?? '—'}</strong>
               <span>대여 중</span>
             </Link>
             <Link to="/mobile/history">
-              <strong>
-                {r.data?.rentals?.filter((x) => !!x.returnedAt).length ?? (HTTP_AUTH ? '—' : 0)}
-              </strong>
+              <strong>{r.data?.rentals?.filter((x) => !!x.returnedAt).length ?? '—'}</strong>
               <span>이용 기록</span>
             </Link>
           </section>
@@ -616,12 +614,7 @@ function Account() {
           </Link>
           <section className="account-settings">
             <h2>계정 관리</h2>
-            {!HTTP_AUTH && (
-              <Link to="/mobile/change-phone">
-                <span>전화번호 변경</span>
-                <ChevronRight size={18} />
-              </Link>
-            )}
+
             <Link to="/mobile/recover">
               <span>PIN 재설정</span>
               <ChevronRight size={18} />
@@ -637,30 +630,25 @@ function Account() {
   );
 }
 export default function MobileApp() {
-  const [token, setTokenState] = useState(() =>
-    HTTP_AUTH ? '' : localStorage.getItem(MOBILE_TOKEN_KEY) || '',
-  );
+  const [token, setTokenState] = useState(() => '');
   const sessionRevision = useRef(0);
   const setToken = (v: string) => {
     sessionRevision.current++;
     setTokenState(v);
-    if (HTTP_AUTH) {
+    {
       window.dispatchEvent(new Event('tagback-session'));
       return;
     }
-    if (v) localStorage.setItem(MOBILE_TOKEN_KEY, v);
-    else localStorage.removeItem(MOBILE_TOKEN_KEY);
-    window.dispatchEvent(new Event('tagback-session'));
   };
   const [sessionNotice, setSessionNotice] = useState('');
-  const [sessionReady, setSessionReady] = useState(!HTTP_AUTH);
+  const [sessionReady, setSessionReady] = useState(false);
   const [bootError, setBootError] = useState<unknown>();
   useEffect(() => {
     let active = true;
     let checking = false;
     let authenticated = false;
     const sync = async () => {
-      if (HTTP_AUTH) {
+      {
         if (checking) return;
         checking = true;
         const revision = sessionRevision.current;
@@ -688,39 +676,15 @@ export default function MobileApp() {
         }
         return;
       }
-      const current = localStorage.getItem(MOBILE_TOKEN_KEY) || '';
-      if (active) setTokenState(current);
-      if (!current || checking) return;
-      checking = true;
-      try {
-        await api.me(current);
-      } catch (e) {
-        if (
-          active &&
-          e instanceof ServiceError &&
-          e.code === 'AUTH' &&
-          localStorage.getItem(MOBILE_TOKEN_KEY) === current
-        ) {
-          localStorage.removeItem(MOBILE_TOKEN_KEY);
-          setTokenState('');
-          setSessionNotice(e.message);
-        }
-      } finally {
-        checking = false;
-      }
-    };
-    const storage = (e: StorageEvent) => {
-      if (e.key === MOBILE_TOKEN_KEY || e.key === 'tagback.mock.v1') void sync();
     };
     void sync();
-    window.addEventListener('storage', storage);
     window.addEventListener('tagback-session', sync);
     window.addEventListener('tagback-change', sync);
     window.addEventListener('focus', sync);
-    const timer = setInterval(sync, 30_000);
+    const timer = setInterval(sync, 30000);
     let lastActivity = 0;
     const activity = () => {
-      if (!HTTP_AUTH || !authenticated || Date.now() - lastActivity < 60000) return;
+      if (!authenticated || Date.now() - lastActivity < 60000) return;
       lastActivity = Date.now();
       void serverSession(true).catch(() => void sync());
     };
@@ -731,7 +695,6 @@ export default function MobileApp() {
       clearInterval(timer);
       window.removeEventListener('pointerdown', activity);
       window.removeEventListener('keydown', activity);
-      window.removeEventListener('storage', storage);
       window.removeEventListener('tagback-session', sync);
       window.removeEventListener('tagback-change', sync);
       window.removeEventListener('focus', sync);

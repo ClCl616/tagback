@@ -18,9 +18,11 @@ async function server(page: Page, loseSignup = false) {
     role: 'USER',
     maskedPhoneNumber: '010-****-5678',
   };
-  await page.route('**/api/v1/rental-codes', (route) => route.fulfill({
-    json: { code: '123456', expiresAt: new Date(Date.now() + 180000).toISOString() },
-  }));
+  await page.route('**/api/v1/rental-codes', (route) =>
+    route.fulfill({
+      json: { code: '123456', expiresAt: new Date(Date.now() + 180000).toISOString() },
+    }),
+  );
   await page.route('**/api/v1/auth/**', async (route) => {
     const req = route.request(),
       path = new URL(req.url()).pathname;
@@ -576,4 +578,13 @@ test('signup uses lower navigation and clears invalid PIN; auxiliary screens omi
   await expect(page.locator('.mobile-header')).toHaveCount(0);
   await page.goto('/mobile');
   await expect(page.locator('.mobile-header')).toBeVisible();
+});
+
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/v1/items?**', (route) =>
+    route.fulfill({ json: { items: [], page: 0, size: 100, totalElements: 0, totalPages: 0 } }),
+  );
+  await page.route('**/api/v1/rentals/me?**', (route) =>
+    route.fulfill({ json: { rentals: [], page: 0, size: 100, totalElements: 0, totalPages: 0 } }),
+  );
 });

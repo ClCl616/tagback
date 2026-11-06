@@ -29,6 +29,16 @@ public class TagRegistrationService {
         return register(itemId, rawUid, null);
     }
 
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public TagRegistrationResponse current(Long itemId) {
+        if (!itemRepository.existsById(itemId)) {
+            throw new TagRegistrationException(HttpStatus.NOT_FOUND, "ITEM_NOT_FOUND", "물품을 찾을 수 없습니다.");
+        }
+        return new TagRegistrationResponse(tagRepository.findByItem_Id(itemId)
+                .map(tag -> new TagRegistrationResponse.Tag(tag.getId(), tag.getUid(), itemId,
+                        "ACTIVE", tag.getCreatedAt())).orElse(null));
+    }
+
     public RegistrationResult register(Long itemId, String rawUid, Long actorUserId) {
         String uid = TagUidNormalizer.normalize(rawUid);
         if (itemRepository.findById(itemId).isEmpty()) {

@@ -4,7 +4,7 @@ Vision-UP 2026-2 · 돌려조
 
 NFC 태그로 공용물품을 식별하고 반출·반납, 이용 이력, 연체, 점검·수리 상태를 관리하는 서비스입니다.
 
-## 현재 진행 상태 · 2026-10-18
+## 현재 진행 상태 · 2026-11-06
 
 현재 개발 결과는 [develop](https://github.com/ClCl616/tagback/tree/develop)에 통합합니다. 기본 브랜치 main은 초기 상태이며 배포 완료를 의미하지 않습니다. [구현·검증 현황](docs/project-status.md)을 기준으로 완료 범위와 남은 작업을 확인하세요.
 
@@ -20,12 +20,12 @@ NFC 태그로 공용물품을 식별하고 반출·반납, 이용 이력, 연체
 
 | 디렉터리 | 용도 | 기술/상태 |
 |---|---|---|
-| `frontend/` | 모바일 사용자·공용 키오스크 화면 | React + TypeScript + Vite, 사용자·키오스크·관리자 mock 화면 및 인증 HTTP 어댑터 구현 |
+| `frontend/` | 모바일 사용자·공용 키오스크 화면 | React + TypeScript + Vite, 사용자·키오스크·관리자 HTTP API 연결 |
 | `backend/` | 인증·물품·대여·태그 API | Spring Boot·PostgreSQL·Flyway, 인증·권한·물품·태그·반출·본인 대여 조회 API 구현 |
 | `nfc/` | 리더기·키오스크 연동 | develop은 구조·계획, 브리지·키오스크 HTTP 연동은 PR #20 검토 중 |
 | `docs/` | 설계·결정·개발 기록 | 팀 합의 사항 기록 |
 
-프론트엔드 실행과 테스트는 [frontend/README.md](frontend/README.md)를 참고하세요. 기본은 브라우저 mock이며 `VITE_AUTH_MODE=http`에서 인증 HTTP 어댑터를 사용합니다. 관리자 화면은 DEV 전용 mock이고 물품 관리·본인 대여 조회의 실제 화면 연결은 남아 있습니다. 실제 SMS와 실물 NFC 전체 연동 검증은 미완료입니다. 백엔드는 [DB 설정 안내](docs/database-setup.md)와 기능별 계약을 참고하세요.
+프론트엔드 실행과 테스트는 [frontend/README.md](frontend/README.md)를 참고하세요. FE 실행용 mock과 시뮬레이터를 제거했습니다. 기존 `/admin`에서 관리자 권한, 물품 CRUD·상태 변경·태그 연결과 사용자·대여 조회를 실제 API로 처리합니다. 모바일 재고와 본인 대여도 서버에서 조회합니다. 실제 SMS와 실물 NFC 전체 연동 검증은 미완료입니다. 백엔드는 [DB 설정 안내](docs/database-setup.md)와 기능별 계약을 참고하세요.
 
 현재 이용 구조는 모바일 조회·인증과 현장 키오스크·외장 리더기입니다. 신청서의 스마트폰 직접 NFC 인식은 초기 계획으로 구분합니다. 태그 인식만으로 대여를 확정하지 않습니다.
 

@@ -79,8 +79,6 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Test fixture setup failed.' }
     Write-Host 'Starting frontend...'
 
-    $env:VITE_AUTH_MODE = 'http'
-    $env:VITE_KIOSK_MODE = 'bridge'
     $env:TAGBACK_API_TARGET = "http://127.0.0.1:$BackendPort"
     $env:TAGBACK_LIVE_PSQL = Join-Path $PostgresBin 'psql.exe'
     $env:TAGBACK_LIVE_DB_PORT = $DbPort.ToString()
