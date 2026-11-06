@@ -2,7 +2,8 @@ param(
     [string]$PostgresBin = 'C:\Program Files\PostgreSQL\17\bin',
     [int]$DbPort = 55442,
     [int]$BackendPort = 18082,
-    [int]$FrontendPort = 5182
+    [int]$FrontendPort = 5182,
+    [ValidateSet('return.spec.ts', 'admin-search.spec.ts')][string]$TestFile = 'return.spec.ts'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -100,7 +101,7 @@ try {
 
     Push-Location $taskFrontend
     try {
-        & pnpm exec playwright test -c playwright.live-return.config.ts
+        & pnpm exec playwright test -c playwright.live-return.config.ts $TestFile
         if ($LASTEXITCODE -ne 0) { throw 'Live return browser test failed.' }
     } finally { Pop-Location }
 } finally {
