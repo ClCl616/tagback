@@ -86,6 +86,37 @@ class TagRegistrationServiceTest {
     }
 
     @Test
+    void returnsConcurrentWinnerDiscoveredBetweenItemAndUidLookups() {
+        Item item = mock(Item.class);
+        NfcTag winner = mock(NfcTag.class);
+        when(itemRepository.findById(12L)).thenReturn(Optional.of(item));
+        when(tagRepository.findByItem_Id(12L)).thenReturn(Optional.empty(), Optional.of(winner));
+        when(tagRepository.findByUid("04A23B1C5D6E80")).thenReturn(Optional.of(winner));
+        when(winner.getId()).thenReturn(1L);
+        when(winner.getUid()).thenReturn("04A23B1C5D6E80");
+
+        var result = service.register(12L, "04:a2:3b:1c:5d:6e:80", 99L);
+
+        assertEquals(false, result.created());
+        assertEquals(1L, result.response().tag().tagId());
+        verify(writer).makeAvailableIfTagged(12L, 99L);
+        verify(writer, never()).create(anyLong(), anyString(), any());
+    }
+
+    @Test
+    void inactiveUidOnSameItemIsNotTreatedAsAnActiveRetry() {
+        Item item = mock(Item.class);
+        NfcTag inactive = mock(NfcTag.class);
+        when(itemRepository.findById(12L)).thenReturn(Optional.of(item));
+        when(tagRepository.findByUid("04A23B1C5D6E80")).thenReturn(Optional.of(inactive));
+
+        assertEquals("TAG_ALREADY_REGISTERED", assertThrows(TagRegistrationException.class,
+                () -> service.register(12L, "04A23B1C5D6E80")).code());
+        verify(writer, never()).makeAvailableIfTagged(anyLong(), any());
+        verify(writer, never()).create(anyLong(), anyString(), any());
+    }
+
+    @Test
     void rejectsKnownUidOnAnotherItemAndDifferentUidOnSameItem() {
         Item item = mock(Item.class);
         NfcTag existing = mock(NfcTag.class);
