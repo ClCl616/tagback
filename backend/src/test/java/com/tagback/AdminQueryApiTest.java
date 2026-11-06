@@ -86,7 +86,32 @@ class AdminQueryApiTest {
                 .andExpect(status().isOk()).andExpect(header().string("Cache-Control", "no-store"))
                 .andExpect(jsonPath("$.rentals[0].userId").value("7"))
                 .andExpect(jsonPath("$.rentals[0].rentalStatus").value("OVERDUE"))
-                .andExpect(jsonPath("$.rentals[0].overdue").value(true));
+                .andExpect(jsonPath("$.rentals[0].overdue").value(true))
+                .andExpect(jsonPath("$.rentals[0].returnCondition").hasJsonPath())
+                .andExpect(jsonPath("$.rentals[0].returnCondition").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test void returnsRecordedReturnConditions() throws Exception {
+        var user = mock(User.class); var item = mock(Item.class); var type = mock(ItemType.class);
+        when(user.getId()).thenReturn(7L);
+        when(item.getId()).thenReturn(12L); when(item.getItemType()).thenReturn(type);
+        when(type.getId()).thenReturn(3L);
+        var normal = mock(Rental.class); var damaged = mock(Rental.class); var legacy = mock(Rental.class);
+        for (var rental : List.of(normal, damaged, legacy)) {
+            when(rental.getId()).thenReturn(101L); when(rental.getUser()).thenReturn(user);
+            when(rental.getItem()).thenReturn(item);
+            when(rental.getDueAt()).thenReturn(Instant.parse("2026-11-04T03:00:00Z"));
+            when(rental.getReturnedAt()).thenReturn(Instant.parse("2026-11-03T03:00:00Z"));
+        }
+        when(normal.getReturnCondition()).thenReturn(ReturnCondition.NORMAL);
+        when(damaged.getReturnCondition()).thenReturn(ReturnCondition.DAMAGED);
+        when(rentals.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of(normal, damaged, legacy)));
+        mvc.perform(get("/api/v1/admin/rentals").cookie(cookie("admin")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.rentals[0].returnCondition").value("NORMAL"))
+                .andExpect(jsonPath("$.rentals[1].returnCondition").value("DAMAGED"))
+                .andExpect(jsonPath("$.rentals[2].returnCondition").hasJsonPath())
+                .andExpect(jsonPath("$.rentals[2].returnCondition").value(org.hamcrest.Matchers.nullValue()));
     }
 
     @Test void emptyPagesAndPaginationBoundaries() throws Exception {

@@ -64,6 +64,8 @@ class RentalRepositoryIntegrationTest {
         assertEquals(user.getId().toString(), first.rentals().get(0).userId());
         assertEquals(earlier.getId().toString(), second.rentals().get(0).rentalId());
         assertEquals(RentalStatus.RETURNED, second.rentals().get(0).rentalStatus());
+        assertEquals(ReturnCondition.NORMAL, second.rentals().get(0).returnCondition());
+        assertNull(first.rentals().get(0).returnCondition());
         assertTrue(adminQueries.rentals(2, 1).rentals().isEmpty());
         assertEquals(user.getId().toString(), adminQueries.users(0, 1).users().get(0).userId());
     }
