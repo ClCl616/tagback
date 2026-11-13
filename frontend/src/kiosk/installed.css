@@ -1,0 +1,54 @@
+/* Installed hosts keep navigation visible; only oversized content scrolls.
+   Never clip controls to disguise overflow. Browser user/admin layouts are unaffected. */
+.kiosk-installed,
+.kiosk-installed body,
+.kiosk-installed #root { height: 100%; margin: 0; }
+.kiosk-installed body { overflow: hidden; }
+.kiosk-installed .kiosk-shell { height: 100dvh; min-height: 0; overflow: hidden; }
+.kiosk-installed .kiosk-header,
+.kiosk-installed .kiosk-footer { flex-shrink: 0; }
+.kiosk-installed .kiosk-main { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+
+@media (min-width: 700px) {
+  .kiosk-installed .kiosk-header { height: clamp(64px, 9dvh, 96px); min-height: 64px; padding: 12px 3%; gap: 24px; }
+  .kiosk-installed .kiosk-footer { height: 64px; min-height: 64px; padding-block: 6px; margin-inline: 3%; }
+  .kiosk-installed .kiosk-main { padding: clamp(12px, 2dvh, 28px) 4%; }
+  .kiosk-installed .welcome-heading h1 { font-size: clamp(28px, 4.3dvh, 46px); line-height: 1.3; margin: 10px 0; }
+  .kiosk-installed .kiosk-actions { margin-top: clamp(12px, 2dvh, 28px); }
+  .kiosk-installed .kiosk-actions > button { min-height: 0; padding: 20px 28px 0; }
+  .kiosk-installed .kiosk-actions h2 { font-size: clamp(28px, 4dvh, 40px); margin: 8px 0; }
+  .kiosk-installed .action-footer { margin-top: 18px; padding: 14px 0; }
+  .kiosk-installed .action-symbol { width: 56px; height: 56px; top: 20px; right: 24px; }
+  .kiosk-installed .welcome-tip { margin-top: 14px; }
+  .kiosk-installed .welcome-main .notice,
+  .kiosk-installed .welcome-main .kiosk-inline-error { margin-block: 10px; padding: 10px 16px; }
+  .kiosk-installed .stepper { margin-bottom: 16px; }
+  .kiosk-installed .kiosk-title { margin: 10px 0 18px; }
+  .kiosk-installed .kiosk-title p { margin-top: 8px; }
+  .kiosk-installed .kiosk-product-grid { margin-top: 20px; }
+}
+
+@media (min-width: 700px) and (max-height: 850px) {
+  .kiosk-installed .code-stage { margin-top: 8px; gap: 32px; }
+  .kiosk-installed .code-stage h1 { font-size: 30px; margin: 8px 0; }
+  .kiosk-installed .keypad-panel { padding: 16px; }
+  .kiosk-installed .keypad { margin: 10px 0; gap: 6px; }
+  .kiosk-installed .keypad > button { height: 48px; min-height: 48px; }
+  .kiosk-installed .kiosk-code-input { padding: 10px 8px; margin-top: 6px; }
+  .kiosk-installed .kiosk-product .product-art { height: 145px; }
+  .kiosk-installed .kiosk-product h2 { margin: 12px 0; }
+  .kiosk-installed .kw-reader-illustration { margin-block: 8px; min-height: 210px; }
+  .kiosk-installed .completion { padding: 10px 0; }
+  .kiosk-installed .success-circle { width: 76px; height: 76px; margin-bottom: 12px; }
+  .kiosk-installed .completion-detail { margin-block: 16px; padding: 18px; }
+  .kiosk-installed .completion .primary { margin-top: 12px; }
+  .kiosk-installed .confirm-panel { padding: 20px; gap: 24px; }
+  .kiosk-installed .confirm-panel dl > div { display: grid; grid-template-columns: 100px 1fr; gap: 12px; margin-block: 12px; padding-block: 0; }
+  .kiosk-installed .confirm-panel .due-row { padding-top: 12px; }
+  .kiosk-installed .confirm-product .product-art { height: 140px; }
+  .kiosk-installed .confirm-bottom { margin-top: 16px; }
+  .kiosk-installed .condition-item { margin-bottom: 12px; }
+  .kiosk-installed .condition-options > button { min-height: 164px; padding: 16px; }
+  .kiosk-installed .condition-note { margin-block: 12px; }
+  .kiosk-installed .kiosk-title h1 { font-size: 28px; }
+}

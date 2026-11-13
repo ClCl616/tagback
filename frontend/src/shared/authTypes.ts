@@ -1,5 +1,3 @@
-// Browser mock contract. HTTP field names, ISO timestamps, cookies, and error codes
-// are specified separately in docs/auth-api-contract.md.
 export type Purpose = 'access' | 'reset' | 'change';
 export type Challenge = { id: string; expiresAt: number; resendAt: number };
 export type Verification = {
@@ -45,27 +43,3 @@ export interface AuthAdapter {
   logout(token: string): Promise<void>;
   unregister(registration: string): Promise<void>;
 }
-export type AuthDatabase = {
-  registrations: Record<string, { userId: string; expiresAt: number; reason?: string }>;
-  sessions: Record<
-    string,
-    { userId: string; registration: string; expiresAt: number; seenAt: number; reason?: string }
-  >;
-  attempts: Record<string, { failures: number; retryAt: number }>;
-  sms: Array<
-    Challenge & {
-      phone: string;
-      purpose: Purpose;
-      source: string;
-      attempts: number;
-      verified?: boolean;
-      used?: boolean;
-      proof?: string;
-      proofExpiresAt?: number;
-      reauth?: string;
-    }
-  >;
-  rates: Record<string, number[]>;
-  reauth: Record<string, { userId: string; session: string; expiresAt: number; used?: boolean }>;
-  operations: Record<string, { fingerprint: string; result: AuthResult }>;
-};

@@ -1,6 +1,6 @@
 import { ArrowUpRight, Box, Check, CircleAlert, Info, LoaderCircle, Radio } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { ServiceError } from './api';
+import { ServiceError } from './serviceError';
 export const date = (n: number) =>
   new Intl.DateTimeFormat('ko-KR', {
     month: 'long',
@@ -213,14 +213,9 @@ export function useResource<T>(loader: () => Promise<T>, deps: unknown[] = [], l
   useEffect(() => {
     if (!live) return;
     const refresh = () => setVersion((v) => v + 1);
-    const storage = (e: StorageEvent) => {
-      if (e.key === 'tagback.mock.v1') refresh();
-    };
-    window.addEventListener('storage', storage);
     window.addEventListener('tagback-change', refresh);
     window.addEventListener('focus', refresh);
     return () => {
-      window.removeEventListener('storage', storage);
       window.removeEventListener('tagback-change', refresh);
       window.removeEventListener('focus', refresh);
     };

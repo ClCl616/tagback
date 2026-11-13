@@ -1,14 +1,13 @@
-// Mock configuration. Code TTL (3 minutes) is confirmed; other values remain demo assumptions.
-export const MOCK = {
+// Kiosk interaction settings and the configured single service location.
+export const KIOSK = {
   codeLength: 6,
-  codeTtlMs: 3 * 60_000,
-  rentalMs: 3 * 24 * 60 * 60_000,
   sessionSeconds: 180,
   completionSeconds: 12,
-  delayMs: 380,
+  warningSeconds: 20,
   stationId: 'engineering',
-  demoPhone: '01012345678',
 } as const;
-export const DB_KEY = 'tagback.mock.v1';
-export const CONTROL_KEY = 'tagback.mock.controls';
-export const MOBILE_TOKEN_KEY = 'tagback.mobile.token';
+export const STATION = {
+  id: KIOSK.stationId,
+  name: '대전대 융합과학관',
+  location: '융합과학관 2층 학생 라운지',
+};
