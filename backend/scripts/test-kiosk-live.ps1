@@ -1,4 +1,4 @@
-param([int]$DbPort=55442,[int]$BackendPort=18082,[int]$FrontendPort=5182,[switch]$SkipBackendTests)
+param([int]$DbPort=55442,[int]$BackendPort=18082,[int]$FrontendPort=5182,[switch]$SkipBackendTests,[switch]$FullJourney)
 $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $taskBackend=Join-Path $taskRoot 'backend'
@@ -19,7 +19,9 @@ try {
   $taskCreated=$true
   $ready=$false
   for($i=0;$i -lt 40;$i++) {
-    & docker exec $taskContainer pg_isready -U postgres 2>$null | Out-Null
+    # The image's temporary bootstrap server accepts Unix sockets before restarting.
+    # TCP readiness identifies the final server, avoiding a createdb shutdown race.
+    & docker exec $taskContainer pg_isready -h 127.0.0.1 -U postgres 2>$null | Out-Null
     if($LASTEXITCODE -eq 0) {$ready=$true;break}
     Start-Sleep -Milliseconds 500
   }
@@ -62,6 +64,9 @@ try {
   $env:TAGBACK_API_TARGET="http://127.0.0.1:$BackendPort"
   $env:TAGBACK_TEST_CONTAINER=$taskContainer
   $env:TAGBACK_LIVE_BASE_URL="https://localhost:$FrontendPort"
+  # Trust only this generated test certificate in the child Node/Electron processes.
+  # The packaged host keeps HTTPS verification enabled; no system trust changes.
+  if($FullJourney) { $env:NODE_EXTRA_CA_CERTS=$env:TAGBACK_HTTPS_CERT }
   $taskProcesses+=Start-Process -FilePath (Get-Command node).Source -ArgumentList @('node_modules/vite/bin/vite.js','--host','localhost','--port',$FrontendPort,'--strictPort') -WorkingDirectory $taskFrontend -RedirectStandardOutput (Join-Path $taskLogs 'frontend.out.log') -RedirectStandardError (Join-Path $taskLogs 'frontend.err.log') -WindowStyle Hidden -PassThru
   $ready=$false
   for($i=0;$i -lt 40;$i++) {
@@ -70,7 +75,8 @@ try {
   if(!$ready) {throw 'Frontend readiness failed.'}
   Push-Location $taskFrontend
   try {
-    & pnpm exec playwright test -c playwright.live-return.config.ts
+    if($FullJourney) { & pnpm exec playwright test -c playwright.live-journey.config.ts }
+    else { & pnpm exec playwright test -c playwright.live-return.config.ts }
     if($LASTEXITCODE -ne 0) {throw 'Live kiosk browser tests failed.'}
   } finally {Pop-Location}
 } finally {

@@ -1,3 +1,5 @@
+import { kioskRequest, type KioskResponse } from '../kiosk-host/transport';
+import type { KioskCommand } from '../kiosk-host/contracts';
 import { KIOSK } from './config';
 import { ServiceError } from './serviceError';
 import type { Catalog, Grant, Item, Receipt, NfcScanProof } from './types';
@@ -25,11 +27,7 @@ function updateServerConnection(status: ServerConnection) {
 export async function probeServerConnection(): Promise<void> {
   const revision = connectionRevision;
   try {
-    const response = await fetch('/api/v1/kiosk/health', {
-      cache: 'no-store',
-      credentials: 'omit',
-      signal: AbortSignal.timeout(3_000),
-    });
+    const response = await kioskRequest({ action: 'health' });
     if (revision === connectionRevision)
       updateServerConnection(response.ok ? 'connected' : 'disconnected');
   } catch {
@@ -141,28 +139,11 @@ function mapError(
   throw new ServiceError(typeof code === 'string' ? code : 'UNKNOWN', safe);
 }
 
-async function request(
-  path: string,
-  action: Action,
-  method = 'GET',
-  grant?: Grant,
-  body?: unknown,
-  key?: string,
-): Promise<any> {
-  let response: Response;
+async function request(command: Exclude<KioskCommand, { action: 'health' }>): Promise<any> {
+  const action = command.action;
+  let response: KioskResponse;
   try {
-    response = await fetch(path, {
-      method,
-      cache: 'no-store',
-      credentials: 'omit', // A shared kiosk must not send a user's mobile session cookie.
-      headers: {
-        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
-        ...(grant ? { Authorization: `Bearer ${grant.token}` } : {}),
-        ...(key ? { 'Idempotency-Key': key } : {}),
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(15_000),
-    });
+    response = await kioskRequest(command);
   } catch (error) {
     updateServerConnection('disconnected');
     if (action === 'rent' || action === 'return')
@@ -174,7 +155,7 @@ async function request(
       throw new ServiceError('TIMEOUT', SERVER_UNAVAILABLE_MESSAGE);
     throw new ServiceError('NETWORK', SERVER_UNAVAILABLE_MESSAGE);
   }
-  const data = await response.json().catch(() => null);
+  const data: any = await response.json().catch(() => null);
   const backendError = hasBackendErrorShape(data);
   const proxyFailure = response.status >= 500 && !backendError;
   updateServerConnection(proxyFailure ? 'disconnected' : 'connected');
@@ -199,7 +180,7 @@ async function request(
 }
 
 export async function verifyRentalCode(code: string): Promise<Grant> {
-  const data = await request('/api/v1/kiosk/rental-grants', 'verify', 'POST', undefined, { code });
+  const data = await request({ action: 'verify', code });
   if (typeof data.token !== 'string' || typeof data.maskedPhoneNumber !== 'string')
     throw new ServiceError('UNKNOWN', '코드 확인 응답을 확인하지 못했습니다.');
   return {
@@ -210,7 +191,7 @@ export async function verifyRentalCode(code: string): Promise<Grant> {
 }
 
 export async function rentalCatalog(grant: Grant): Promise<Catalog> {
-  const data = await request('/api/v1/item-types', 'catalog', 'GET', grant);
+  const data = await request({ action: 'catalog', grantRef: grant.token });
   if (
     !Array.isArray(data.itemTypes) ||
     !data.itemTypes.every(
@@ -243,7 +224,7 @@ export async function lookupRentalTag(
   uid = uid.replace(/[\s:-]/g, '').toUpperCase();
   if (!/^(?:[0-9A-F]{8}|[0-9A-F]{14}|[0-9A-F]{20})$/.test(uid))
     throw new ServiceError('INVALID_UID_FORMAT', '태그 UID 형식을 확인해 주세요.');
-  const data = await request(`/api/tags/${encodeURIComponent(uid)}`, 'scan', 'GET', grant);
+  const data = await request({ action: 'scan', uid, grantRef: grant.token });
   const row = data.item;
   if (
     !Number.isSafeInteger(row?.itemId) ||
@@ -291,9 +272,7 @@ export async function lookupReturnTag(proof: NfcScanProof): Promise<{
     !/^[0-9a-f]{64}$/i.test(proof.signature)
   )
     throw new ServiceError('NFC_SCAN_REQUIRED', '실물 태그를 리더기에 인식해 주세요.');
-  const data = await request('/api/v1/rentals/return/scan', 'return-scan', 'POST', undefined, {
-    proof,
-  });
+  const data = await request({ action: 'return-scan', proof });
   if (
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
       data?.scanTicketId,
@@ -330,7 +309,13 @@ export async function checkoutRental(
     !/^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$/.test(key)
   )
     throw new ServiceError('INVALID_INPUT', '물품 또는 요청 정보가 올바르지 않습니다.');
-  const data = await request('/api/v1/rentals', 'rent', 'POST', grant, { itemId, itemTypeId }, key);
+  const data = await request({
+    action: 'rent',
+    operationId: key,
+    grantRef: grant.token,
+    itemId,
+    itemTypeId,
+  });
   if (
     !positiveId(data.rentalId) ||
     data.itemId !== itemId ||
@@ -376,10 +361,12 @@ export async function returnRental(
     throw new ServiceError('NFC_SCAN_REQUIRED', '태그를 다시 인식한 뒤 반납을 확정해 주세요.');
   if (!/^[0-9]{6}$/.test(returnCode))
     throw new ServiceError('RETURN_CODE_INVALID', '6자리 반납 코드를 입력해 주세요.');
-  const data = await request('/api/v1/rentals/return', 'return', 'POST', undefined, {
+  const data = await request({
+    action: 'return',
+    operationId: key,
     scanTicketId,
     proof,
-    condition: condition.toUpperCase(),
+    condition: condition === 'normal' ? 'NORMAL' : 'DAMAGED',
     returnCode,
   });
   const expectedStatus = condition === 'normal' ? 'AVAILABLE' : 'INSPECTION';

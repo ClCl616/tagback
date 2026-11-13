@@ -1,6 +1,6 @@
 import { ArrowUpRight, Box, Check, CircleAlert, Info, LoaderCircle, Radio } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
-import { ServiceError } from './api';
+import { ServiceError } from './serviceError';
 export const date = (n: number) =>
   new Intl.DateTimeFormat('ko-KR', {
     month: 'long',

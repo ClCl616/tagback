@@ -14,7 +14,8 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
-import { api, ServiceError } from '../shared/api';
+import { kioskApi as api } from '../shared/kioskApi';
+import { ServiceError } from '../shared/serviceError';
 import { KIOSK } from '../shared/config';
 import {
   probeServerConnection,

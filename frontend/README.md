@@ -1,5 +1,7 @@
 # TagBack 프론트엔드
 
+2026-11-13 최신 추가: 공통 kiosk 빌드를 사용하는 Windows 시험 exe·설치 파일 골격을 구현했다. 실행·설정·검증 한계는 [Windows 호스트 README](../kiosk/windows/README.md)를 참고한다. 아래 P1 시점의 미구현 표시는 해당 날짜/단계의 기록이며 Android APK·실물 검증은 계속 후속 작업이다.
+
 React + TypeScript + Vite. `/mobile`, `/kiosk`, `/admin`은 모두 실제 HTTP API를 사용한다. 실행용 mock DB, seed, 개발 시뮬레이터, 모드 전환 환경변수는 제거했다. API 연결 실패 시 임의 데이터로 대체하지 않는다.
 
 ## 로컬 실행
@@ -126,3 +128,35 @@ pwsh -NoProfile -File backend/scripts/test-kiosk-live.ps1
 소스를 바꾸지 않고 브라우저 테스트만 보강해 반복할 때는 `-SkipBackendTests`를 사용할 수 있다. 서버 변경 후에는 생략하지 않는다. 스크립트는 별도 `pwsh` 프로세스로 실행하며 환경 변수는 해당 프로세스에 한정한다. 실행 후 시작한 서버 프로세스와 DB 컨테이너를 중지하고 테스트 DB·로그는 진단용으로 보존한다. 로그 경로는 실행 끝에 출력된다. 자동 삭제하지 않는다.
 
 현재 실물 장치 사용 불가라는 사용자 답변에 따라 Windows/갤럭시 탭 S10+ 및 외장 리더기 검증은 보류했다. 설치 앱 패키징·Android 네이티브 리더기 어댑터·운영 종료/업데이트·프로세스 재시작 복구는 후속 구현 대상이다. 사용자·관리자 웹 전체 실물 통합 검증 보류를 해제한 것은 아니다.
+
+
+### Windows·Android 패키징 설계
+
+2026-11-13 [패키징 설계 v1](../docs/kiosk-packaging-design.md)에 공통 kiosk 빌드, Electron/Java Windows 호스트, Kotlin/WebView Android 호스트, 장치별 인증, 강제 종료 복구, 운영·서명·업데이트 및 인수 기준을 기록했다. 설치 앱은 아직 구현하지 않았으며 기술 조합은 설계 기본안이다. 다음 작업은 kiosk 전용 build/host 경계 분리와 Windows 시험 exe 골격이다.
+
+
+### 공통 키오스크 전용 빌드·호스트 연결 (P1, 2026-11-13)
+
+```powershell
+pnpm build:kiosk
+pnpm preview:kiosk --port 5179
+pnpm test:kiosk-host
+```
+
+산출물은 `dist-kiosk/kiosk-app.html`, assets, `kiosk-build.json`이다. 일반 웹 `pnpm build`의 dist와 분리한다. manifest에 HTML/JS/CSS SHA-256과 uiBuildHash, hostProtocolVersion=2/transportVersion=1을 기록한다. Windows·Android는 같은 산출물을 동봉할 수 있다. 실제 exe/APK는 아직 만들지 않았다.
+
+설치 HTML은 시작 전에 주입된 host v2를 요구하며 일반 브라우저 preview에서는 호스트 없음 안내가 정상이다. 앱 호스트가 없거나 버전/capability가 틀리면 기존 HTTP/SSE로 우회하지 않는다. 기존 웹 `/kiosk`는 v1 reader+웹 HTTP 동작을 유지한다. 새 HTML은 Vite의 확장자 없는 탐색과 충돌하지 않도록 `kiosk-app.html`로 명명했다.
+
+연결 타입은 `src/kiosk-host/contracts.ts`, 실행 경로 선택은 runtime.ts, 전송은 transport.ts, 키오스크 전용 업무 API는 `src/shared/kioskApi.ts`에 있다. native host는 grantHandle을 보관하고 URL·쿠키·헤더 allowlist, ADMIN 확인, 실제 장치 I/O를 자체 구현해야 한다. 메모리 기반 UNKNOWN 복구를 유지하지만 영구 저널·강제 종료 후 복구는 아직 제공하지 않는다. 상세는 [P1 호스트 계약](../docs/kiosk-host-contract.md)을 참고한다.
+
+2026-11-13 검증: 웹/키오스크 빌드, 단위 43개, HTTP fixture 36개, 기존 kiosk 17개, 전용 빌드+가상 호스트 7개 통과. 가상 windows/android host 검사는 실제 Electron/Kotlin 앱 또는 실물 검증이 아니다. 처음 테스트 실행에 필요한 Chromium이 없으면 `pnpm exec playwright install chromium --only-shell`로 테스트 실행 파일을 설치한다.
+
+### Windows 시험 호스트 (P2, 2026-11-13)
+
+`../kiosk/windows`에서 `npm ci`, `npm run make`, `npm run test:smoke`를 사용한다. 공통 `dist-kiosk`를 직접 사용하므로 별도 화면 복사본은 없다. Electron/Java 동봉 exe 및 서명하지 않은 시험 Setup.exe를 생성했다. 호스트 8개/Java 17개 및 실제 패키지 실행을 확인했고 프론트엔드 단위 43개·설치 번들 7개도 재통과했다. 설정·암호화 키 입력과 실제 검증 한계는 [Windows README](../kiosk/windows/README.md). 다른 PC 설치, 실물 리더기, 영구 거래 복구, ADMIN 운영 및 Android APK는 후속 작업이다.
+
+### 사용자 웹 → Windows exe → 관리자 웹 실제 통합 (2026-11-13)
+
+저장소 루트에서 `./backend/scripts/test-kiosk-live.ps1 -FullJourney`를 실행한다. Docker Desktop 및 빌드된 Windows 패키지가 필요하다. 실제 서버/격리 PostgreSQL/HTTPS 웹/실제 exe를 사용하며 SMS 수신과 NFC 장치 이벤트만 시험용으로 대체한다. `-SkipBackendTests`는 backend 변경 없는 반복에만 사용한다.
+
+최종 live 4개 통과. 가입·코드·대여·정상/손상 반납·사용자/관리자 조회와 저장 횟수를 확인했다. native health 빈 응답 처리 오류를 0.1.2에서 수정했다. 상세 범위와 로그는 [통합 검증 보고서](../docs/integration-validation-2026-11-13.md). Android 앱은 보류한다.

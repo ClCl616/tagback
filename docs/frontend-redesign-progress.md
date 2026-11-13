@@ -1,5 +1,7 @@
 # TagBack 리디자인 진행 보고서
 
+최신 추가(2026-11-13): P1 공통 빌드 분리와 P2 Windows 시험 호스트·exe/Setup.exe를 로컬 구현했다. 아래 11월 6일 기준 기록은 과거 상태다. 최신 범위와 미검증 항목은 문서 끝의 P2 기록 및 [Windows 시험 호스트](../kiosk/windows/README.md)를 참고한다.
+
 기준일: 2026-11-06 (한국 시간). 작업 브랜치: `codex/user-web-redesign`, 구현 시작 기준 커밋: `3556af4`.
 
 구현 및 테스트 스크립트 커밋: `4690e0e` (`feat: redesign user admin and kiosk flows with regression coverage`). 아래 커밋 전 검증은 이 구현 내용에 대해 수행했으며 마지막 정리는 테스트 파일 끝의 불필요한 빈 줄 제거뿐이다.
@@ -97,20 +99,78 @@
 - `pnpm exec playwright test -c playwright.bridge.config.ts`: 키오스크 브라우저 테스트 17개 통과.
 - 실제 서버·DB·SMS·NFC 테스트는 이번 문서화 작업에서 재실행하지 않았다. 위 결과는 기존 실행 기록이다.
 
-## 남은 작업과 보류
+## 남은 작업과 보류 (2026-11-13 최신)
 
 | 구분 | 작업 | 상태 |
 |---|---|---|
-| 설치 앱 | Windows·Android 패키징 기술과 공유 코드 구조 결정 | 다음 설계 |
-| Windows | exe 구성, 기존 NFC 브리지 실행·연결 관리 | 미구현 |
-| Android | APK, 네이티브 외장 NFC 어댑터, 공통 UI 연결 | 미구현 |
+| 설치 앱 | Windows·Android 패키징 기술과 공유 코드 구조 | 공통 UI/host v2 분리 및 Windows 시험 패키지 구현 |
+| Windows | exe 구성, 기존 NFC 브리지 실행·연결 관리 | 0.1.2 실제 API/DB 연결 검증 통과; 실물 NFC·운영 인수 남음 |
+| Android | APK, 네이티브 외장 NFC 어댑터, 공통 UI 연결 | 사용자 요청으로 보류 |
 | 호스트 운영 | ADMIN 인증·운영 패널·종료·자동 실행·업데이트 | 미구현 |
 | 복구 | 강제 종료 후 보안 저장·서버 결과 확인 계약 및 구현 | 미구현 |
 | 장치 | Windows 및 Galaxy Tab S10+ 실물 리더기, 분리/재연결, 절전/회전, 설치·운영 검증 | 장치 사용 불가로 보류 |
-| 사용자 웹 | 실제 가입·인증·코드·키오스크 처리 후 대여/이력 전체 통합 | 사용자 요청으로 보류 |
-| 관리자 웹 | 실제 ADMIN 접근·CRUD·태그·상태 사유·조회 전체 통합 | 사용자 요청으로 보류 |
+| 사용자 웹 | 실제 가입·인증·코드·키오스크 처리 후 대여/이력 전체 통합 | Windows exe와 실제 API/DB 흐름 통과, SMS 수신은 mock; 모든 화면의 실서버 전수 검증은 아님 |
+| 관리자 웹 | 실제 ADMIN 접근·CRUD·태그·상태 사유·조회 전체 통합 | 격리 실제 API/DB 검증 통과, Windows 처리 결과 조회까지 확인 |
 | SMS | 실제 발송·수신·인증 | 미검증 |
 | 운영 주소 | 사용자·관리자 웹 최종 주소 체계 | 미정 |
 | 통합·출시 | develop/main 병합, 설치 앱 배포·운영 배포 | 미수행 |
 
 공지·알림·QR·영문 코드·키오스크 원격 관리·전화번호 변경·태그 교체/해제·사진 업로드·종류 생성·별도 관리번호·고급 집계는 별도 계약/범위 결정 항목이다. 기존 레퍼런스에 있다는 이유만으로 필수 구현이나 지원 기능으로 취급하지 않는다.
+
+
+## 2026-11-13 패키징 설계 추가
+
+[Windows·Android 패키징 설계 v1](kiosk-packaging-design.md)을 작성했다. Windows는 Electron + 기존 Java PC/SC 브리지 + Forge/Squirrel 설치 exe, Android는 Kotlin + WebView + 네이티브 외장 리더기 adapter를 기본안으로 제안한다. 동일 React kiosk 전용 빌드를 공유한다. 이는 설계 권고이며 사용자의 기술 선택 확정이나 설치 앱 구현 완료를 의미하지 않는다.
+
+공통 host 계약·native transport, 전송 전 암호화 복구 기록, 서버의 장치별 등록/키 관리·결과 조회 확장, ADMIN 운영, 서명/업데이트 gate, P1~P6 구현 순서와 인수 기준을 정의했다. 현재 단일 bridgeId/secret과 메모리 복구만으로 두 장치의 무인 운영을 완성했다고 판단하지 않는다.
+
+기준 HEAD는 `54cca26`(제품 구현 `4690e0e`), 작업 폴더는 `C:/Projects/tagback-user-web`이다. 이번에는 소스·기존 기록·공식 기술 문서만 검토하고 앱 코드 변경, 새 테스트 실행, 패키지 생성, 장치 설정, 원격 fetch/커밋/푸시/배포를 하지 않았다. 이 설계 문서 변경은 로컬 미커밋 상태다. 기존 통과 기록은 위 날짜의 검사 결과이며 설치 앱 검증은 아니다.
+
+
+## 2026-11-13 패키징 P1 구현
+
+공통 kiosk 전용 빌드·호스트 연결 경계를 구현했다. `pnpm build:kiosk`로 `frontend/dist-kiosk/kiosk-app.html`과 assets, `kiosk-build.json`을 생성한다. 사용자/관리자 화면 모듈은 빌드 그래프에서 차단하고 외부 폰트 import를 웹 전용으로 분리했다. 기존 웹 진입점과 `/kiosk` 경로는 유지한다.
+
+호스트 v2·transport v1 계약, 필수 호스트/버전 검사, 웹/host adapter, IPC 응답 상관관계·타임아웃 검사를 추가했다. 호스트 경로에서는 bearer token 대신 opaque grant handle을 사용하고 임의 URL/쿠키/헤더를 전달하지 않는다. 쓰기 재시도는 같은 operationId·본문을 유지하며 requestId만 새로 발급한다. 기존 v1 reader host는 웹에서 계속 지원한다.
+
+상세 계약과 재현 명령은 [P1 공통 빌드·호스트 연결 계약](kiosk-host-contract.md)을 따른다. 이는 TypeScript/UI 쪽 연결 구조다. 실제 Electron/Kotlin 호스트, 프로세스 종료 후 내구성 있는 복구와 device/operation 서버 API, 실제 리더기 검증은 아직 후속 작업이다.
+
+검증: 일반 웹 및 kiosk 빌드 통과, 단위 43개(기존 31+호스트 12), 기존 HTTP fixture 36개, 기존 kiosk fixture 17개, 전용 빌드/가상 호스트 7개 통과. 최초 browser 실행은 필요한 Playwright Chromium이 없어 실패했으며 해당 테스트 실행 파일 설치 후 검증했다. 최초 `kiosk.html`이 Vite에서 `/kiosk`와 충돌하는 문제는 `kiosk-app.html`로 수정했다. 소스 변경 중의 중간 회귀 실행은 중단하고 변경을 마친 상태에서 전체 browser 검사를 다시 통과했다.
+
+작업은 `C:/Projects/tagback-user-web`, `codex/user-web-redesign`, HEAD `54cca26` 위 로컬 미커밋 변경이다. 새로운 exe/APK 생성·실제 DB/장치 검사·원격 fetch·커밋·푸시·병합·배포는 수행하지 않았다. 다음 구현은 P2 Windows Electron 호스트/시험 exe 골격이다.
+
+## 2026-11-13 패키징 P2 Windows 시험 골격
+
+`kiosk/windows`에 Electron 45.3.1 / Forge 8.0.1 호스트와 Squirrel 시험 설치 파일 구성을 구현했다. 공통 UI를 `tagback://app/`에서 읽고 manifest hash/경로를 검사한다. sandbox·contextIsolation, main-frame IPC 검사, 외부 네트워크/탐색/팝업/권한 차단을 적용했다. main이 HTTPS API 및 실제 grant를 보유하고 renderer에는 handle만 전달한다.
+
+`PrivateBridgeMain`을 추가해 기존 PC/SC 엔진을 비공개 stdin/stdout 이벤트로 연결했다. Java 21 최소 런타임과 jar를 앱에 동봉하며 reader 프로세스 실패 시 최대 30초 backoff로 복구한다. 개발용 SSE는 유지했다. 서명 키는 PowerShell 7 CurrentUserOnly named pipe로 주입하고 Windows safeStorage 암호문으로 보관한다. GUI exe stdin 주입은 smoke에서 끝나지 않아 폐기했고, 새 방식과 실제 PowerShell 도우미를 격리 프로필·시험 키로 검증했다.
+
+대여·반납의 메모리 기반 미확인 작업 잠금, 같은 operation/body replay, 동시 중복 호출 공유, 영수증 검증, 미확인 상태의 정상 종료 차단을 추가했다. 반납 서버 본문은 기존 계약을 유지한다. 영구 journal·장치/operation 서버 계약·ADMIN 운영은 후속 P4/P5이며 강제 종료 복구를 제공하지 않는다.
+
+검증: 공통 kiosk 빌드, Windows package/make, 호스트 단위 8개, Java 17개, 프론트엔드 단위 43개, 설치 번들/가상 호스트 7개 통과. 최종 패키지의 모든 src 파일과 작업 폴더 원본이 일치함을 검사했다. 실제 패키지 실행에서 UI/v2 주입·Node 미노출·DevTools 차단·임의 명령/직접 네트워크 거부·미설정 이용 차단을 확인했다. 동봉 Java의 disconnected 이벤트와 EOF 종료, 실제 Windows 암호화 키 저장을 확인했다. 화면 캡처는 `kiosk/windows/out/smoke/windows-kiosk.png`.
+
+산출물은 `kiosk/windows/out/TagBackKiosk-win32-x64/TagBackKiosk.exe` 및 `out/make/squirrel.windows/x64/TagBackKiosk-0.1.0-trial-Setup.exe`. 직접 실행은 폴더 전체가 필요하다. 실행 안내는 [Windows README](../kiosk/windows/README.md). 설치 파일은 서명하지 않은 시험 파일이며 실제 설치/제거·다른 PC·실물 NFC·서버/DB 재검증은 수행하지 않았다. P2의 타 PC 설치 인수는 미완료다. Android APK·자동 실행/업데이트·운영 잠금도 아직 후속 작업이다.
+
+작업 위치 `C:/Projects/tagback-user-web`, 브랜치 `codex/user-web-redesign`, 기준 HEAD `54cca26`. P1/P2 작업은 로컬 미커밋 변경이며 원격 fetch/커밋/푸시/병합/운영 배포를 수행하지 않았다. 과거 P1 기록의 '실제 호스트 미구현' 상태는 이번 Windows 시험 범위에 한해 갱신한다.
+
+## 2026-11-13 Windows 0.1.1 전체화면·스크롤 최소화
+
+사용자가 0.1.0 설치와 정상 화면 표시를 직접 확인했다고 보고했다. 이어 기본 전체화면, 스크롤 최소화, 필수 조작 단축키를 요청해 Windows 호스트를 변경했다.
+
+기본 fullscreen=true. F11 전체화면 전환, Ctrl+Shift+Q 종료 확인, Ctrl+Shift+M 최소화, F1 도움말을 추가했다. Alt+F4 창 닫기 및 미확인 거래 시 종료 차단을 유지하며 F5/Ctrl+R 재로딩은 계속 막는다. 키 길게 누르기 반복 및 중복 대화상자를 차단한다. 단축키는 앱 포커스 안에서만 작동하며 ADMIN 권한이나 OS 잠금 기능이 아니다.
+
+설치 진입점에만 `frontend/src/kiosk/installed.css`를 적용했다. 상단/하단을 고정하고 제한된 높이에 맞춰 여백·이미지·확인 정보 행을 조정했다. 내용이 많으면 main 영역에서만 스크롤하며 잘라 숨기지 않는다. 일반 사용자/관리자 웹 진입점에는 이 CSS를 넣지 않는다.
+
+검증: 전용 번들 테스트 10개(기존 7 + 해상도별 전체 대여/손상 반납 흐름 3) 통과. 1280×720, 1366×768, 1920×1080 기본 fixture의 시작·코드·종류·NFC·상태·확인·완료 단계에서 main/document 세로 overflow가 없고 footer가 화면 안에 있음을 검사했다. 긴 목록·추가 오류·낮은 논리 해상도에서는 내용 스크롤을 허용한다. 호스트 단위 8개 재통과. 실제 Electron 입력 경로(sendInputEvent)로 기본 전체화면, F11 전환, F1 안내, 종료 대화상자 취소, 최소화를 확인했다. CDP page.keyboard 경로는 native before-input 이벤트 검증에 적합하지 않아 native 입력으로 검사했다.
+
+설치 버전은 0.1.1로 올렸고 설치 파일 이름은 package 버전을 따라 생성한다. 새 파일: `kiosk/windows/out/make/squirrel.windows/x64/TagBackKiosk-0.1.1-trial-Setup.exe`. 기존 앱을 정상 종료한 뒤 사용자가 실행한다. 에이전트는 설치·업그레이드하지 않는다. 실물 리더기/서버 DB/강제 종료 복구의 기존 미검증 상태는 유지한다.
+
+작업: `C:/Projects/tagback-user-web`, `codex/user-web-redesign`, HEAD `54cca26` 위 로컬 미커밋 변경. 원격 fetch/커밋/푸시/병합 없음.
+
+## 2026-11-13 실제 웹 → Windows → 관리자 통합 검증
+
+Android 앱은 사용자 요청으로 보류한다. [통합 검증 보고서](integration-validation-2026-11-13.md)에 환경·결과·수정·한계를 기록했다. 실제 서버/PostgreSQL과 Windows exe 0.1.2로 가입·코드 발급·대여·정상/손상 반납·사용자 이력·관리자 상태 일치를 확인했다. SMS 수신과 NFC 장치 경계만 시험용으로 대체했다.
+
+최종 live 4개 통과, 관련 백엔드 65개(단위/경계/DB 합계), Windows 호스트 9개 및 실제 패키지 smoke 통과. native health의 빈 200 응답을 JSON으로 읽어 정상 서버를 끊김으로 표시하던 오류를 수정했다. 업무 응답 검증은 유지한다. 시험 DB bootstrap 준비 확인도 TCP로 수정했다. 실제 SMS·물리 NFC·네이티브 응답 유실·전원 장애 복구·운영 배포는 여전히 별도다.
+
+수정 설치 파일은 `kiosk/windows/out/make/squirrel.windows/x64/TagBackKiosk-0.1.2-trial-Setup.exe`. 새 버전 설치는 수행하지 않았다. 최종 테스트 서버와 컨테이너를 중지하고 진단 기록은 보존했다. 작업 폴더/브랜치/HEAD는 기존 `C:/Projects/tagback-user-web`, `codex/user-web-redesign`, `54cca26`; 로컬 미커밋 상태다.
