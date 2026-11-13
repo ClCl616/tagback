@@ -7,7 +7,7 @@ import com.tagback.domain.repository.ItemRepository;
 import com.tagback.domain.repository.ItemTypeRepository;
 import com.tagback.exception.TagRegistrationException;
 import com.tagback.service.TagRegistrationService;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.RepeatedTest;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -38,7 +38,7 @@ class TagRegistrationConcurrencyIntegrationTest {
     @Autowired
     private TransactionTemplate transactionTemplate;
 
-    @Test
+    @RepeatedTest(20)
     void concurrentRegistrationOfOneUidReturnsOneSuccessAndOneConflict() throws Exception {
         TestItems data = transactionTemplate.execute(status -> {
             ItemType type = itemTypeRepository.saveAndFlush(
@@ -71,7 +71,7 @@ class TagRegistrationConcurrencyIntegrationTest {
         }
     }
 
-    @Test
+    @RepeatedTest(20)
     void concurrentRetryOfSameItemAndUidCreatesOnlyOneTag() throws Exception {
         TestItem data = transactionTemplate.execute(status -> {
             ItemType type = itemTypeRepository.saveAndFlush(
