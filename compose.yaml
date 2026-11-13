@@ -1,0 +1,92 @@
+name: tagback
+
+# Local HTTPS stack. Authentication currently requires the sms-mock profile.
+services:
+  db:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_DB: tagback
+      POSTGRES_USER: tagback_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets:
+      - db_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  api:
+    image: ${TAGBACK_API_IMAGE:-tagback-api:local}
+    build:
+      context: .
+      dockerfile: deploy/compose/api.Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: sms-mock
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/tagback
+      SPRING_DATASOURCE_USERNAME: tagback_user
+      SPRING_CONFIG_IMPORT: configtree:/run/secrets/
+      TAGBACK_AUTH_ALLOWED_ORIGINS: https://localhost:${TAGBACK_HTTPS_PORT:-8443}
+      NFC_BRIDGE_ID: ${NFC_BRIDGE_ID:-kiosk-1}
+      SERVER_PORT: "8080"
+      SERVER_SHUTDOWN: graceful
+      SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: 20s
+    secrets:
+      - source: db_password
+        target: TAGBACK_DB_PASSWORD
+      - source: sms_hash_key
+        target: tagback.auth.sms-hash-key
+      - source: nfc_scan_secret
+        target: tagback.nfc.scan-secret
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, curl, --fail, --silent, --max-time, "3", http://127.0.0.1:8080/api/v1/kiosk/health]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  web:
+    image: ${TAGBACK_WEB_IMAGE:-tagback-web:local}
+    build:
+      context: .
+      dockerfile: deploy/compose/web.Dockerfile
+    ports:
+      - "127.0.0.1:${TAGBACK_HTTPS_PORT:-8443}:443"
+    volumes:
+      - type: bind
+        source: ${TAGBACK_TLS_DIR:-./deploy/compose/local/tls}
+        target: /etc/nginx/tls
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD-SHELL, 'wget -q -O /dev/null http://127.0.0.1:8081/healthz']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+secrets:
+  db_password:
+    file: ./deploy/compose/local/db-password
+  sms_hash_key:
+    file: ./deploy/compose/local/sms-hash-key
+  nfc_scan_secret:
+    file: ./deploy/compose/local/nfc-scan-secret
+
+volumes:
+  postgres_data:
