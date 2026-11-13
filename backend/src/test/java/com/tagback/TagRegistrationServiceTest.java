@@ -41,6 +41,20 @@ class TagRegistrationServiceTest {
     }
 
     @Test
+    void readsActiveTagAndDistinguishesAnUntaggedItemFromMissingItem() {
+        when(itemRepository.existsById(12L)).thenReturn(true);
+        when(tagRepository.findByItem_Id(12L)).thenReturn(Optional.empty());
+        assertEquals(null, service.current(12L).tag());
+        var tag = mock(NfcTag.class);
+        when(tag.getId()).thenReturn(4L);
+        when(tag.getUid()).thenReturn("04A23B1C5D6E80");
+        when(tagRepository.findByItem_Id(12L)).thenReturn(Optional.of(tag));
+        assertEquals("04A23B1C5D6E80", service.current(12L).tag().uid());
+        assertThrows(TagRegistrationException.class, () -> service.current(99L));
+        verify(writer, never()).makeAvailableIfTagged(anyLong(), any());
+    }
+
+    @Test
     void registersNormalizedUidForExistingItem() {
         Item item = mock(Item.class);
         OffsetDateTime createdAt = OffsetDateTime.parse("2026-10-06T12:00:00+09:00");

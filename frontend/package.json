@@ -9,7 +9,10 @@
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "test:http": "playwright test -c playwright.http.config.ts"
+    "test:http": "playwright test -c playwright.http.config.ts",
+    "build:kiosk": "tsc -b && vite build --config vite.kiosk.config.ts",
+    "preview:kiosk": "vite preview --config vite.kiosk.config.ts --host 127.0.0.1",
+    "test:kiosk-host": "playwright test -c playwright.kiosk-host.config.ts"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

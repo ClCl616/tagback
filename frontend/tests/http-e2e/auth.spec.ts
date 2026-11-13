@@ -18,9 +18,11 @@ async function server(page: Page, loseSignup = false) {
     role: 'USER',
     maskedPhoneNumber: '010-****-5678',
   };
-  await page.route('**/api/v1/rental-codes', (route) => route.fulfill({
-    json: { code: '123456', expiresAt: new Date(Date.now() + 180000).toISOString() },
-  }));
+  await page.route('**/api/v1/rental-codes', (route) =>
+    route.fulfill({
+      json: { code: '123456', expiresAt: new Date(Date.now() + 180000).toISOString() },
+    }),
+  );
   await page.route('**/api/v1/auth/**', async (route) => {
     const req = route.request(),
       path = new URL(req.url()).pathname;
@@ -92,6 +94,7 @@ test('signup profile, session reload, account and logout use HTTP without storin
   await signup(page);
   await expect(page).toHaveURL(/\/mobile$/);
   await page.goto('/mobile/code');
+  await page.getByRole('button', { name: '이용 코드 발급', exact: true }).click();
   await expect(page.locator('.code-number')).toHaveText('123456');
   await page.setViewportSize({ width: 390, height: 740 });
   await page.goto('/mobile/account');
@@ -109,6 +112,7 @@ test('signup profile, session reload, account and logout use HTTP without storin
   ).toEqual([null, null]);
   expect(await page.evaluate(() => JSON.stringify(sessionStorage))).not.toContain('proof-secret');
   await page.getByRole('button', { name: '로그아웃', exact: true }).click();
+  await page.getByRole('link', { name: '로그인', exact: true }).click();
   await expect(page.getByLabel('PIN 번호', { exact: true })).toBeVisible();
   await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
 
@@ -140,7 +144,9 @@ test('lost signup response retries the same payload and key', async ({ page }) =
   expect(signups[1]).toEqual(signups[0]);
 });
 
-test('PIN recovery shows rules only on invalid input and header stays fixed', async ({ page }) => {
+test('PIN recovery shows rules only on invalid input and mobile navigation remains available', async ({
+  page,
+}) => {
   await server(page);
   await page.route('**/api/v1/auth/sms/verifications', (route) =>
     route.fulfill({
@@ -175,9 +181,7 @@ test('PIN recovery shows rules only on invalid input and header stays fixed', as
   await page.setViewportSize({ width: 390, height: 704 });
   await page.goto('/mobile');
   await page.evaluate(() => window.scrollTo(0, 600));
-  await expect
-    .poll(() => page.locator('.mobile-header').evaluate((el) => el.getBoundingClientRect().top))
-    .toBe(0);
+  await expect(page.getByRole('navigation', { name: '모바일 메뉴' })).toBeInViewport();
   await page.screenshot({ path: 'test-results/sticky-header.png' });
 });
 
@@ -203,7 +207,11 @@ test('a corrected PIN uses a new operation and prevents concurrent submissions',
   await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
 
   await expect(page.getByRole('button', { name: '확인 중…', exact: true })).toBeDisabled();
-  await expect(page.getByText('PIN이 일치하지 않습니다.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('dialog')).toContainText('PIN이 일치하지 않습니다.');
+  await expect(page.getByLabel('PIN 번호', { exact: true })).toHaveAttribute(
+    'aria-invalid',
+    'true',
+  );
   expect(attempts).toHaveLength(1);
   await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
   await page.getByLabel('PIN 번호', { exact: true }).fill('246802');
@@ -548,12 +556,13 @@ test('automatic login clears failed PIN and missing account has a signup action'
   await expect(page).toHaveURL(/\/mobile\/signup$/);
 });
 
-test('signup uses lower navigation and clears invalid PIN; auxiliary screens omit logo header', async ({
+test('signup uses lower navigation and clears invalid PIN; authentication has its own brand layout', async ({
   page,
 }) => {
   await server(page);
   await beginSignup(page);
-  await expect(page.locator('.mobile-header')).toHaveCount(0);
+  await expect(page.locator('.uw-header')).toHaveCount(0);
+  await expect(page.locator('.uw-auth-brand')).toBeVisible();
   await expect(page.locator('.auth-topline button')).toHaveCount(0);
   await page.getByRole('button', { name: '인증번호 발송', exact: true }).click();
   await page.getByLabel('SMS 인증번호').fill('123456');
@@ -573,7 +582,16 @@ test('signup uses lower navigation and clears invalid PIN; auxiliary screens omi
   await page.goto('/mobile/recover');
   await expect(page.locator('.auth-links')).toHaveCount(0);
   await page.goto('/mobile/items/calc?station=engineering');
-  await expect(page.locator('.mobile-header')).toHaveCount(0);
+  await expect(page.locator('.uw-header')).toBeVisible();
   await page.goto('/mobile');
-  await expect(page.locator('.mobile-header')).toBeVisible();
+  await expect(page.locator('.uw-header')).toBeVisible();
+});
+
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/v1/items?**', (route) =>
+    route.fulfill({ json: { items: [], page: 0, size: 100, totalElements: 0, totalPages: 0 } }),
+  );
+  await page.route('**/api/v1/rentals/me?**', (route) =>
+    route.fulfill({ json: { rentals: [], page: 0, size: 100, totalElements: 0, totalPages: 0 } }),
+  );
 });

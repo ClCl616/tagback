@@ -11,6 +11,7 @@ application-local.properties
 # Frontend
 node_modules/
 dist/
+dist-kiosk/
 coverage/
 .vite/
 test-results/

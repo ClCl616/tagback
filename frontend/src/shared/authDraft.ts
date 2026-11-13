@@ -1,34 +1,30 @@
-import { HTTP_AUTH } from './authMode';
 import type { Challenge } from './authTypes';
-
-const prefix = `tagback.${HTTP_AUTH ? 'http' : 'mock'}.auth-draft.`;
-const ttl = 30 * 60_000;
+const prefix = 'tagback.http.auth-draft.';
+const ttl = 30 * 60000;
 // Only resumable metadata is stored. Never store PIN, SMS code or verification proof.
 export function readDraft<T>(key: string): T | undefined {
   try {
     const value = JSON.parse(sessionStorage.getItem(prefix + key) || 'null');
     if (value && Number.isFinite(value.until) && value.until > Date.now()) return value.data;
     sessionStorage.removeItem(prefix + key);
-  } catch {
-    /* Storage can be disabled or contain stale data. */
-  }
+  } catch {}
 }
 export function writeDraft(key: string, data: unknown) {
   try {
     sessionStorage.setItem(prefix + key, JSON.stringify({ until: Date.now() + ttl, data }));
-  } catch {
-    /* Authentication still works without storage. */
-  }
+  } catch {}
 }
 export function clearDraft(key: string) {
   try {
     sessionStorage.removeItem(prefix + key);
-  } catch {
-    /* Optional recovery storage. */
-  }
+  } catch {}
 }
 export const phoneKey = (phone: string) => phone.replace(/[\s-]/g, '');
-export type SmsDraft = { challenge?: Challenge; restart: boolean; retryAt: number };
+export type SmsDraft = {
+  challenge?: Challenge;
+  restart: boolean;
+  retryAt: number;
+};
 export function readSmsDraft(mode: string, phone: string): SmsDraft {
   const data = readDraft<SmsDraft>(`sms.${mode}.${phoneKey(phone)}`);
   const c = data?.challenge;

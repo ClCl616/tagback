@@ -1,54 +1,59 @@
 import { expect, test, type Page } from '@playwright/test';
 
-async function mockAdminApi(page: Page) {
+async function mockAdminApi(page: Page, role = 'ADMIN') {
   const requests: URL[] = [];
   let fail = false;
-  await page.route('**/api/v1/item-types', (route) =>
-    route.fulfill({
-      json: {
-        itemTypes: [
-          { itemTypeId: '1', itemTypeName: '우산' },
-          { itemTypeId: '2', itemTypeName: '계산기' },
-        ],
-      },
-    }),
-  );
-  await page.route('**/api/v1/admin/items?*', async (route) => {
+  const items = Array.from({ length: 21 }, (_, i) => ({
+    itemId: String(i + 1),
+    itemName: `우산 ${i + 1}`,
+    itemTypeId: '1',
+    itemTypeName: '우산',
+    status: i === 0 ? 'AVAILABLE' : 'TAG_PENDING',
+  }));
+  await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
-    requests.push(url);
-    if (fail) return route.fulfill({ status: 503, json: { error: { code: 'INTERNAL_ERROR' } } });
-    const pageNumber = Number(url.searchParams.get('page'));
-    const filtered =
-      url.searchParams.has('keyword') ||
-      url.searchParams.has('status') ||
-      url.searchParams.has('itemTypeId');
-    const items =
-      url.searchParams.get('keyword') === '없음'
-        ? []
-        : [
-            {
-              itemId: pageNumber ? '1' : '21',
-              itemName: pageNumber ? '우산 1' : '우산 21',
-              itemTypeId: '1',
-              itemTypeName: '우산',
-              status: 'TAG_PENDING',
-              createdAt: '2026-11-06T00:00:00Z',
-            },
-          ];
-    const total = items.length ? (filtered ? 1 : 21) : 0;
+    if (url.pathname.endsWith('/auth/session'))
+      return route.fulfill({
+        json: {
+          authenticated: true,
+          user: {
+            userId: '1',
+            name: '운영자',
+            role,
+            occupation: null,
+            maskedPhoneNumber: '010-****-0000',
+          },
+          sessionExpiresAt: '2030-01-01T00:00:00Z',
+        },
+      });
+    if (url.pathname.endsWith('/item-types'))
+      return route.fulfill({ json: { itemTypes: [{ itemTypeId: '1', itemTypeName: '우산' }] } });
+    const key = url.pathname.split('/').at(-1)!;
+    let rows = key === 'items' ? items : [];
+    if (url.pathname === '/api/v1/admin/items') {
+      requests.push(url);
+      if (fail) return route.fulfill({ status: 503, json: {} });
+      const q = url.searchParams.get('keyword')?.toLowerCase();
+      rows = rows.filter(
+        (i) =>
+          (!q || (i.itemName + (i.itemId === '1' ? ' 04:a1' : '')).toLowerCase().includes(q)) &&
+          (!url.searchParams.has('status') || i.status === url.searchParams.get('status')),
+      );
+    }
+    const index = Number(url.searchParams.get('page'));
     return route.fulfill({
       json: {
-        items,
-        page: pageNumber,
-        size: 20,
-        totalElements: total,
-        totalPages: Math.ceil(total / 20),
+        [key]: rows.slice(index * 100, (index + 1) * 100),
+        page: index,
+        size: 100,
+        totalElements: rows.length,
+        totalPages: Math.ceil(rows.length / 100),
       },
     });
   });
   return {
     requests,
-    setFail: (value: boolean) => {
+    setFail(value: boolean) {
       fail = value;
     },
   };
@@ -57,50 +62,41 @@ async function mockAdminApi(page: Page) {
 test('서버 조회에서 조건을 조합하고 페이지를 초기화한다', async ({ page }) => {
   const api = await mockAdminApi(page);
   await page.goto('/admin/items');
-  await expect(page.getByText('검색 결과 총 21개')).toBeVisible();
-  await expect(page.getByRole('cell', { name: '태그 연결 대기' })).toBeVisible();
-  await page.getByRole('button', { name: '우산 21 상세 보기' }).click();
-  await expect(page.getByLabel('물품 상세').getByText('21', { exact: true })).toBeVisible();
+  await expect(page.getByText('총 21개 물품')).toBeVisible();
   await page.getByRole('button', { name: '다음', exact: true }).click();
-  await expect(page.getByRole('button', { name: '우산 1 상세 보기' })).toBeVisible();
-  await page.getByLabel('물품 검색').fill('04:A1');
+  await expect(page.getByText('2 / 2', { exact: true })).toBeVisible();
+  await page.getByLabel('물품 검색', { exact: true }).fill('04:A1');
   await page.getByLabel('물품 종류 필터').selectOption('1');
-  await page.getByLabel('물품 상태 필터').selectOption('AVAILABLE');
-  await expect
-    .poll(() => api.requests.at(-1)?.searchParams.toString())
-    .toContain('status=AVAILABLE');
+  await page.getByLabel('상태 필터').selectOption('available');
+  await expect(page.getByText('총 1개 물품')).toBeVisible();
   const last = api.requests.at(-1)!.searchParams;
   expect(last.get('page')).toBe('0');
   expect(last.get('keyword')).toBe('04:A1');
   expect(last.get('itemTypeId')).toBe('1');
-  expect(last.get('size')).toBe('20');
-  await expect(page.getByText('검색 결과 총 1개')).toBeVisible();
-  await expect(page.getByRole('button', { name: '다음', exact: true })).toBeDisabled();
-  await page.getByLabel('물품 검색').fill('없음');
+  expect(last.get('status')).toBe('AVAILABLE');
+  expect(last.get('size')).toBe('100');
+  await expect(page.getByText('1 / 1', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: '우산 1 상세 보기', exact: true })).toBeVisible();
+  await page.getByLabel('물품 검색', { exact: true }).fill('없음');
   await expect(page.getByText('조건에 맞는 물품이 없어요')).toBeVisible();
-  await expect(page.getByText('검색 결과 총 0개')).toBeVisible();
-  await page.getByRole('button', { name: '조건 초기화' }).click();
-  await expect(page.getByText('검색 결과 총 21개')).toBeVisible();
-  expect(api.requests.at(-1)!.searchParams.toString()).toBe('page=0&size=20');
-  await page.setViewportSize({ width: 390, height: 740 });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
-    true,
-  );
+  await page.getByLabel('물품 검색', { exact: true }).fill('');
+  await page.getByLabel('상태 필터').selectOption('');
+  await expect(page.getByText('총 21개 물품')).toBeVisible();
 });
 
 test('서버 오류를 표시하고 재시도한다', async ({ page }) => {
   const api = await mockAdminApi(page);
   api.setFail(true);
   await page.goto('/admin/items');
-  await expect(page.getByRole('alert')).toContainText('불러오지 못했습니다');
+  await expect(page.getByRole('alert')).toContainText('확인하지 못했습니다');
   api.setFail(false);
   await page.getByRole('button', { name: '다시 시도' }).click();
-  await expect(page.getByText('검색 결과 총 21개')).toBeVisible();
+  await expect(page.getByText('총 21개 물품')).toBeVisible();
 });
 
 test('일반 사용자에게 관리자 권한 오류를 표시한다', async ({ page }) => {
-  await page.route('**/api/v1/item-types', (route) => route.fulfill({ json: { itemTypes: [] } }));
-  await page.route('**/api/v1/admin/items?*', (route) => route.fulfill({ status: 403, json: {} }));
+  const api = await mockAdminApi(page, 'USER');
   await page.goto('/admin/items');
-  await expect(page.getByRole('alert')).toContainText('관리자 권한이 필요합니다');
+  await expect(page.getByRole('alert')).toContainText('관리자 계정으로 로그인');
+  expect(api.requests).toHaveLength(0);
 });
