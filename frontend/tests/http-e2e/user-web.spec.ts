@@ -440,9 +440,21 @@ test('long lists keep navigation fixed and restore the list after browser back',
   ).toBe(true);
   const link = list.locator('a').nth(10);
   await link.scrollIntoViewIfNeeded();
-  const position = await list.evaluate((el) => el.scrollTop);
+  // Pointer focus may scroll the link again on Linux. Restore the position at
+  // navigation, not the position before the browser has dispatched the click.
+  await list.evaluate((el) => {
+    el.addEventListener(
+      'click',
+      () => sessionStorage.setItem('test-list-navigation-position', String(el.scrollTop)),
+      { capture: true, once: true },
+    );
+  });
   await link.click();
   await expect(page.getByLabel('물품 상세', { exact: true })).toBeVisible();
+  const position = Number(
+    await page.evaluate(() => sessionStorage.getItem('test-list-navigation-position')),
+  );
+  expect(position).toBeGreaterThan(0);
   await page.goBack();
   await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBe(position);
   await page.screenshot({ path: 'test-results/mobile-internal-list.png' });
