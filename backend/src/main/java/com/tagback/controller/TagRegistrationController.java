@@ -34,17 +34,12 @@ public class TagRegistrationController {
                 .body(registrationService.current(itemId));
     }
 
+    // UID-only writes were retired. Signed kiosk-admin scans are required.
     @AdminOnly
-    @PostMapping("/{itemId}/tag")
-    public ResponseEntity<TagRegistrationResponse> register(@PathVariable Long itemId,
-                                                             @RequestBody(required = false) RegisterTagRequest request,
-                                                             @RequestAttribute(AuthenticatedUser.ATTRIBUTE) AuthenticatedUser user) {
-        if (request == null || request.uid() == null) {
-            throw new TagRegistrationException(HttpStatus.BAD_REQUEST, "VALIDATION", "uid가 필요합니다.");
-        }
-        TagRegistrationService.RegistrationResult result = registrationService.register(itemId, request.uid(), user.userId());
-        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(result.response());
-    }
+    @org.springframework.web.bind.annotation.RequestMapping(value="/{itemId}/tag",
+        method={org.springframework.web.bind.annotation.RequestMethod.POST, org.springframework.web.bind.annotation.RequestMethod.PUT,
+                org.springframework.web.bind.annotation.RequestMethod.DELETE})
+    public void retired() { throw new com.tagback.exception.AuthException(com.tagback.exception.AuthErrorCode.FORBIDDEN); }
 
     @ExceptionHandler(TagRegistrationException.class)
     public ResponseEntity<ApiErrorResponse> handleTagRegistration(TagRegistrationException exception) {

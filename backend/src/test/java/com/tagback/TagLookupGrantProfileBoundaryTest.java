@@ -21,7 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(TagLookupController.class)
 @ActiveProfiles("test")
 @Import({ApiAccessConfiguration.class, ApiExceptionHandler.class})
-class TagLookupGrantProfileBoundaryTest {
+class TagLookupGrantProfileBoundaryTest extends SharedAdminMvcSupport {
     @Autowired MockMvc mvc;
     @MockitoBean SessionService sessions;
     @MockitoBean TagLifecycleService lifecycle;

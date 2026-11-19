@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(ItemController.class)
 @Import({ApiAccessConfiguration.class, ApiExceptionHandler.class, AuthOriginGuard.class})
-class ItemUpdateApiTest {
+class ItemUpdateApiTest extends SharedAdminMvcSupport {
     @Autowired MockMvc mvc;
     @MockitoBean ItemService items;
     @MockitoBean SessionService sessions;
@@ -82,5 +82,5 @@ class ItemUpdateApiTest {
         }
     }
 
-    private Cookie cookie(String token) { return new Cookie(AuthCookies.SESSION_COOKIE, token); }
+    private Cookie cookie(String token) { return new Cookie(token.startsWith("admin") ? com.tagback.config.AdminCredentials.COOKIE : AuthCookies.SESSION_COOKIE, token); }
 }

@@ -1,7 +1,7 @@
 {
   "name": "tagback-kiosk",
   "productName": "TagBackKiosk",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "private": true,
   "description": "TagBack Windows kiosk trial host",
   "author": "TagBack",
@@ -14,7 +14,9 @@
     "package": "npm run prepare:resources && electron-forge package --platform=win32 --arch=x64",
     "make": "npm run prepare:resources && electron-forge make --platform=win32 --arch=x64"
   },
-  "dependencies": { "electron-squirrel-startup": "1.0.1" },
+  "dependencies": {
+    "electron-squirrel-startup": "1.0.1"
+  },
   "devDependencies": {
     "electron": "45.3.1",
     "@electron-forge/cli": "8.0.1",

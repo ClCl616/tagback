@@ -30,6 +30,11 @@ public class ItemStatusHistory {
     @Column(name = "changed_by_user_id")
     private Long changedByUserId;
 
+    @Column(name = "admin_session_id")
+    private java.util.UUID adminSessionId;
+
+    public void setAdminSessionId(java.util.UUID value) { adminSessionId = value; }
+
     @Column(length = 500)
     private String reason;
 

@@ -19,12 +19,9 @@ import {
   Search,
   ShieldCheck,
 } from 'lucide-react';
-import { serverSession } from '../shared/httpAuth';
-import { authApi } from '../shared/auth';
-import { COOKIE_SESSION } from '../shared/authMode';
+import { adminSession as serverSession, adminLogout, AdminLogin } from './adminAuth';
 import { ServiceError } from '../shared/serviceError';
 import type { Item } from '../shared/types';
-import AuthFlow from '../mobile/AuthFlow';
 import { loadAdminData, type AdminData, type AdminRecord } from './adminQueries';
 import { adminApi } from './adminApi';
 import { ItemEditor, StatusEditor, DeleteItem, TagEditor } from './AdminActions';
@@ -151,9 +148,7 @@ export default function AdminWeb() {
       const result = await loadAdminData(ctrl.signal);
       const session = await serverSession();
       if (!active.current || run !== seq.current) return;
-      if (session.user.role !== 'ADMIN')
-        throw new ServiceError('FORBIDDEN', '관리자 계정으로 로그인해 주세요.');
-      if (session.user.userId !== result.operatorId) {
+      if (session.sessionId !== result.operatorId) {
         void load();
         return;
       }
@@ -187,9 +182,7 @@ export default function AdminWeb() {
       try {
         const session = await serverSession();
         if (!active.current || run !== seq.current) return;
-        if (session.user.role !== 'ADMIN')
-          deny(new ServiceError('FORBIDDEN', '관리자 권한이 필요합니다.'));
-        else if (session.user.userId !== identity.current) {
+        if (session.sessionId !== identity.current) {
           clear();
           void load();
         }
@@ -233,17 +226,10 @@ export default function AdminWeb() {
         <Brand />
         <div className="aw-auth-heading">
           <ShieldCheck />
-          <h1>{location.pathname.endsWith('recover') ? '관리자 PIN 재설정' : '관리자 로그인'}</h1>
-          <p>TagBack 계정으로 로그인한 후 관리자 권한을 확인합니다.</p>
+          <h1>관리자 로그인</h1>
+          <p>공통 관리자 비밀번호를 입력해 주세요. 사용자 계정과 별도로 로그인합니다.</p>
         </div>
-        <AuthFlow
-          key={location.pathname}
-          mode={location.pathname.endsWith('recover') ? 'reset' : 'access'}
-          token=""
-          adminDestination={destination}
-          onLogin={() => {}}
-          onClear={() => {}}
-        />
+        <AdminLogin onLogin={() => nav(destination, { replace: true })} />
         <Link className="aw-back-user" to="/mobile">
           사용자 웹으로
         </Link>
@@ -291,7 +277,7 @@ export default function AdminWeb() {
         reload={reload}
         logout={async () => {
           try {
-            await authApi.logout(COOKIE_SESSION);
+            await adminLogout();
             clear();
             window.dispatchEvent(new Event('tagback-session'));
             nav('/admin/login', { replace: true });
@@ -1080,15 +1066,11 @@ function ItemDetail({
             ]}
           />
           {tags ? (
-            item.tag ? (
-              <p className="aw-notice">이 물품에 태그가 연결되어 있어요.</p>
-            ) : (
-              <TagEditor item={item} saved={saved} />
-            )
+            <TagEditor item={item} saved={saved} />
           ) : (
             <div className="aw-detail-actions">
               <button className="aw-primary" onClick={() => edit('edit', item)}>
-                물품 수정{!item.tag ? ' / NFC 태그 연결' : ''}
+                물품 정보 수정
               </button>
               <button
                 disabled={!['available', 'inspection', 'repair'].includes(item.status)}

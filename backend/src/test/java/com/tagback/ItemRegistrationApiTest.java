@@ -24,7 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(ItemController.class)
 @Import({ApiAccessConfiguration.class, ApiExceptionHandler.class, AuthOriginGuard.class})
-class ItemRegistrationApiTest {
+class ItemRegistrationApiTest extends SharedAdminMvcSupport {
     @Autowired MockMvc mvc;
     @MockitoBean ItemService items;
     @MockitoBean SessionService sessions;
@@ -82,5 +82,5 @@ class ItemRegistrationApiTest {
                 .andExpect(status().isNotFound()).andExpect(jsonPath("$.error.code").value("ITEM_TYPE_NOT_FOUND"));
     }
 
-    private Cookie cookie(String value) { return new Cookie(AuthCookies.SESSION_COOKIE, value); }
+    private Cookie cookie(String value) { return new Cookie(value.startsWith("admin") ? com.tagback.config.AdminCredentials.COOKIE : AuthCookies.SESSION_COOKIE, value); }
 }

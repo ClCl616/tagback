@@ -13,6 +13,9 @@ foreach ($name in @('db-password', 'sms-hash-key', 'nfc-scan-secret')) {
         [IO.File]::WriteAllText($path, [Convert]::ToBase64String($bytes), $utf8)
     }
 }
+# An unconfigured shared password disables administrator login until explicitly provisioned.
+$adminHash = Join-Path $localDir 'admin-password-hash'
+if (!(Test-Path -LiteralPath $adminHash)) { [IO.File]::WriteAllText($adminHash, '', $utf8) }
 $cert = Join-Path $tlsDir 'server.crt'
 $key = Join-Path $tlsDir 'server.key'
 if ((Test-Path -LiteralPath $cert) -xor (Test-Path -LiteralPath $key)) {

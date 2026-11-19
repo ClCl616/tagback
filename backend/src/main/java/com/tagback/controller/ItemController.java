@@ -2,7 +2,7 @@ package com.tagback.controller;
 
 import com.tagback.config.AdminOnly;
 import com.tagback.config.AuthOriginGuard;
-import com.tagback.config.AuthenticatedUser;
+import com.tagback.config.AdminPrincipal;
 import com.tagback.dto.item.ItemRequests;
 import com.tagback.dto.item.ItemResponses;
 import com.tagback.domain.entity.ItemStatus;
@@ -22,21 +22,26 @@ import org.springframework.web.bind.annotation.*;
 public class ItemController {
     private final ItemService service;
     private final AuthOriginGuard origins;
+    private final com.tagback.service.AdminAudit audit;
 
-    public ItemController(ItemService service, AuthOriginGuard origins) {
+    public ItemController(ItemService service, AuthOriginGuard origins, com.tagback.service.AdminAudit audit) {
         this.service = service;
-        this.origins = origins;
+        this.origins = origins; this.audit = audit;
     }
 
+    @org.springframework.transaction.annotation.Transactional
     @AdminOnly
     @PostMapping
     public ResponseEntity<ItemResponses.Detail> create(
-            @Valid @RequestBody ItemRequests.Create body, HttpServletRequest request) {
+            @Valid @RequestBody ItemRequests.Create body, HttpServletRequest request,
+            @RequestAttribute(AdminPrincipal.ATTRIBUTE) AdminPrincipal admin) {
         origins.check(request);
         var item = service.create(body);
+        audit.record(admin, "ITEM_CREATE", Long.parseLong(item.itemId()), null, null, null);
         return ResponseEntity.created(URI.create("/api/v1/items/" + item.itemId())).body(item);
     }
 
+    @com.tagback.config.AdminReadable
     @GetMapping("/{itemId}")
     public ItemResponses.Detail detail(
             @PathVariable @Pattern(regexp = "[1-9][0-9]{0,18}")
@@ -44,28 +49,36 @@ public class ItemController {
         return service.detail(Long.parseLong(itemId));
     }
 
+    @org.springframework.transaction.annotation.Transactional
     @AdminOnly
     @PatchMapping("/{itemId}/status")
     public ItemResponses.Detail changeStatus(
             @PathVariable @Pattern(regexp = "[1-9][0-9]{0,18}")
             @DecimalMax("9223372036854775807") String itemId,
             @Valid @RequestBody ItemRequests.StatusChange body,
-            @RequestAttribute(AuthenticatedUser.ATTRIBUTE) AuthenticatedUser user,
+            @RequestAttribute(AdminPrincipal.ATTRIBUTE) AdminPrincipal admin,
             HttpServletRequest request) {
         origins.check(request);
-        return service.changeStatus(Long.parseLong(itemId), body, user.userId());
+        var result = service.changeStatusAsAdmin(Long.parseLong(itemId), body, null, admin.sessionId());
+        audit.record(admin, "ITEM_STATUS", Long.parseLong(itemId), null, null, null);
+        return result;
     }
 
+    @org.springframework.transaction.annotation.Transactional
     @AdminOnly
     @PatchMapping("/{itemId}")
     public ItemResponses.Detail update(
             @PathVariable @Pattern(regexp = "[1-9][0-9]{0,18}")
             @DecimalMax("9223372036854775807") String itemId,
-            @Valid @RequestBody ItemRequests.Update body, HttpServletRequest request) {
+            @Valid @RequestBody ItemRequests.Update body, HttpServletRequest request,
+            @RequestAttribute(AdminPrincipal.ATTRIBUTE) AdminPrincipal admin) {
         origins.check(request);
-        return service.update(Long.parseLong(itemId), body);
+        var result = service.update(Long.parseLong(itemId), body);
+        audit.record(admin, "ITEM_UPDATE", Long.parseLong(itemId), null, null, null);
+        return result;
     }
 
+    @com.tagback.config.AdminReadable
     @GetMapping
     public ItemResponses.ItemPage list(
             @RequestParam(defaultValue = "0") @Min(0) int page,
@@ -81,13 +94,16 @@ public class ItemController {
         return service.search(page, size, type, parsedStatus, keyword, false);
     }
 
+    @org.springframework.transaction.annotation.Transactional
     @AdminOnly
     @DeleteMapping("/{itemId}")
     public ResponseEntity<Void> delete(
             @PathVariable @Pattern(regexp = "[1-9][0-9]{0,18}")
-            @DecimalMax("9223372036854775807") String itemId, HttpServletRequest request) {
+            @DecimalMax("9223372036854775807") String itemId, HttpServletRequest request,
+            @RequestAttribute(AdminPrincipal.ATTRIBUTE) AdminPrincipal admin) {
         origins.check(request);
         service.delete(Long.parseLong(itemId));
+        audit.record(admin, "ITEM_DELETE", Long.parseLong(itemId), null, null, null);
         return ResponseEntity.noContent().build();
     }
 }

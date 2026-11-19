@@ -139,7 +139,7 @@ function mapError(
   throw new ServiceError(typeof code === 'string' ? code : 'UNKNOWN', safe);
 }
 
-async function request(command: Exclude<KioskCommand, { action: 'health' }>): Promise<any> {
+async function request(command: Extract<KioskCommand, { action: Action }>): Promise<any> {
   const action = command.action;
   let response: KioskResponse;
   try {

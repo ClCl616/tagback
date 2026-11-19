@@ -10,6 +10,7 @@ Docker Desktop의 Linux 컨테이너 엔진을 실행한다. 저장소 루트에
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File deploy/compose/Initialize-Compose.ps1
+pwsh -NoProfile -File deploy/compose/Set-AdminPassword.ps1
 docker compose up -d --build --wait --wait-timeout 240
 docker compose ps
 ```
@@ -25,6 +26,8 @@ DB와 API는 호스트에 포트를 공개하지 않고 Compose 네트워크에�
 기존 Windows 개발 런처와 별도 구성이다. 런처의 파일·프로필·DB·프로세스를 수정하지 않는다. Compose 기본 웹 포트도 런처와 다른 8443이다. 다른 checkout에서 같은 Compose 프로젝트 이름을 쓰면 같은 자원을 가리키므로 독립 실행은 `docker compose -p 고유이름 ...`을 모든 명령에 일관되게 사용한다.
 
 ## 설정
+
+관리자는 계정 없이 공통 비밀번호로 로그인한다. 위 설정 스크립트(PowerShell 7)는 비밀번호를 두 번 입력받아 해시만 저장한다. 미설정이면 관리자 접근이 차단된다. 물품은 웹에서 태그 등록 대기로 생성하고 리더기가 연결된 키오스크의 관리자 모드에서 태그를 연결한다. 비밀번호 교체·세션·태그 교체·검증 범위는 [공통 관리자와 키오스크 태그 등록](../../docs/shared-admin-kiosk-tags.md)을 참고한다.
 
 기본값으로 실행할 수 있으며 필요한 항목만 셸 환경변수 또는 저장소 루트의 Git 제외 `.env`에 설정한다. 예시는 이 폴더의 `.env.example`에 있다.
 
@@ -74,6 +77,22 @@ pwsh -NoProfile -File deploy/compose/Test-Compose.ps1 -SkipCertificateCheck
 ```
 
 확인 스크립트는 실제 HTTPS 경로·빌드 JS·공개 카탈로그·미인증 접근 거부·Secure 쿠키·Origin 검사를 수행한다. 사용자·물품·대여 데이터를 생성하지 않는다. 이는 전체 업무 회귀나 실제 SMS·NFC 검증을 대신하지 않는다.
+
+## 임시 인증코드 콘솔 확인 (2026-11-18)
+
+카카오톡 챗봇 연동 전까지 `sms-mock`에서 인증 요청이 DB에 커밋되면 API 서버 콘솔에 인증코드를 출력한다. 웹에서 기존 인증번호 발송 버튼을 누른 뒤 아래 로그의 `code` 6자리를 입력한다. 실제 문자는 발송하지 않는다.
+
+```powershell
+# 변경 소스를 포함하는 이 작업 폴더에서 API 이미지를 다시 빌드한 뒤 확인
+docker compose up -d --build --wait api
+docker compose logs -f --tail 50 api
+```
+
+로그 예시: `[SMS-CONSOLE] phone=***5678 purpose=SIGNUP code=012345 expiresAt=2026-11-18T00:05:00Z requestId=...`
+
+`phone`은 전화번호 끝 4자리, `purpose`는 가입(`SIGNUP`) 또는 PIN 재설정(`PIN_RESET`) 등 요청 용도다. `expiresAt`의 `Z`는 UTC를 뜻한다. 로컬에서 백엔드를 직접 실행하면 같은 로그가 실행 터미널에 표시된다. 재발송 시 최신 코드를 사용하며 기존 만료·재발송 제한·검증 규칙은 유지한다. 동일 요청 재시도는 새 로그/코드를 만들지 않는다.
+
+콘솔 출력은 `MockSmsDelivery`의 커밋 후 발송 지점에 모아 두었다. 챗봇 도입 시 이 발송 경로를 교체하고 콘솔 코드 출력을 제거한다. 현재 로그에는 임시 인증코드가 포함되므로 공유하지 않는다. `prod`/`production`에서는 기존과 같이 mock 발송이 활성화되지 않으며 운영 인증 전환은 별도다. 새 worktree에는 Git 제외 비밀·TLS 설정이 자동 복사되지 않으므로 Compose 최초 설정은 위 초기화 안내를 따른다.
 
 ## 키오스크 배포 정책
 

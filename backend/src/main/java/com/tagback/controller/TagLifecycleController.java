@@ -30,36 +30,6 @@ public class TagLifecycleController {
         this.lifecycle = lifecycle;
     }
 
-    @AdminOnly
-    @PutMapping("/{itemId}/tag")
-    public ResponseEntity<TagRegistrationResponse> replace(@PathVariable Long itemId,
-                                                            @RequestBody(required = false) Map<String, Object> request,
-                                                            @RequestAttribute(AuthenticatedUser.ATTRIBUTE) AuthenticatedUser user) {
-        if (request == null || !(request.get("uid") instanceof String uid)
-                || !request.containsKey("expectedUid")
-                || (request.get("expectedUid") != null && !(request.get("expectedUid") instanceof String))) {
-            throw new TagRegistrationException(HttpStatus.BAD_REQUEST, "VALIDATION",
-                    "uid와 expectedUid가 필요합니다.");
-        }
-        String expectedUid = (String) request.get("expectedUid");
-        TagRegistrationService.RegistrationResult result = lifecycle.replace(
-                itemId, uid, expectedUid, user.userId());
-        return ResponseEntity.status(result.created() ? HttpStatus.CREATED : HttpStatus.OK).body(result.response());
-    }
-
-    @AdminOnly
-    @DeleteMapping("/{itemId}/tag")
-    public ResponseEntity<Void> deactivate(@PathVariable Long itemId,
-                                           @RequestParam Map<String, String> parameters,
-                                           @RequestAttribute(AuthenticatedUser.ATTRIBUTE) AuthenticatedUser user) {
-        if (!parameters.containsKey("expectedUid")) {
-            throw new TagRegistrationException(HttpStatus.BAD_REQUEST, "VALIDATION",
-                    "expectedUid가 필요합니다.");
-        }
-        lifecycle.deactivate(itemId, parameters.get("expectedUid"), user.userId());
-        return ResponseEntity.noContent().build();
-    }
-
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ApiErrorResponse> handleUnreadableBody() {
         return ResponseEntity.badRequest().body(new ApiErrorResponse(new ApiErrorResponse.Error(

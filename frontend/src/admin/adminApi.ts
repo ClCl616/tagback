@@ -1,6 +1,5 @@
 import { request, assertId } from '../shared/http';
 import { parseItem, catalogHttp } from '../shared/catalogHttp';
-import { normalizeUid } from '../shared/nfcUid';
 import { notify, ServiceError } from '../shared/api';
 import type { Item, ItemStatus } from '../shared/types';
 
@@ -45,24 +44,6 @@ export const adminApi = {
       tag: original?.tag ?? '',
       active: original?.active ?? false,
     };
-  },
-  async attachTag(id: string, rawUid: string): Promise<Item> {
-    assertId(id);
-    const uid = normalizeUid(rawUid);
-    const result = await request(`/api/items/${id}/tag`, 'POST', { uid });
-    if (
-      !Number.isSafeInteger(result.tag?.itemId) ||
-      String(result.tag.itemId) !== id ||
-      result.tag.uid !== uid ||
-      result.tag.status !== 'ACTIVE'
-    )
-      throw new ServiceError(
-        'UNKNOWN',
-        '태그 연결 결과를 확인하지 못했습니다. 같은 물품과 UID로 다시 시도해 주세요.',
-      );
-    const item = await getItem(id);
-    notify();
-    return item;
   },
   async changeStatus(id: string, status: ItemStatus, reason: string): Promise<Item> {
     assertId(id);

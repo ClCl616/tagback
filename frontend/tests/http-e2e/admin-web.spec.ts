@@ -96,31 +96,15 @@ async function server(page: Page) {
     const ok = (json: unknown, status = 200) => route.fulfill({ status, json });
     const fail = (status: number, code: string, message: string) =>
       ok({ error: { code, message } }, status);
-    const session = () => ({
-      authenticated: true,
-      user: {
-        userId: state.userId,
-        name: state.userId === '1' ? '운영자' : '다른 관리자',
-        occupation: '직원',
-        role: state.role,
-        maskedPhoneNumber: '010-****-1234',
-      },
-      sessionExpiresAt: '2030-01-01T00:00:00Z',
-    });
-    if (path.endsWith('/auth/session'))
-      return state.signedIn ? ok(session()) : fail(401, 'SESSION_EXPIRED', '로그인이 필요합니다.');
+    const session = () => ({ sessionId: state.userId, channel: 'WEB', expiresAt: '2030-01-01T00:00:00Z' });
+    if (path === '/api/v1/admin/auth/session')
+      return !state.signedIn ? fail(401, 'SESSION_EXPIRED', '로그인이 필요합니다.')
+        : state.role !== 'ADMIN' ? fail(403, 'FORBIDDEN', '관리자 권한이 필요합니다.') : ok(session());
+    if (path === '/api/v1/admin/auth/login') { state.signedIn = true; return ok(session()); }
     if (path.endsWith('/auth/browser-registration')) return ok({ registered: false });
     if (path.endsWith('/auth/logout')) {
       state.signedIn = false;
       return route.fulfill({ status: 204 });
-    }
-    if (path.endsWith('/auth/login/phone')) {
-      state.signedIn = true;
-      return ok({
-        user: session().user,
-        sessionExpiresAt: '2030-01-01T00:00:00Z',
-        browserRegistrationExpiresAt: '2030-01-01T00:00:00Z',
-      });
     }
     if (path.endsWith('/item-types'))
       return ok({ itemTypes: [{ itemTypeId: '1', itemTypeName: '공용 물품' }] });
@@ -217,9 +201,8 @@ test('admin login preserves its requested destination and does not offer adminis
   await page.goto('/admin/tags?selected=102');
   await page.getByRole('link', { name: '로그인', exact: true }).click();
   await expect(page.getByRole('link', { name: '회원가입' })).toHaveCount(0);
-  await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
-  await page.getByRole('button', { name: '다음', exact: true }).click();
-  await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
+  await page.getByLabel('관리자 비밀번호').fill('test-admin-password');
+  await page.getByRole('button', { name: '관리자 로그인', exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/tags\?selected=102$/);
   await expect(page.getByRole('complementary', { name: '물품 상세' })).toContainText('우산');
 });
@@ -249,29 +232,20 @@ test('overview links, direct details, history and same-name users preserve ident
   await page.reload();
   await expect(page.getByLabel('물품 검색', { exact: true })).toHaveValue('우산');
 });
-test('create succeeds once, tag failure retries only linking and reader outage allows manual input', async ({
-  page,
-}) => {
-  const state = await server(page);
-  state.failTag = true;
-  await page.goto('/admin/items');
-  await page.getByRole('button', { name: '물품 등록', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '물품 등록', exact: true });
-  await dialog.getByLabel('물품명', { exact: true }).fill('새 우산');
-  await dialog.getByLabel('물품 종류', { exact: true }).selectOption('1');
-  await dialog.getByLabel('NFC 태그 UID').fill('04A210BD');
-  await dialog.getByRole('button', { name: '등록하기' }).click();
-  await expect(dialog.getByRole('alert')).toContainText('이미 연결된 태그');
-  await expect(dialog).toContainText('물품 ID 201 저장 완료');
-  state.failTag = false;
-  await dialog.getByLabel('NFC 태그 UID').fill('04A210AA');
-  await dialog.getByRole('button', { name: '태그 연결 재시도' }).click();
-  await expect(dialog).toHaveCount(0);
-  expect(state.creates).toBe(1);
-  expect(state.attaches).toBe(2);
-  await page.getByRole('button', { name: '새 우산 상세 보기' }).click();
-  await expect(page.getByRole('complementary', { name: '물품 상세' })).toContainText('04A210AA');
-  await expect(page.getByRole('button', { name: '물품 삭제', exact: true })).toBeDisabled();
+test('web creates pending item without a reader or UID field', async ({page}) => {
+  const state=await server(page);await page.goto('/admin/items');
+  await page.getByRole('button',{name:'물품 등록',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'물품 등록',exact:true});
+  await expect(dialog.getByLabel('NFC 태그 UID')).toHaveCount(0);
+  await dialog.getByLabel('물품명',{exact:true}).fill('새 우산');
+  await dialog.getByLabel('물품 종류',{exact:true}).selectOption('1');
+  await dialog.getByRole('button',{name:'등록하기'}).click();
+  await expect(dialog).toHaveCount(0);expect(state.creates).toBe(1);expect(state.attaches).toBe(0);
+  await page.getByRole('button',{name:'새 우산 상세 보기'}).click();
+  await expect(page.getByRole('complementary',{name:'물품 상세'})).toContainText('태그 등록 대기');
+  await page.getByRole('button',{name:'물품 정보 수정'}).click();
+  await expect(page.getByRole('dialog')).toContainText('키오스크');
+  await expect(page.getByLabel('NFC 태그 UID')).toHaveCount(0);
 });
 test('lost create response blocks resubmission and refresh failure does not repeat a saved mutation', async ({
   page,
@@ -284,7 +258,7 @@ test('lost create response blocks resubmission and refresh failure does not repe
   await dialog.getByLabel('물품명', { exact: true }).fill('응답 유실 물품');
   await dialog.getByLabel('물품 종류', { exact: true }).selectOption('1');
   await dialog.getByRole('button', { name: '등록하기' }).click();
-  await expect(dialog).toContainText('저장 결과가 불명확합니다');
+  await expect(dialog).toContainText('저장 결과를 확인하지 못했습니다');
   await expect(dialog.getByRole('button', { name: '등록하기' })).toBeDisabled();
   await dialog.getByRole('button', { name: '닫기', exact: true }).last().click();
   await expect(page.getByRole('button', { name: '응답 유실 물품 상세 보기' })).toBeVisible();
@@ -295,7 +269,7 @@ test('lost create response blocks resubmission and refresh failure does not repe
   await dialog.getByLabel('물품 종류', { exact: true }).selectOption('1');
   state.failRefresh = true;
   await dialog.getByRole('button', { name: '등록하기' }).click();
-  await expect(page.getByRole('status').filter({ hasText: '저장 완료' })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: '태그 등록 대기로 저장' })).toBeVisible();
   await expect(page.getByRole('alert')).toBeVisible();
   state.failRefresh = false;
   await page.getByRole('button', { name: '다시 시도' }).click();
@@ -326,20 +300,14 @@ test('unknown status response is reconciled, restricted deletion disabled and el
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(state.deletes).toBe(1);
 });
-test('tag response loss reconciles existing UID without attaching a second time', async ({
-  page,
-}) => {
-  const state = await server(page);
-  state.loseTag = true;
-  await page.goto('/admin/tags?selected=102');
-  await page.getByLabel('NFC 태그 UID').fill('04A210BD');
-  await page.getByRole('button', { name: '태그 연결', exact: true }).click();
-  await expect(page.getByLabel('NFC 태그 UID')).toBeDisabled();
-  await page.getByRole('button', { name: '연결 확인 및 재시도' }).click();
-  await expect(page.getByRole('complementary', { name: '물품 상세' })).toContainText(
-    '이 물품에 태그가 연결되어 있어요.',
-  );
-  expect(state.attaches).toBe(1);
+test('web tag screen directs both new connections and replacements to kiosk', async ({page}) => {
+  const state=await server(page);
+  for(const id of ['101','102']) {
+    await page.goto('/admin/tags?selected='+id);
+    await expect(page.getByRole('complementary',{name:'물품 상세'})).toContainText('키오스크');
+    await expect(page.getByLabel('NFC 태그 UID')).toHaveCount(0);
+  }
+  expect(state.attaches).toBe(0);
 });
 test('session changes clear open drafts, logout returns to login and USER has no admin data', async ({
   page,
@@ -351,7 +319,7 @@ test('session changes clear open drafts, logout returns to login and USER has no
   state.userId = '5';
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.locator('.aw-operator')).toContainText('다른 관리자');
+  await expect(page.locator('.aw-operator')).toContainText('공통 관리자');
   state.role = 'USER';
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await expect(page.getByRole('heading', { name: '관리자 권한이 필요해요' })).toBeVisible();

@@ -25,6 +25,8 @@ export async function request(
     );
   }
   const data = response.status === 204 ? undefined : await response.json().catch(() => undefined);
+  if (response.status === 401 && data?.error?.code === 'ADMIN_PASSWORD_INVALID')
+    throw new ServiceError('ADMIN_PASSWORD_INVALID', '관리자 비밀번호가 일치하지 않습니다.');
   if (response.status === 401)
     throw new ServiceError('AUTH', '로그인이 필요합니다. 다시 로그인해 주세요.');
   if (response.status === 403) throw new ServiceError('FORBIDDEN', '관리자 권한이 필요합니다.');

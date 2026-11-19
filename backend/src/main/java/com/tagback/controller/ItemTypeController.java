@@ -16,6 +16,7 @@ public class ItemTypeController {
         this.types = types;
     }
 
+    @com.tagback.config.AdminReadable
     @GetMapping
     @SessionOrRentalAuthenticated
     public ItemTypeResponses.ListResult list() {

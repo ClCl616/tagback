@@ -26,7 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(RentalQueryController.class)
 @ActiveProfiles("sms-mock")
 @Import({ApiAccessConfiguration.class, ApiExceptionHandler.class})
-class RentalQueryApiTest {
+class RentalQueryApiTest extends SharedAdminMvcSupport {
     @Autowired MockMvc mvc;
     @MockitoBean RentalQueryService queries;
     @MockitoBean SessionService sessions;
@@ -63,5 +63,5 @@ class RentalQueryApiTest {
         verifyNoInteractions(queries);
     }
 
-    private Cookie cookie(String token) { return new Cookie(AuthCookies.SESSION_COOKIE, token); }
+    private Cookie cookie(String token) { return new Cookie(token.startsWith("admin") ? com.tagback.config.AdminCredentials.COOKIE : AuthCookies.SESSION_COOKIE, token); }
 }
