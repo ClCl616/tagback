@@ -33,7 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(AdminQueryController.class)
 @ActiveProfiles("sms-mock")
 @Import({ApiAccessConfiguration.class, ApiExceptionHandler.class, AdminQueryService.class, AdminQueryApiTest.TimeConfig.class})
-class AdminQueryApiTest {
+class AdminQueryApiTest extends SharedAdminMvcSupport {
     @TestConfiguration static class TimeConfig {
         @Bean Clock clock() { return Clock.fixed(Instant.parse("2026-11-05T03:00:00Z"), ZoneOffset.UTC); }
     }
@@ -129,5 +129,5 @@ class AdminQueryApiTest {
             }
         }
     }
-    private Cookie cookie(String token) { return new Cookie(AuthCookies.SESSION_COOKIE, token); }
+    private Cookie cookie(String token) { return new Cookie(token.startsWith("admin") ? com.tagback.config.AdminCredentials.COOKIE : AuthCookies.SESSION_COOKIE, token); }
 }

@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(TagRegistrationController.class)
 @Import({ApiAccessConfiguration.class, ApiExceptionHandler.class})
-class TagRegistrationAuthorizationTest {
+class TagRegistrationAuthorizationTest extends SharedAdminMvcSupport {
     @Autowired MockMvc mvc;
     @MockitoBean SessionService sessions;
     @MockitoBean TagRegistrationService registrationService;
@@ -56,16 +56,10 @@ class TagRegistrationAuthorizationTest {
     }
 
     @Test
-    void adminCanRegisterTag() throws Exception {
-        when(sessions.authenticate("admin-session")).thenReturn(new AuthenticatedUser(8L, UserRole.ADMIN));
-        when(registrationService.register(12L, "04A23B1C5D6E80", 8L)).thenReturn(
-                new TagRegistrationService.RegistrationResult(new TagRegistrationResponse(
-                        new TagRegistrationResponse.Tag(1L, "04A23B1C5D6E80", 12L, "ACTIVE", null)), true));
-
-        mvc.perform(request().cookie(new Cookie(AuthCookies.SESSION_COOKIE, "admin-session")))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.tag.tagId").value(1))
-                .andExpect(jsonPath("$.tag.itemId").value(12));
+    void sharedAdminCannotRegisterWithoutKioskScan() throws Exception {
+        mvc.perform(request().cookie(new Cookie(com.tagback.config.AdminCredentials.COOKIE,"admin-session")))
+                .andExpect(status().isForbidden());
+        verifyNoInteractions(registrationService);
     }
 
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request() {

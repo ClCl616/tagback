@@ -105,7 +105,7 @@ public class SmsAuthService {
                 now.plus(policy.smsRequestWindow()), now);
         operation.completeSuccessfully(json.writeValueAsString(response), now);
         operations.save(operation);
-        delivery.deliverAfterCommit(requestId, code, expiresAt);
+        delivery.deliverAfterCommit(requestId, phone, input.purpose(), code, expiresAt);
         return response;
     }
 

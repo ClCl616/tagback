@@ -12,8 +12,8 @@ public class ApiAccessConfiguration implements WebMvcConfigurer {
     private final SessionAuthenticationInterceptor authentication;
     private final RentalAuthenticationInterceptor rentalAuthentication;
 
-    public ApiAccessConfiguration(ObjectProvider<SessionService> sessions, ObjectProvider<RentalCodeService> codes) {
-        authentication = new SessionAuthenticationInterceptor(sessions);
+    public ApiAccessConfiguration(ObjectProvider<SessionService> sessions, ObjectProvider<RentalCodeService> codes, ObjectProvider<com.tagback.service.AdminSessionService> admins) {
+        authentication = new SessionAuthenticationInterceptor(sessions, admins.getIfAvailable());
         rentalAuthentication = new RentalAuthenticationInterceptor(codes);
     }
 

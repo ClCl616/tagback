@@ -26,7 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(ItemController.class)
 @Import({ApiAccessConfiguration.class, ApiExceptionHandler.class, AuthOriginGuard.class})
-class ItemStatusApiTest {
+class ItemStatusApiTest extends SharedAdminMvcSupport {
     @Autowired MockMvc mvc;
     @MockitoBean ItemService items;
     @MockitoBean SessionService sessions;
@@ -38,7 +38,7 @@ class ItemStatusApiTest {
     }
 
     @Test void changesStatusAndReturnsUpdatedItem() throws Exception {
-        when(items.changeStatus(eq(10L), any(), eq(77L))).thenAnswer(invocation -> {
+        when(items.changeStatusAsAdmin(eq(10L), any(), isNull(), eq(ADMIN_ID))).thenAnswer(invocation -> {
             var body = invocation.getArgument(1, ItemRequests.StatusChange.class);
             org.junit.jupiter.api.Assertions.assertEquals("우산 손상", body.getReason());
             return detail(ItemStatus.REPAIR);
@@ -47,7 +47,7 @@ class ItemStatusApiTest {
                         .contentType("application/json").content("{\"status\":\"REPAIR\",\"reason\":\" 우산 손상 \"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.itemId").value("10"))
                 .andExpect(jsonPath("$.status").value("REPAIR"));
-        verify(items).changeStatus(eq(10L), any(), eq(77L));
+        verify(items).changeStatusAsAdmin(eq(10L), any(), isNull(), eq(ADMIN_ID));
     }
 
     @Test void rejectsMalformedAndUnmanageableStatusRequests() throws Exception {
@@ -80,11 +80,11 @@ class ItemStatusApiTest {
     }
 
     @Test void returnsMissingAndStateConflict() throws Exception {
-        when(items.changeStatus(eq(10L), any(), eq(77L))).thenThrow(ItemException.itemNotFound());
+        when(items.changeStatusAsAdmin(eq(10L), any(), isNull(), eq(ADMIN_ID))).thenThrow(ItemException.itemNotFound());
         mvc.perform(patch("/api/v1/items/10/status").cookie(cookie("admin")).contentType("application/json")
                         .content("{\"status\":\"INSPECTION\"}"))
                 .andExpect(status().isNotFound()).andExpect(jsonPath("$.error.code").value("ITEM_NOT_FOUND"));
-        when(items.changeStatus(eq(10L), any(), eq(77L))).thenThrow(ItemException.statusChangeConflict());
+        when(items.changeStatusAsAdmin(eq(10L), any(), isNull(), eq(ADMIN_ID))).thenThrow(ItemException.statusChangeConflict());
         mvc.perform(patch("/api/v1/items/10/status").cookie(cookie("admin")).contentType("application/json")
                         .content("{\"status\":\"INSPECTION\"}"))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("ITEM_STATUS_CHANGE_CONFLICT"));
@@ -95,5 +95,5 @@ class ItemStatusApiTest {
                 OffsetDateTime.parse("2026-10-07T01:00:00Z"));
     }
 
-    private Cookie cookie(String token) { return new Cookie(AuthCookies.SESSION_COOKIE, token); }
+    private Cookie cookie(String token) { return new Cookie(token.startsWith("admin") ? com.tagback.config.AdminCredentials.COOKIE : AuthCookies.SESSION_COOKIE, token); }
 }

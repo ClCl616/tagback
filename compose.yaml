@@ -39,6 +39,8 @@ services:
     secrets:
       - source: db_password
         target: TAGBACK_DB_PASSWORD
+      - source: admin_password_hash
+        target: tagback.admin.password-hash
       - source: sms_hash_key
         target: tagback.auth.sms-hash-key
       - source: nfc_scan_secret
@@ -83,6 +85,8 @@ services:
 secrets:
   db_password:
     file: ./deploy/compose/local/db-password
+  admin_password_hash:
+    file: ./deploy/compose/local/admin-password-hash
   sms_hash_key:
     file: ./deploy/compose/local/sms-hash-key
   nfc_scan_secret:

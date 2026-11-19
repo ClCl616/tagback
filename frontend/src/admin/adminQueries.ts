@@ -1,4 +1,4 @@
-import { serverSession } from '../shared/httpAuth';
+import { adminSession as serverSession } from './adminAuth';
 import { ServiceError } from '../shared/serviceError';
 import { parseItem, parseKind } from '../shared/catalogHttp';
 import { STATION } from '../shared/config';
@@ -52,8 +52,6 @@ function unique(rows: AdminRecord[]) {
 }
 export async function loadAdminData(signal: AbortSignal): Promise<AdminData> {
   const session = await serverSession();
-  if (session.user.role !== 'ADMIN')
-    throw new ServiceError('FORBIDDEN', '관리자 계정으로 로그인해 주세요.');
   const [items, users, rentals, types] = await Promise.all([
     allPages('/api/v1/items', 'items', signal),
     allPages('/api/v1/admin/users', 'users', signal),
@@ -62,8 +60,8 @@ export async function loadAdminData(signal: AbortSignal): Promise<AdminData> {
   ]);
   if (!Array.isArray(types.itemTypes)) throw invalid();
   return {
-    operator: session.user.name || '관리자',
-    operatorId: session.user.userId,
+    operator: '공통 관리자',
+    operatorId: session.sessionId,
     catalog: {
       items: items.map(parseItem),
       kinds: types.itemTypes.map(parseKind),

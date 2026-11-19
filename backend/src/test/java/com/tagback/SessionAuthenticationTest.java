@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 
 @WebMvcTest(SessionAuthenticationTest.TestController.class)
 @Import({ApiAccessConfiguration.class, ApiExceptionHandler.class, SessionAuthenticationTest.TestController.class})
-class SessionAuthenticationTest {
+class SessionAuthenticationTest extends SharedAdminMvcSupport {
     @Autowired MockMvc mvc;
     @MockitoBean SessionService sessions;
 

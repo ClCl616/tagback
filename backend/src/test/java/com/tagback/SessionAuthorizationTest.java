@@ -22,7 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest({SessionAuthorizationTest.MixedController.class, SessionAuthorizationTest.AdminController.class})
 @Import({ApiAccessConfiguration.class, ApiExceptionHandler.class,
         SessionAuthorizationTest.MixedController.class, SessionAuthorizationTest.AdminController.class})
-class SessionAuthorizationTest {
+class SessionAuthorizationTest extends SharedAdminMvcSupport {
     @Autowired MockMvc mvc;
     @Autowired MixedController mixed;
     @Autowired AdminController admin;
@@ -99,13 +99,11 @@ class SessionAuthorizationTest {
         assertEquals(1, admin.writes.get());
     }
 
-    @Test void roleIsRecheckedOnEveryRequestAndDemotionStopsWrites() throws Exception {
-        when(sessions.authenticate("session"))
-                .thenReturn(new AuthenticatedUser(8L, UserRole.ADMIN), new AuthenticatedUser(8L, UserRole.USER));
-        mvc.perform(post(adminPaths()[0]).cookie(cookie("session"))).andExpect(status().isOk());
-        mvc.perform(post(adminPaths()[0]).cookie(cookie("session"))).andExpect(status().isForbidden());
-        assertEquals(1, mixed.writes.get());
-        verify(sessions, times(2)).authenticate("session");
+    @Test void legacyAdminAccountDoesNotGrantAdministratorAccess() throws Exception {
+        when(sessions.authenticate("legacy")).thenReturn(new AuthenticatedUser(8L, UserRole.ADMIN));
+        mvc.perform(post(adminPaths()[0]).cookie(new Cookie(AuthCookies.SESSION_COOKIE,"legacy")))
+                .andExpect(status().isForbidden());
+        assertNoWrites();
     }
 
     @Test void userAndAdminCanStillReachOrdinaryAuthenticatedApi() throws Exception {
@@ -117,7 +115,7 @@ class SessionAuthorizationTest {
     }
 
     private String[] adminPaths() { return new String[]{"/api/v1/test/admin-write", "/api/v1/test/admin-controller"}; }
-    private Cookie cookie(String token) { return new Cookie(AuthCookies.SESSION_COOKIE, token); }
+    private Cookie cookie(String token) { return new Cookie(token.startsWith("admin") ? com.tagback.config.AdminCredentials.COOKIE : AuthCookies.SESSION_COOKIE, token); }
     private void assertNoWrites() {
         assertEquals(0, mixed.writes.get());
         assertEquals(0, admin.writes.get());

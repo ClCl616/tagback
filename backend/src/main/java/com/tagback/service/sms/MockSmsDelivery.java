@@ -1,5 +1,8 @@
 package com.tagback.service.sms;
 
+import com.tagback.dto.auth.SmsPurpose;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
@@ -13,16 +16,20 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 @Component
 @Profile("sms-mock & !prod & !production")
 public class MockSmsDelivery {
+    private static final Logger logger = LoggerFactory.getLogger(MockSmsDelivery.class);
     private final ConcurrentHashMap<UUID, Message> messages = new ConcurrentHashMap<>();
     private final Clock clock;
 
     public MockSmsDelivery(Clock clock) { this.clock = clock; }
 
-    public void deliverAfterCommit(UUID id, String code, Instant expiresAt) {
+    public void deliverAfterCommit(UUID id, String phone, SmsPurpose purpose, String code, Instant expiresAt) {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override public void afterCommit() {
                 messages.entrySet().removeIf(entry -> !entry.getValue().expiresAt().isAfter(clock.instant()));
                 messages.put(id, new Message(code, expiresAt));
+                // Temporary delivery channel until the KakaoTalk chatbot integration is ready.
+                logger.info("[SMS-CONSOLE] phone=***{} purpose={} code={} expiresAt={} requestId={}",
+                        phone.substring(phone.length() - 4), purpose, code, expiresAt, id);
             }
         });
     }
