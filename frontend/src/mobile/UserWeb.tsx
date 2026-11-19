@@ -53,6 +53,7 @@ import { ErrorBox, Loading, useResource } from '../shared/ui';
 import { publicCatalogHttp } from '../shared/catalogHttp';
 import AuthFlow from './AuthFlow';
 import './user-web.css';
+import './mobile-viewport.css';
 
 type AuthState = { token: string; epoch: number; setToken: (token: string) => void };
 const Auth = createContext<AuthState>({ token: '', epoch: 0, setToken: () => {} });
@@ -281,7 +282,10 @@ const menu = [
   { to: '/mobile/history', label: '이용 이력', icon: History },
   { to: '/mobile/account', label: '내 정보', icon: UserRound },
 ];
-const savedPositions = new Map<string, { y: number; focus?: string }>();
+const savedPositions = new Map<
+  string,
+  { y: number; main: number; regions: number[]; focus?: string }
+>();
 function Layout() {
   const location = useLocation();
   const navigationType = useNavigationType();
@@ -289,10 +293,43 @@ function Layout() {
   const viewKey =
     location.pathname + ':' + (new URLSearchParams(location.search).get('item') || '');
   const main = useRef<HTMLElement>(null);
+  const remember = (focus?: string) => {
+    savedPositions.set(location.key, {
+      y: window.scrollY,
+      main: main.current?.scrollTop || 0,
+      regions: Array.from(
+        main.current?.querySelectorAll<HTMLElement>('[data-scroll-region]') || [],
+      ).map((region) => region.scrollTop),
+      focus: focus || savedPositions.get(location.key)?.focus,
+    });
+  };
+  const restorePosition = (saved?: ReturnType<typeof savedPositions.get>) => {
+    window.scrollTo(0, saved?.y || 0);
+    if (main.current) main.current.scrollTop = saved?.main || 0;
+    main.current?.querySelectorAll<HTMLElement>('[data-scroll-region]').forEach((region, i) => {
+      region.scrollTop = saved?.regions[i] || 0;
+    });
+  };
+  useEffect(() => {
+    const save = () => remember();
+    window.addEventListener('scroll', save, { passive: true });
+    return () => window.removeEventListener('scroll', save);
+  }, [location.key]);
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const layout = main.current?.closest<HTMLElement>('.uw-layout');
+    const resize = () => {
+      // Resize for the software keyboard, but let browser pinch zoom work normally.
+      if (viewport?.scale === 1) layout?.style.setProperty('--uw-viewport', `${viewport.height}px`);
+    };
+    resize();
+    viewport?.addEventListener('resize', resize);
+    return () => viewport?.removeEventListener('resize', resize);
+  }, []);
   useEffect(() => {
     const restored = navigationType === 'POP' ? savedPositions.get(location.key) : undefined;
     const frame = requestAnimationFrame(() => {
-      window.scrollTo(0, restored?.y || 0);
+      restorePosition(restored);
       if (!restored) {
         const heading = main.current?.querySelector<HTMLElement>('.uw-detail-panel h2, h1');
         heading?.setAttribute('tabindex', '-1');
@@ -301,11 +338,6 @@ function Layout() {
     });
     return () => {
       cancelAnimationFrame(frame);
-      const focused = document.activeElement as HTMLElement | null;
-      savedPositions.set(location.key, {
-        y: window.scrollY,
-        focus: focused?.closest('a')?.getAttribute('href') || undefined,
-      });
     };
     // Search/filter REPLACE navigations must not steal focus from the input.
   }, [viewKey]);
@@ -317,9 +349,9 @@ function Layout() {
       const target = Array.from(main.current!.querySelectorAll<HTMLAnchorElement>('a')).find(
         (a) => a.getAttribute('href') === restored.focus,
       );
-      if (target || document.documentElement.scrollHeight >= restored.y + innerHeight) {
+      if (target || (!restored.focus && main.current!.querySelector('[data-scroll-region]'))) {
         target?.focus({ preventScroll: true });
-        window.scrollTo(0, restored.y);
+        restorePosition(restored);
         observer.disconnect();
       }
     };
@@ -364,15 +396,12 @@ function Layout() {
         )}
         <main
           id="user-main"
-          className="uw-main"
+          className={`uw-main uw-view-${location.pathname.split('/')[2] || 'home'}`}
           ref={main}
+          onScrollCapture={() => remember()}
           onClickCapture={(event) => {
             const link = (event.target as HTMLElement).closest('a');
-            if (link)
-              savedPositions.set(location.key, {
-                y: window.scrollY,
-                focus: link.getAttribute('href') || undefined,
-              });
+            if (link) remember(link.getAttribute('href') || undefined);
           }}
         >
           <Outlet />
@@ -475,7 +504,7 @@ function MemberHome() {
               </Link>
             ))}
           </div>
-          <section className="uw-card">
+          <section className="uw-card uw-home-rentals">
             <div className="uw-section-title">
               <h2>내 대여 물품</h2>
               {rows && <span>{rows.length}개</span>}
@@ -491,7 +520,12 @@ function MemberHome() {
                 </Link>
               </State>
             ) : (
-              <div className="uw-rental-list">
+              <div
+                className="uw-rental-list"
+                data-scroll-region
+                tabIndex={0}
+                aria-label="최근 대여 물품"
+              >
                 {rows.slice(0, 3).map((row) => (
                   <RentalRow key={row.id} row={row} />
                 ))}
@@ -587,7 +621,7 @@ function CatalogPage() {
         </State>
       ) : (
         <div className={`uw-master-detail ${selectedKind ? 'has-selection' : ''}`}>
-          <div className="uw-products">
+          <div className="uw-products" data-scroll-region tabIndex={0} aria-label="물품 목록">
             {kinds.map((k) => {
               const items = r.data!.items.filter((i) => i.kindId === k.id);
               const available =
@@ -703,23 +737,36 @@ function LegacyItemDetail() {
   );
 }
 function CodePage() {
+  const instructions = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 768px)');
+    const sync = () => {
+      if (instructions.current) instructions.current.open = desktop.matches;
+    };
+    sync();
+    desktop.addEventListener('change', sync);
+    return () => desktop.removeEventListener('change', sync);
+  }, []);
   return (
     <div className="uw-code-page">
       <Heading title="나의 이용 코드" description="대여·반납할 때 현장 키오스크에 입력해 주세요." />
       <CodeCard />
-      <section className="uw-card uw-instructions">
-        <h2>이렇게 대여하세요</h2>
-        <ol>
-          <li>키오스크에서 이용 코드를 입력해요.</li>
-          <li>대여할 물품 종류를 선택해요.</li>
-          <li>NFC 인식 후 대여를 확정해요.</li>
-        </ol>
-        <h2>반납할 때는</h2>
-        <p>NFC 인식 → 정상·손상 상태 선택 → 본인의 이용 코드 입력 → 반납 확정</p>
-        <Link className="uw-text-link" to="/mobile/rentals">
-          대여 내역 확인 <ArrowRight size={18} />
-        </Link>
-      </section>
+      <details className="uw-card uw-code-help" ref={instructions}>
+        <summary>대여·반납 이용 방법</summary>
+        <div className="uw-instructions">
+          <h2>이렇게 대여하세요</h2>
+          <ol>
+            <li>키오스크에서 이용 코드를 입력해요.</li>
+            <li>대여할 물품 종류를 선택해요.</li>
+            <li>NFC 인식 후 대여를 확정해요.</li>
+          </ol>
+          <h2>반납할 때는</h2>
+          <p>NFC 인식 → 정상·손상 상태 선택 → 본인의 이용 코드 입력 → 반납 확정</p>
+          <Link className="uw-text-link" to="/mobile/rentals">
+            대여 내역 확인 <ArrowRight size={18} />
+          </Link>
+        </div>
+      </details>
     </div>
   );
 }
@@ -856,7 +903,12 @@ function RentalsPage({ history = false }: { history?: boolean }) {
                 )}
               </State>
             ) : (
-              <div className="uw-rental-list">
+              <div
+                className="uw-rental-list"
+                data-scroll-region
+                tabIndex={0}
+                aria-label={history ? '이용 이력 목록' : '대여 물품 목록'}
+              >
                 {rows.map((row) => (
                   <RentalRow key={row.id} row={row} history={history} />
                 ))}

@@ -339,3 +339,162 @@ test('approved screens and signup reflow without horizontal overflow from 320 to
     true,
   );
 });
+
+test('mobile basic pages fit the viewport and lists scroll inside the frame', async ({ page }) => {
+  test.setTimeout(90000);
+  const state = await fixture(page);
+  for (const size of [
+    { width: 390, height: 844 },
+    { width: 360, height: 740 },
+    { width: 375, height: 667 },
+  ]) {
+    await page.setViewportSize(size);
+    for (const path of [
+      '/mobile',
+      '/mobile/code',
+      '/mobile/account',
+      '/mobile/items',
+      '/mobile/rentals',
+      '/mobile/history',
+    ]) {
+      await page.goto(path);
+      await expect(page.locator('.loading')).toHaveCount(0);
+      await expect(page.locator('h1')).toBeVisible();
+      const dimensions = await page.locator('.uw-main').evaluate((el) => ({
+        scroll: el.scrollHeight,
+        client: el.clientHeight,
+        document: document.documentElement.scrollHeight,
+        viewport: innerHeight,
+      }));
+      expect(dimensions.document, `${size.width} ${path} document`).toBeLessThanOrEqual(
+        dimensions.viewport + 1,
+      );
+      expect(dimensions.scroll, `${size.width} ${path} main`).toBeLessThanOrEqual(
+        dimensions.client + 1,
+      );
+      if (size.width === 375 && ['/mobile', '/mobile/code', '/mobile/account'].includes(path))
+        await page.screenshot({ path: `test-results/viewport-${path.replaceAll('/', '-')}.png` });
+    }
+  }
+  state.signedIn = false;
+  for (const path of ['/mobile', '/mobile/login', '/mobile/signup', '/mobile/recover']) {
+    await page.goto(path);
+    await expect(page.locator('h1')).toBeVisible();
+    await expect(page.locator('.loading')).toHaveCount(0);
+    expect(
+      await page.locator('.uw-main').evaluate((el) => el.scrollHeight <= el.clientHeight + 1),
+      path,
+    ).toBe(true);
+  }
+  await page.goto('/mobile/login');
+  await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
+  await page.getByRole('button', { name: '다음', exact: true }).click();
+  await expect(page.getByLabel('숫자 키패드')).toBeVisible();
+  expect(
+    await page.locator('.uw-main').evaluate((el) => el.scrollHeight <= el.clientHeight + 1),
+    'PIN',
+  ).toBe(true);
+  // Keyboard-sized viewport must still permit reaching the submit button.
+  await page.screenshot({ path: 'test-results/viewport-pin.png' });
+  await page.setViewportSize({ width: 375, height: 360 });
+  const submit = page.getByRole('button', { name: '로그인', exact: true });
+  await submit.scrollIntoViewIfNeeded();
+  const box = await submit.boundingBox();
+  expect(box!.y + box!.height).toBeLessThanOrEqual(361);
+});
+
+test('long lists keep navigation fixed and restore the list after browser back', async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.route('**/api/v1/catalog/item-types?**', (route) =>
+    route.fulfill({
+      json: {
+        itemTypes: Array.from({ length: 30 }, (_, i) => ({
+          itemTypeId: String(i + 1),
+          itemTypeName: `물품 ${i + 1}`,
+          totalCount: 2,
+          availableCount: 1,
+        })),
+        page: 0,
+        size: 100,
+        totalElements: 30,
+        totalPages: 1,
+      },
+    }),
+  );
+  await page.goto('/mobile/items');
+  await expect(page.locator('.uw-product')).toHaveCount(30);
+  const list = page.locator('.uw-products');
+  const header = await page.locator('.uw-header').boundingBox();
+  const nav = await page.locator('.uw-bottom-nav').boundingBox();
+  await list.evaluate((el) => {
+    el.scrollTop = 1000;
+  });
+  await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(900);
+  expect(await page.locator('.uw-header').boundingBox()).toEqual(header);
+  expect(await page.locator('.uw-bottom-nav').boundingBox()).toEqual(nav);
+  expect(
+    await page.locator('.uw-main').evaluate((el) => el.scrollHeight <= el.clientHeight + 1),
+  ).toBe(true);
+  const link = list.locator('a').nth(10);
+  await link.scrollIntoViewIfNeeded();
+  const position = await list.evaluate((el) => el.scrollTop);
+  await link.click();
+  await expect(page.getByLabel('물품 상세', { exact: true })).toBeVisible();
+  await page.goBack();
+  await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBe(position);
+  await page.screenshot({ path: 'test-results/mobile-internal-list.png' });
+});
+
+test('rental and history lists scroll independently, with enlarged text still reachable', async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.route('**/api/v1/rentals/me?**', (route) => {
+    const history = new URL(route.request().url()).searchParams.get('scope') === 'HISTORY';
+    const rentals = Array.from({ length: 30 }, (_, i) => ({
+      rentalId: String((history ? 100 : 1) + i),
+      itemId: String(i + 1),
+      itemName: `계산기 ${i + 1}`,
+      itemTypeName: '공학용 계산기',
+      overdue: false,
+      rentedAt: '2026-11-01T05:00:00Z',
+      dueAt: '2026-11-04T05:00:00Z',
+      returnedAt: history ? '2026-11-02T05:00:00Z' : null,
+    }));
+    return route.fulfill({
+      json: { rentals, page: 0, size: 100, totalElements: 30, totalPages: 1 },
+    });
+  });
+  for (const path of ['/mobile/rentals', '/mobile/history']) {
+    await page.goto(path);
+    await expect(page.locator('.uw-rental-row')).toHaveCount(30);
+    const list = page.locator('.uw-rental-list');
+    await list.evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    await expect.poll(() => list.evaluate((el) => el.scrollTop)).toBeGreaterThan(100);
+    expect(
+      await page.locator('.uw-main').evaluate((el) => el.scrollHeight <= el.clientHeight + 1),
+    ).toBe(true);
+    const last = await list.locator('a').last().boundingBox();
+    const nav = await page.locator('.uw-bottom-nav').boundingBox();
+    expect(last!.y + last!.height).toBeLessThanOrEqual(nav!.y);
+  }
+  await page.goto('/mobile/account');
+  await page.getByRole('button', { name: '로그아웃', exact: true }).waitFor();
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = '24px';
+  });
+  const logout = page.getByRole('button', { name: '로그아웃', exact: true });
+  await logout.scrollIntoViewIfNeeded();
+  const button = await logout.boundingBox();
+  const nav = await page.locator('.uw-bottom-nav').boundingBox();
+  expect(button!.y + button!.height).toBeLessThanOrEqual(nav!.y);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
+    true,
+  );
+});

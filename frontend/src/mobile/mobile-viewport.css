@@ -1,0 +1,377 @@
+/* Lists scroll within the app frame. Main is an overflow fallback for small
+   screens, enlarged text and the software keyboard, so content is never clipped. */
+.user-web .uw-code-help > summary {
+  display: none;
+}
+@media (max-width: 767px) {
+  .user-web .uw-code-help > summary {
+    display: list-item;
+    cursor: pointer;
+    min-height: 44px;
+    padding-block: 10px;
+    font-weight: 600;
+  }
+  .user-web .uw-code-help {
+    padding-block: 4px;
+  }
+  .user-web .uw-code-help[open] > .uw-instructions {
+    padding-block: 8px;
+  }
+  .user-web {
+    height: 100dvh;
+    min-height: 0;
+  }
+  .user-web .uw-layout {
+    height: var(--uw-viewport, 100%);
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .user-web .uw-workspace {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .user-web .uw-header {
+    flex: none;
+    min-height: 56px;
+    padding: 6px 16px;
+    padding-top: max(6px, env(safe-area-inset-top));
+  }
+  .user-web .uw-main {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    padding: 12px 16px;
+    overflow: auto;
+    overscroll-behavior-y: contain;
+    scroll-padding-block: 12px;
+  }
+  .user-web .uw-bottom-nav {
+    position: static;
+    flex: none;
+    min-height: 60px;
+    padding-top: 4px;
+  }
+  .user-web .uw-bottom-nav a {
+    min-height: 48px;
+  }
+  .user-web h1 {
+    font-size: 1.25rem;
+  }
+  .user-web h2 {
+    font-size: 1.125rem;
+  }
+  .user-web .uw-heading {
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .user-web .uw-heading p {
+    margin-top: 4px;
+    font-size: 0.875rem;
+  }
+  .user-web .uw-card {
+    padding: 14px;
+    border-radius: 16px;
+  }
+  .user-web .uw-section-title {
+    margin-bottom: 8px;
+  }
+  .user-web .uw-state {
+    padding: 16px 8px;
+    gap: 10px;
+  }
+  .user-web .uw-state > svg {
+    width: 28px;
+    height: 28px;
+    padding: 8px;
+  }
+  .user-web .uw-notice {
+    padding: 10px;
+    line-height: 1.5;
+  }
+  .user-web .uw-notice p {
+    margin-top: 4px;
+  }
+  .user-web :is(.uw-view-items, .uw-view-rentals, .uw-view-history, .uw-view-home) {
+    display: flex;
+    flex-direction: column;
+  }
+  .user-web .uw-main > * {
+    flex-shrink: 0;
+  }
+  .user-web .uw-master-detail {
+    flex: 1;
+    min-height: 120px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .user-web .uw-products {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    align-content: start;
+    gap: 10px;
+    padding: 4px;
+  }
+  .user-web .uw-product {
+    padding: 12px;
+    grid-template-columns: 56px minmax(0, 1fr) 20px;
+    gap: 4px 10px;
+  }
+  .user-web .uw-product .uw-item-icon {
+    width: 48px;
+    height: 48px;
+  }
+  .user-web .uw-product h2 {
+    font-size: 1rem;
+  }
+  .user-web .uw-rentals-card {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .user-web .uw-rentals-card > .uw-section-title {
+    flex: none;
+  }
+  .user-web .uw-rental-list {
+    min-height: 0;
+    overflow-y: auto;
+    align-content: start;
+    padding-inline: 4px;
+  }
+  .user-web .uw-rentals-card > .uw-rental-list {
+    flex: 1;
+  }
+  .user-web [data-scroll-region] {
+    overscroll-behavior-y: contain;
+    scroll-padding-block: 8px;
+  }
+  .user-web [data-scroll-region]:focus-visible {
+    outline: 2px solid var(--uw-blue);
+    outline-offset: -2px;
+  }
+  .user-web .uw-rental-row {
+    padding-block: 12px;
+  }
+  .user-web .uw-catalog-controls {
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .user-web .uw-history-filters {
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .user-web .uw-history-filters label {
+    flex: 1;
+    min-width: 0;
+    gap: 4px;
+  }
+  .user-web .uw-history-link {
+    margin: 0 0 8px;
+  }
+  .user-web .uw-master-detail.has-selection > :first-child {
+    display: none;
+  }
+  .user-web .uw-detail-panel {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 52px 14px 14px;
+  }
+  .user-web .uw-item-detail {
+    gap: 10px;
+  }
+  .user-web .uw-item-detail > .uw-product-art {
+    min-height: 80px;
+  }
+  .user-web .uw-facts > div {
+    padding-block: 8px;
+  }
+  .user-web .uw-home-grid {
+    flex: 1;
+    min-height: 260px;
+    display: flex;
+  }
+  .user-web .uw-home-primary {
+    flex: 1;
+    min-height: 0;
+    grid-template-rows: auto auto minmax(100px, 1fr);
+    gap: 10px;
+  }
+  /* Code remains accessible through the hero; this is the duplicate desktop card. */
+  .user-web .uw-home-aside {
+    display: none;
+  }
+  .user-web .uw-hero {
+    padding: 14px;
+    border-radius: 16px;
+    gap: 8px 12px;
+  }
+  .user-web .uw-hero h2 {
+    font-size: 1.25rem;
+    margin-bottom: 4px;
+  }
+  .user-web .uw-hero p {
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+  .user-web .uw-hero-button {
+    min-height: 44px;
+    padding: 10px;
+  }
+  .user-web .uw-shortcuts {
+    gap: 8px;
+  }
+  .user-web .uw-shortcuts > a {
+    padding: 10px;
+    gap: 4px;
+    border-radius: 14px;
+  }
+  .user-web .uw-shortcuts > a > svg:first-child {
+    width: 22px;
+    height: 22px;
+  }
+  .user-web .uw-home-rentals {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .user-web .uw-home-rentals > .uw-rental-list {
+    flex: 1;
+  }
+  .user-web .uw-home-rentals > :not(.uw-rental-list) {
+    flex-shrink: 0;
+  }
+  .user-web .uw-home-rentals > .uw-state {
+    overflow-y: auto;
+    flex-shrink: 1;
+  }
+  .user-web .uw-welcome {
+    width: 100%;
+    margin: auto;
+    gap: 10px;
+    padding: 16px;
+  }
+  .user-web .uw-welcome > .uw-brand {
+    display: none;
+  }
+  .user-web .uw-welcome-art {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto;
+    border-radius: 18px;
+  }
+  .user-web .uw-welcome-art svg {
+    width: 42px;
+    height: 42px;
+  }
+  .user-web .uw-welcome .uw-heading {
+    margin: 0;
+  }
+  .user-web .uw-welcome .uw-heading h1 {
+    font-size: 1.375rem;
+  }
+  .user-web .uw-code-page,
+  .user-web .uw-account {
+    gap: 12px;
+  }
+  .user-web .uw-code {
+    gap: 10px;
+  }
+  .user-web .uw-code-value {
+    padding: 12px;
+  }
+  .user-web .uw-instructions {
+    gap: 8px;
+  }
+  .user-web .uw-instructions li + li {
+    margin-top: 4px;
+  }
+  .user-web .uw-instructions p {
+    line-height: 1.5;
+  }
+  .user-web .uw-profile {
+    gap: 12px;
+  }
+  .user-web .uw-profile > svg {
+    padding: 8px;
+    width: 32px;
+    height: 32px;
+  }
+  .user-web .uw-account-stats {
+    gap: 8px;
+  }
+  .user-web .uw-account-stats a {
+    padding: 10px;
+    gap: 4px;
+  }
+  .user-web .uw-account-stats strong {
+    font-size: 1.5rem;
+  }
+  .user-web .uw-settings {
+    padding-block: 0;
+  }
+  .user-web .uw-settings a {
+    min-height: 48px;
+  }
+  .user-web .uw-auth-layout .uw-main {
+    padding: max(12px, env(safe-area-inset-top)) 16px max(12px, env(safe-area-inset-bottom));
+  }
+  .user-web .uw-auth-brand {
+    padding-bottom: 12px;
+  }
+  .user-web .auth-flow {
+    padding: 14px;
+  }
+  .user-web .auth-login-card {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+  }
+  .user-web .auth-login-card .auth-mask {
+    margin-bottom: 10px;
+  }
+  .user-web .auth-flow .pin-dots {
+    min-height: 52px;
+  }
+  .user-web .auth-flow h1 {
+    font-size: 1.25rem;
+  }
+  .user-web .auth-flow form {
+    gap: 12px;
+  }
+  .user-web .auth-flow .auth-topline {
+    margin-bottom: 8px;
+  }
+  .user-web .auth-login-card > .auth-symbol {
+    width: 40px;
+    height: 40px;
+    margin-bottom: 8px;
+    padding: 8px;
+  }
+  .user-web .auth-login-card h1 {
+    margin-bottom: 8px;
+  }
+  .user-web .auth-flow .pin-field {
+    min-height: 52px;
+  }
+  .user-web .auth-flow .pin-keypad {
+    gap: 4px;
+  }
+  .user-web .auth-flow .auth-links {
+    margin-top: 8px;
+    gap: 8px;
+  }
+  .user-web .auth-flow .signup-progress {
+    padding: 8px;
+    margin-bottom: 8px;
+  }
+  .user-web .auth-flow .auth-notice {
+    margin-top: 8px;
+  }
+}
