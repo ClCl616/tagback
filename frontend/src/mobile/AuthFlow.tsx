@@ -1,965 +1,166 @@
-import {
-  readDraft,
-  writeDraft,
-  clearDraft,
-  readSmsDraft,
-  writeSmsDraft,
-  phoneKey,
-} from '../shared/authDraft';
-import { COOKIE_SESSION } from '../shared/authMode';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Delete, LockKeyhole, Smartphone, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, LockKeyhole, ShieldCheck } from 'lucide-react';
 import { authApi } from '../shared/auth';
-import { api, phoneValid, ServiceError } from '../shared/api';
 import { pinError } from '../shared/authPolicy';
-import type { AuthResult, Challenge, Purpose, Verification } from '../shared/authTypes';
-import { ErrorBox, Loading, MessagePopup } from '../shared/ui';
-type Mode = 'access' | 'signup' | 'reset' | 'change';
-type Step =
-  | 'profile'
-  | 'boot'
-  | 'phone'
-  | 'pin'
-  | 'setup'
-  | 'confirm'
-  | 'blocked'
-  | 'change-confirm'
-  | 'done';
-const PENDING = 'tagback.http.pending-auth';
-export default function AuthFlow({
-  mode,
-  token,
-  onLogin,
-  onClear,
-  adminDestination,
-}: {
-  mode: Mode;
-  token: string;
-  onLogin: (value: string) => void;
-  onClear: () => void;
-  adminDestination?: string;
+import { ServiceError } from '../shared/serviceError';
+import type { AuthResult, KakaoChallenge, KakaoPurpose } from '../shared/authTypes';
+import { ErrorBox, Loading } from '../shared/ui';
+
+type Mode = 'access' | 'signup' | 'reset';
+type Step = 'boot' | 'profile' | 'kakao' | 'pin' | 'setup' | 'confirm' | 'done';
+const channelUrl = import.meta.env.VITE_KAKAO_CHANNEL_URL || '';
+const pendingKey = 'tagback.http.pending-auth';
+function clearPending() { try { sessionStorage.removeItem(pendingKey); } catch { /* Storage is optional. */ } }
+
+export default function AuthFlow({ mode, onLogin, onClear, adminDestination }: {
+  mode: Mode; token: string; onLogin: (value: string) => void; onClear: () => void; adminDestination?: string;
 }) {
-  const nav = useNavigate(),
-    [params] = useSearchParams();
+  const nav = useNavigate();
+  const [params] = useSearchParams();
   const next = params.get('next');
+  const destination = adminDestination || (next && /^\/mobile(?:\/|$)/.test(next) && !/^\/mobile\/(login|signup|recover)/.test(next) ? next : '/mobile');
   const authBase = adminDestination ? '/admin' : '/mobile';
-  const destination =
-    adminDestination ||
-    (next &&
-    /^\/mobile(?:\/|$)/.test(next) &&
-    !/^\/mobile\/(login|signup|recover|change-phone)/.test(next)
-      ? next
-      : '/mobile');
+  const purpose: KakaoPurpose = mode === 'signup' ? 'SIGNUP' : mode === 'reset' ? 'PIN_RESET' : 'LOGIN';
+  const [step, setStep] = useState<Step>(mode === 'signup' ? 'profile' : mode === 'reset' ? 'kakao' : 'boot');
   const [name, setName] = useState('');
   const [occupation, setOccupation] = useState('');
-  const [step, setStep] = useState<Step>('boot');
-  const [smsRestart, setSmsRestart] = useState(false);
-  const [existingAccount, setExistingAccount] = useState(false);
-  const [missingAccount, setMissingAccount] = useState(false);
-  const [showPinPolicy, setShowPinPolicy] = useState(false);
-  const policyShown = useRef(false);
-  useEffect(() => {
-    if (mode === 'signup' && step === 'setup' && !policyShown.current) {
-      policyShown.current = true;
-      setShowPinPolicy(true);
-    }
-  }, [mode, step]);
-  const [phone, setPhone] = useState(''),
-    [sms, setSms] = useState('');
-  const [pin, setPin] = useState(''),
-    [firstPin, setFirstPin] = useState('');
-  const [challenge, setChallenge] = useState<Challenge>(),
-    [verification, setVerification] = useState<Verification>();
-  const [registration, setRegistration] = useState(''),
-    [mask, setMask] = useState('');
-  const [reauth, setReauth] = useState('');
-  const [error, setError] = useState<unknown>(),
-    [notice, setNotice] = useState('');
-  const [busy, setBusy] = useState(false),
-    [unknown, setUnknown] = useState('');
-  const [retryAt, setRetryAt] = useState(0),
-    [locked, setLocked] = useState(false);
-  const [now, setNow] = useState(Date.now()),
-    [source] = useState('');
-  const alive = useRef(true),
-    running = useRef(false),
-    operationId = useRef('');
-  const resumable = mode === 'signup' || mode === 'reset';
-  const restoreSms = (number: string) => {
-    const saved = readSmsDraft(mode, number);
-    setChallenge(saved.challenge);
-    setSmsRestart(saved.restart);
-    setRetryAt(saved.retryAt);
-  };
-  useEffect(() => {
-    if (!resumable || step === 'boot' || step === 'done' || unknown) return;
-    writeDraft(mode, { name, occupation, phone, policyShown: policyShown.current });
-    writeSmsDraft(mode, phone, { challenge, restart: smsRestart || !!verification, retryAt });
-  }, [mode, step, name, occupation, phone, challenge, smsRestart, verification, retryAt, unknown]);
-  const purpose: Purpose = mode === 'reset' ? 'reset' : mode === 'change' ? 'change' : 'access';
+  const [challenge, setChallenge] = useState<KakaoChallenge>();
+  const [verified, setVerified] = useState(false);
+  const [registered, setRegistered] = useState(false);
+  const [pin, setPin] = useState('');
+  const [firstPin, setFirstPin] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>();
+  const [notice, setNotice] = useState('');
+  const [now, setNow] = useState(Date.now());
+  const [unknown, setUnknown] = useState(false);
+  const [retryAt, setRetryAt] = useState(0);
+  const [locked, setLocked] = useState(false);
+  const key = useRef('');
+  const alive = useRef(true);
+  const activeChallenge = useRef<KakaoChallenge | undefined>(undefined);
+  const uncertainResult = useRef(false);
+  useEffect(() => { activeChallenge.current = challenge; }, [challenge]);
+  useEffect(() => { uncertainResult.current = unknown; }, [unknown]);
+  useEffect(() => () => {
+    if (activeChallenge.current && !uncertainResult.current)
+      void authApi.cancel(activeChallenge.current.id).catch(() => { /* Expiry remains the fallback if the browser is closing. */ });
+  }, []);
   useEffect(() => {
     alive.current = true;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    const pending = sessionStorage.getItem(PENDING);
-    if (pending) {
-      let saved: {
-        id: string;
-        mode: Mode;
-      };
-      try {
-        const parsed = JSON.parse(pending);
-        if (!parsed.id || !['access', 'signup', 'reset', 'change'].includes(parsed.mode))
-          throw new Error();
-        saved = parsed;
-      } catch {
-        saved = { id: pending, mode };
-      }
-      if (saved.mode !== mode) {
-        const route = {
-          access: 'login',
-          signup: 'signup',
-          reset: 'recover',
-          change: 'change-phone',
-        }[saved.mode];
-        nav(
-          (adminDestination && ['login', 'recover'].includes(route) ? authBase : '/mobile') +
-            '/' +
-            route +
-            '?next=' +
-            encodeURIComponent(destination),
-          { replace: true },
-        );
-      }
-      setUnknown(saved.id);
-      setStep('phone');
-    } else {
-      (async () => {
-        try {
-          if (mode === 'change') {
-            const me = await api.me(token);
-            if (alive.current) {
-              setMask('010-****-' + me.phone.slice(-4));
-              setStep('pin');
-            }
-          } else if (mode === 'access') {
-            const value = COOKIE_SESSION;
-            const reg = value ? await authApi.registration(value) : null;
-            if (!alive.current) return;
-            if (reg) {
-              setRegistration(value);
-              setMask(reg.maskedPhone);
-              setRetryAt(reg.retryAt);
-              setLocked(reg.locked);
-              setStep('pin');
-            } else {
-              setStep('phone');
-            }
-          } else {
-            const draft = resumable
-              ? readDraft<{
-                  name: string;
-                  occupation: string;
-                  phone: string;
-                  policyShown?: boolean;
-                }>(mode)
-              : undefined;
-            if (
-              draft &&
-              typeof draft.name === 'string' &&
-              typeof draft.occupation === 'string' &&
-              typeof draft.phone === 'string'
-            ) {
-              setName(draft.name);
-              setOccupation(draft.occupation);
-              setPhone(draft.phone);
-              policyShown.current = draft.policyShown === true;
-              restoreSms(draft.phone);
-              setStep(
-                mode === 'signup' && (!draft.name.trim() || !draft.occupation.trim())
-                  ? 'profile'
-                  : 'phone',
-              );
-            } else setStep(mode === 'signup' ? 'profile' : 'phone');
-          }
-        } catch (e) {
-          if (alive.current) {
-            if (mode === 'change' && e instanceof ServiceError && e.code === 'AUTH') {
-              nav('/mobile/login?next=%2Fmobile%2Faccount', { replace: true });
-              return;
-            }
-            setError(e);
-            setStep('phone');
-          }
-        }
-      })();
-    }
-    return () => {
-      alive.current = false;
-      clearInterval(timer);
-    };
-  }, []);
-  const wait = Math.max(0, Math.ceil((retryAt - now) / 1000));
-  const resend = Math.max(0, Math.ceil(((challenge?.resendAt || 0) - now) / 1000));
-  const remaining = Math.max(0, Math.ceil(((challenge?.expiresAt || 0) - now) / 1000));
-  const proofExpired = !!verification && verification.expiresAt <= now;
-  async function task(fn: () => Promise<void>) {
-    if (running.current) return;
-    running.current = true;
-    setBusy(true);
-    setError(undefined);
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
     try {
-      await fn();
-    } catch (e) {
+      const saved = JSON.parse(sessionStorage.getItem(pendingKey) || 'null');
+      if (saved?.mode === mode && typeof saved.id === 'string') { key.current = saved.id; setUnknown(true); }
+    } catch { clearPending(); }
+    if (mode === 'access') authApi.registration().then((value) => {
+      if (!alive.current) return; setRegistered(value); setStep(value ? 'pin' : 'kakao');
+    }).catch((e) => { if (alive.current) { setError(e); setStep('kakao'); } });
+    return () => { alive.current = false; window.clearInterval(timer); };
+  }, [mode]);
+
+  const checkStatus = useCallback(async (c: KakaoChallenge, quiet = false) => {
+    try {
+      const status = await authApi.status(c.id);
       if (!alive.current) return;
-      setError(e);
+      if (status.purpose !== purpose) throw new Error('인증 목적을 확인하지 못했습니다. 다시 시작해 주세요.');
+      if (status.status === 'VERIFIED') { setVerified(true); setPin(''); setStep(mode === 'access' ? 'pin' : 'setup'); setNotice('카카오톡 연결을 확인했습니다.'); }
+      else if (status.status === 'EXPIRED' || status.status === 'CANCELED') { setChallenge(undefined); setVerified(false); setNotice('인증 요청이 만료되었거나 취소되었습니다. 다시 시작해 주세요.'); }
+      else if (status.status === 'CONSUMED') { setChallenge(undefined); setNotice('이미 사용한 인증 요청입니다. 다시 시작해 주세요.'); }
+      else if (!quiet) setNotice('아직 인증되지 않았습니다. 카카오톡에 코드를 입력해 주세요.');
+    } catch (e) { if (!quiet && alive.current) setError(e); }
+  }, [mode, purpose]);
+  useEffect(() => {
+    if (!challenge || verified || step !== 'kakao') return;
+    const onVisible = () => { if (document.visibilityState === 'visible') void checkStatus(challenge, true); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [challenge, verified, step, checkStatus]);
+
+  async function run(action: () => Promise<void>) {
+    if (busy) return;
+    setBusy(true); setError(undefined);
+    try { await action(); }
+    catch (e) {
       if (e instanceof ServiceError) {
-        if (
-          [
-            'PIN',
-            'PIN_INVALID',
-            'PIN_MISMATCH',
-            'PIN_WAIT',
-            'PIN_RETRY_WAIT',
-            'PIN_LOCKED',
-            'ACCOUNT_NOT_FOUND',
-          ].includes(e.code)
-        )
-          setPin('');
-        if (mode === 'access' && e.code === 'ACCOUNT_NOT_FOUND') {
-          setError(undefined);
-          setMissingAccount(true);
-        }
-        if (mode === 'signup' && e.code === 'PHONE_NUMBER_ALREADY_REGISTERED') {
-          setError(undefined);
-          setExistingAccount(true);
-          setChallenge(undefined);
-          setVerification(undefined);
-          setSms('');
-          setPin('');
-          setFirstPin('');
-          setRetryAt(0);
-          setStep('phone');
-          clearDraft('sms.' + mode + '.' + phoneKey(phone));
-        }
         if (e.retryAt) setRetryAt(e.retryAt);
-        if (e.code === 'PIN_LOCKED') setLocked(true);
-        if ((e.code === 'UNKNOWN' && operationId.current) || (e.code === 'NETWORK' && unknown))
-          setUnknown(unknown || operationId.current);
-        else {
-          sessionStorage.removeItem(PENDING);
-          if (unknown) {
-            setUnknown('');
-            startPhone();
-            setError(e);
-          }
-          operationId.current = '';
-        }
-        if (
-          [
-            'SMS_RESTART',
-            'SMS_ALREADY_VERIFIED',
-            'SMS_CODE_EXPIRED',
-            'SMS_ATTEMPTS_EXCEEDED',
-            'SMS_REQUEST_INVALIDATED',
-            'SMS_USED',
-            'SMS_EXPIRED',
-            'SMS_LIMIT',
-          ].includes(e.code)
-        ) {
-          setSms('');
-          setVerification(undefined);
-          setSmsRestart(true);
-        } else if (['SMS_CODE_MISMATCH', 'SMS_MISMATCH', 'SMS_INVALID'].includes(e.code)) {
-          writeSmsDraft(mode, phone, { challenge, restart: false, retryAt });
-        }
-      } else if (!unknown) sessionStorage.removeItem(PENDING);
-    } finally {
-      running.current = false;
-      if (alive.current) setBusy(false);
-    }
+        if (e.code === 'PIN_LOGIN_BLOCKED') setLocked(true);
+        if (e.code === 'KAKAO_IDENTITY_ALREADY_REGISTERED') setNotice('이미 가입된 계정입니다. 로그인하거나 PIN 찾기를 이용해 주세요.');
+        if (e.code === 'ACCOUNT_NOT_FOUND') setNotice('연결된 계정이 없습니다. 가입한 카카오톡 계정을 확인해 주세요.');
+      }
+      setError(e);
+    } finally { if (alive.current) setBusy(false); }
+  }
+  async function issue() {
+    await run(async () => { const c = await authApi.issue(purpose); setChallenge(c); setVerified(false); setNow(Date.now()); setNotice('본인이 시작한 인증에만 코드를 입력해 주세요.'); });
+  }
+  async function cancel() {
+    await run(async () => {
+      if (challenge && !verified) await authApi.cancel(challenge.id);
+      else if (challenge && verified && !unknown) await authApi.cancel(challenge.id);
+      setChallenge(undefined); setVerified(false); setPin(''); setFirstPin(''); setNotice(''); setStep(mode === 'signup' ? 'profile' : 'kakao');
+    });
   }
   function complete(result: AuthResult) {
-    if (!alive.current) return;
-    sessionStorage.removeItem(PENDING);
-    clearDraft(mode);
-    clearDraft('sms.' + mode + '.' + phoneKey(phone));
-    setUnknown('');
-    setPin('');
-    setFirstPin('');
-    if ('token' in result) {
-      onLogin(result.token);
-      nav(destination, { replace: true });
-    } else {
-      onClear();
-      setStep('done');
-    }
+    activeChallenge.current = undefined;
+    clearPending(); key.current = ''; setUnknown(false); setPin(''); setFirstPin('');
+    if ('token' in result) { onLogin(result.token); nav(destination, { replace: true }); }
+    else { onClear(); setStep('done'); }
   }
-  async function save(action: (id: string) => Promise<AuthResult>) {
-    operationId.current ||= crypto.randomUUID();
-    sessionStorage.setItem(PENDING, JSON.stringify({ id: operationId.current, mode }));
-    complete(await action(operationId.current));
-  }
-  function startPhone() {
-    setStep(
-      mode === 'change'
-        ? 'pin'
-        : mode === 'signup' && (!name.trim() || !occupation.trim())
-          ? 'profile'
-          : 'phone',
-    );
-    if (mode === 'change') setReauth('');
-    setPin('');
-    setFirstPin('');
-    setVerification(undefined);
-    if (resumable) restoreSms(phone);
-    else setChallenge(undefined);
-    setSms('');
-    setRegistration('');
-    setError(undefined);
-    setNotice('');
-    if (!resumable) setRetryAt(0);
-    setLocked(false);
-    operationId.current = '';
-  }
-  async function send() {
-    if (busy || wait > 0 || resend > 0) return;
-    if (!phoneValid(phone)) {
-      setError(new Error('010으로 시작하는 11자리 전화번호를 입력해 주세요.'));
-      return;
-    }
-    await task(async () => {
-      const c = await authApi.requestSms(phone, purpose, source, reauth);
-      if (!alive.current) return;
-      setChallenge(c);
-      setRetryAt(0);
-      writeSmsDraft(mode, phone, { challenge: c, restart: false, retryAt: 0 });
-      setSmsRestart(false);
-      setSms('');
-      setVerification(undefined);
-      setNow(Date.now());
-      setNotice('');
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!/^\d{6}$/.test(pin)) { setError(new Error('PIN 숫자 6자리를 입력해 주세요.')); return; }
+    if (step === 'setup') { const problem = pinError(pin); if (problem) { setError(new Error(problem)); return; } setFirstPin(pin); setPin(''); setStep('confirm'); return; }
+    if (step === 'confirm' && pin !== firstPin) { setError(new Error('처음 입력한 PIN과 일치하지 않습니다.')); setPin(''); return; }
+    if (!registered && !challenge) { setError(new Error('카카오톡 인증을 다시 시작해 주세요.')); return; }
+    await run(async () => {
+      key.current ||= crypto.randomUUID();
+      try { sessionStorage.setItem(pendingKey, JSON.stringify({ id: key.current, mode })); } catch { /* Do not persist PIN or request body. */ }
+      try {
+        const result = mode === 'signup' ? await authApi.signup(key.current, challenge!.id, pin, { name: name.trim(), occupation: occupation.trim() })
+          : mode === 'reset' ? await authApi.resetPin(key.current, challenge!.id, pin)
+          : registered ? await authApi.registeredLogin(key.current, pin)
+          : await authApi.newBrowserLogin(key.current, challenge!.id, pin);
+        complete(result);
+      } catch (e) { if (e instanceof ServiceError && e.code === 'UNKNOWN') { uncertainResult.current = true; setUnknown(true); } else { clearPending(); key.current = ''; } throw e; }
     });
   }
-  async function verify() {
-    await task(async () => {
-      if (!challenge || smsRestart || remaining === 0 || sms.length !== 6) return;
-      writeSmsDraft(mode, phone, { challenge, restart: true, retryAt });
-      const v = await authApi.verifySms(challenge.id, phone, sms, purpose, source);
-      if (!alive.current) return;
-      setVerification(v);
-      setRetryAt(0);
-      setMask(v.maskedPhone);
-      setPin('');
-      setNotice('');
-      setStep('setup');
-    });
-  }
-  async function submitPin(e?: React.FormEvent) {
-    e?.preventDefault();
-    if (busy || unknown || wait || locked) return;
-    if (!/^\d{6}$/.test(pin)) {
-      setPin('');
-      setError(new Error('숫자 6자리를 입력해 주세요.'));
-      return;
-    }
-    if (step === 'setup') {
-      const problem = pinError(pin);
-      if (problem) {
-        setPin('');
-        setError(new Error(problem));
-        return;
-      }
-      setFirstPin(pin);
-      setPin('');
-      setError(undefined);
-      setStep('confirm');
-      return;
-    }
-    if (step === 'confirm' && pin !== firstPin) {
-      setPin('');
-      setError(new Error('처음 입력한 PIN과 일치하지 않습니다. 다시 입력해 주세요.'));
-      return;
-    }
-    await task(async () => {
-      if (mode === 'change') {
-        const value = await authApi.reauthenticate(token, pin, source);
-        if (!alive.current) return;
-        setReauth(value);
-        setPin('');
-        setStep('phone');
-        setNotice('기존 계정 확인 완료. 새 전화번호를 입력해 주세요.');
-      } else if (step === 'pin') {
-        await save((id) =>
-          mode === 'access' && !registration && !verification
-            ? authApi.loginWithPhone(id, phone, pin, source)
-            : authApi.login(
-                id,
-                registration || verification?.proof || '',
-                pin,
-                !!registration,
-                source,
-              ),
-        );
-      } else if (mode === 'reset') {
-        await save((id) => authApi.resetPin(id, verification?.proof || '', pin, source));
-      } else {
-        await save((id) =>
-          authApi.signup(id, verification?.proof || '', pin, source, { name, occupation }),
-        );
-      }
-    });
-  }
-  function editPin(value: string) {
-    setPin(value.replace(/\D/g, '').slice(0, 6));
-    operationId.current = '';
-  }
-  useEffect(() => {
-    if (mode === 'access' && step === 'pin' && pin.length === 6) void submitPin();
-  }, [pin, step, mode]);
-  function previousSignupStep() {
-    setError(undefined);
-    if (step === 'confirm') {
-      setPin('');
-      setFirstPin('');
-      setStep('setup');
-    } else if (step === 'setup') startPhone();
-    else if (step === 'phone') {
-      startPhone();
-      setStep('profile');
-    } else nav('/mobile/login');
-  }
-  if (mode === 'change')
-    return (
-      <div className="page-content">
-        <p>전화번호 변경은 아직 지원하지 않습니다.</p>
-        <Link to="/mobile/account">마이페이지로</Link>
-      </div>
-    );
-  const isPin = ['pin', 'setup', 'confirm'].includes(step);
-  const fieldError =
-    error instanceof Error ? error.message : typeof error === 'string' ? error : '';
-  return (
-    <div className="page-content auth-flow">
-      <div className="auth-topline">
-        {mode !== 'signup' && (
-          <button
-            className="text-button"
-            disabled={busy || !!unknown}
-            onClick={() => {
-              if (mode === 'reset') {
-                nav(adminDestination ? '/admin/login' : '/mobile/account');
-                return;
-              }
-              if (step === 'confirm') {
-                setStep('setup');
-                setPin('');
-                setFirstPin('');
-              } else if (isPin) startPhone();
-              else nav(adminDestination ? '/admin' : '/mobile');
-            }}
-            aria-label="이전"
-          >
-            <ArrowLeft size={20} />
-          </button>
-        )}
-        <span>{mode === 'reset' ? 'PIN 재설정' : mode === 'signup' ? '회원가입' : '로그인'}</span>
-      </div>
-      {mode === 'signup' && !unknown && ['phone', 'setup', 'confirm'].includes(step) && (
-        <p className="signup-progress">
-          {step === 'phone'
-            ? '2 / 4 · 본인 인증'
-            : step === 'setup'
-              ? '3 / 4 · PIN 설정'
-              : '4 / 4 · PIN 확인'}
-        </p>
-      )}
-      {unknown ? (
-        <>
-          <h1>처리 결과를 확인해 주세요.</h1>
-          <p className="muted">
-            요청이 이미 저장되었을 수 있습니다. 다시 가입하거나 PIN을 바꾸기 전에 결과를 확인하세요.
-          </p>
-          <button
-            className="primary full"
-            disabled={busy}
-            onClick={() =>
-              task(async () => {
-                const result = await authApi.result(unknown);
-                if (!alive.current) return;
-                if (result) complete(result);
-                else {
-                  sessionStorage.removeItem(PENDING);
-                  setUnknown('');
-                  startPhone();
-                  setNotice('로그인 세션을 확인하지 못했습니다. 이미 가입했다면 로그인해 주세요.');
-                }
-              })
-            }
-          >
-            처리 결과 다시 확인
-          </button>
-          <button
-            className="text-button"
-            disabled={busy}
-            onClick={() => {
-              sessionStorage.removeItem(PENDING);
-              setUnknown('');
-              startPhone();
-              setNotice(
-                mode === 'access'
-                  ? '전화번호와 PIN으로 다시 로그인해 주세요.'
-                  : '이전 요청이 완료되었을 수 있습니다. 가입했다면 로그인하고, PIN을 변경했다면 새 PIN으로 로그인해 주세요.',
-              );
-            }}
-          >
-            {mode === 'access' ? '로그인 다시 시작' : '전화번호 인증 다시 시작'}
-          </button>
-        </>
-      ) : step === 'boot' ? (
-        <Loading text="로그인 방법을 확인하고 있어요" />
-      ) : step === 'profile' ? (
-        <>
-          <p className="signup-progress">1 / 4 · 개인정보</p>
-          <h1>
-            반가워요!
-            <br />
-            어떻게 불러드릴까요?
-          </h1>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!name.trim() || !occupation.trim()) {
-                setError(new Error('이름과 직업을 입력해 주세요.'));
-                return;
-              }
-              setName(name.trim());
-              setOccupation(occupation.trim());
-              setError(undefined);
-              setStep('phone');
-            }}
-          >
-            <label>
-              이름
-              <input
-                autoComplete="name"
-                value={name}
-                maxLength={40}
-                placeholder="이름을 입력해 주세요"
-                onChange={(e) => setName(e.target.value)}
-              />
-            </label>
-            <label>
-              직업
-              <select
-                className="occupation-select"
-                aria-label="직업"
-                value={occupation}
-                onChange={(e) => setOccupation(e.target.value)}
-              >
-                <option value="" disabled>
-                  직업을 선택해 주세요
-                </option>
-                {['학생', '직장인', '자영업', '프리랜서', '구직 중', '기타'].map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="signup-actions">
-              <button className="secondary" type="button" onClick={previousSignupStep}>
-                이전
-              </button>
-              <button className="primary full" type="submit">
-                다음
-                <ArrowRight size={18} />
-              </button>
-            </div>
-          </form>
-        </>
-      ) : step === 'done' ? (
-        <>
-          <ShieldCheck className="auth-symbol" />
-          <h1>{'PIN이 재설정되었습니다.'}</h1>
-          <p>{'새 PIN으로 다시 로그인해 주세요.'}</p>
-          <Link className="primary full" to={authBase + '/login'}>
-            로그인으로
-          </Link>
-        </>
-      ) : step === 'blocked' ? (
-        <>
-          <ShieldCheck className="auth-symbol" />
-          <h1>{verification?.needsPin ? 'PIN 설정이 필요해요.' : 'PIN 복구 안내'}</h1>
-          <p>
-            {verification?.needsPin
-              ? 'PIN 찾기에서 등록된 전화번호로 문자를 인증한 뒤 새 PIN을 설정해 주세요.'
-              : '등록된 전화번호를 확인한 뒤 다시 인증해 주세요.'}
-          </p>
-          <Link className="primary full" to={authBase + '/login'}>
-            로그인으로 돌아가기
-          </Link>
-          {mode === 'reset' ? (
-            <button className="text-button" onClick={startPhone}>
-              전화번호 다시 입력
-            </button>
-          ) : (
-            <Link className="text-link" to={authBase + '/recover'}>
-              PIN 찾기로
-            </Link>
-          )}
-        </>
-      ) : step === 'change-confirm' ? (
-        <>
-          <h1>전화번호를 변경할까요?</h1>
-          <p>새 전화번호 {mask}</p>
-          <p>대여 기록은 유지되며 기존 로그인과 브라우저 등록은 모두 해제됩니다.</p>
-          <button
-            className="primary full"
-            disabled={busy || proofExpired}
-            onClick={() =>
-              task(() => save((id) => authApi.changePhone(id, verification!.proof, reauth, source)))
-            }
-          >
-            전화번호 변경 확정
-          </button>
-        </>
-      ) : isPin ? (
-        <>
-          <section className="auth-login-card">
-            <LockKeyhole className="auth-symbol" />
-            <h1>
-              {step === 'setup'
-                ? mode === 'reset'
-                  ? '변경할 PIN 번호를 입력해 주세요.'
-                  : '사용할 PIN 번호를 설정해 주세요.'
-                : step === 'confirm'
-                  ? 'PIN 번호를 한 번 더 입력해 주세요.'
-                  : 'PIN 번호를 입력해 주세요.'}
-            </h1>
-            <p className="auth-mask">{mask}</p>
-            <form onSubmit={submitPin} aria-busy={busy}>
-              <div className="pin-field">
-                <div className="pin-dots" aria-hidden="true">
-                  {Array.from({ length: 6 }, (_, i) => (
-                    <i key={i} className={i < pin.length ? 'filled' : ''} />
-                  ))}
-                </div>
-                <input
-                  aria-label="PIN 번호"
-                  aria-invalid={!!fieldError}
-                  aria-describedby={fieldError ? 'user-pin-error' : undefined}
-                  type="password"
-                  inputMode="numeric"
-                  autoComplete={step === 'pin' ? 'current-password' : 'new-password'}
-                  maxLength={6}
-                  value={pin}
-                  disabled={busy || wait > 0 || locked || proofExpired}
-                  onChange={(e) => editPin(e.target.value)}
-                />
-              </div>
-              {fieldError && (
-                <p className="uw-field-error" id="user-pin-error">
-                  {fieldError}
-                </p>
-              )}
-              <div className="pin-keypad" aria-label="숫자 키패드">
-                {['1', '2', '3', '4', '5', '6', '7', '8', '9', 'clear', '0', 'delete'].map(
-                  (key) => (
-                    <button
-                      type="button"
-                      key={key}
-                      disabled={busy || wait > 0 || locked || proofExpired}
-                      aria-label={
-                        key === 'delete' ? '한 자리 지우기' : key === 'clear' ? '모두 지우기' : key
-                      }
-                      onClick={() =>
-                        editPin(
-                          key === 'clear' ? '' : key === 'delete' ? pin.slice(0, -1) : pin + key,
-                        )
-                      }
-                    >
-                      {key === 'delete' ? (
-                        <Delete size={23} />
-                      ) : key === 'clear' ? (
-                        '전체 삭제'
-                      ) : (
-                        key
-                      )}
-                    </button>
-                  ),
-                )}
-              </div>
-              <div className={mode === 'signup' ? 'signup-actions' : undefined}>
-                {mode === 'signup' && (
-                  <button
-                    className="secondary"
-                    type="button"
-                    disabled={busy || !!unknown}
-                    onClick={previousSignupStep}
-                  >
-                    이전
-                  </button>
-                )}
-                <button
-                  className="primary full"
-                  type="submit"
-                  disabled={busy || wait > 0 || locked || proofExpired || pin.length !== 6}
-                >
-                  {busy
-                    ? '확인 중…'
-                    : wait > 0
-                      ? `${wait}초 후 다시 시도`
-                      : step === 'setup'
-                        ? mode === 'signup'
-                          ? '다음'
-                          : '계속'
-                        : step === 'confirm'
-                          ? mode === 'reset'
-                            ? 'PIN 재설정'
-                            : '가입 완료'
-                          : '로그인'}
-                  <ArrowRight size={18} />
-                </button>
-              </div>
-            </form>
-          </section>
-
-          {step === 'pin' && (
-            <div className="auth-links">
-              <Link to={authBase + '/recover'}>PIN 찾기</Link>
-              {!adminDestination && (
-                <Link to={'/mobile/signup?next=' + encodeURIComponent(destination)}>회원가입</Link>
-              )}
-            </div>
-          )}
-        </>
-      ) : (
-        <>
-          <section className="auth-login-card">
-            <Smartphone className="auth-symbol" />
-            <h1>
-              {mode === 'reset' ? '등록된 전화번호를 확인해 주세요.' : '전화번호를 입력해 주세요.'}
-            </h1>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (mode === 'access') {
-                  if (!phoneValid(phone)) {
-                    setError(new Error('010으로 시작하는 11자리 전화번호를 입력해 주세요.'));
-                    return;
-                  }
-                  setMask('010-****-' + phone.replace(/\D/g, '').slice(-4));
-                  setError(undefined);
-                  setStep('pin');
-                } else challenge ? verify() : send();
-              }}
-              aria-busy={busy}
-            >
-              <label>
-                전화번호
-                <input
-                  type="tel"
-                  autoComplete="tel"
-                  placeholder="010-0000-0000"
-                  aria-invalid={!!fieldError && !challenge}
-                  aria-describedby={fieldError && !challenge ? 'user-phone-error' : undefined}
-                  value={phone}
-                  disabled={busy}
-                  onChange={(e) => {
-                    setPhone(e.target.value);
-                    if (resumable) restoreSms(e.target.value);
-                    else setChallenge(undefined);
-                    setVerification(undefined);
-                    setSms('');
-                    setPin('');
-                    setFirstPin('');
-                    setError(undefined);
-                    setNotice('');
-                    operationId.current = '';
-                  }}
-                />
-              </label>
-              {fieldError && !challenge && (
-                <p className="uw-field-error" id="user-phone-error">
-                  {fieldError}
-                </p>
-              )}
-              {mode === 'access' ? (
-                <button className="primary full" type="submit" disabled={busy}>
-                  다음
-                </button>
-              ) : (
-                <>
-                  {smsRestart && (
-                    <p className="note-text">
-                      인증을 다시 진행해 주세요. 새 인증번호를 받아 입력해 주세요.
-                    </p>
-                  )}
-                  {challenge && (
-                    <>
-                      <div className="auth-sms-field">
-                        <div className="auth-label-row">
-                          <label htmlFor="sms-code">SMS 인증번호</label>
-                          <span className="note-text">
-                            남은 시간 {Math.floor(remaining / 60)}:
-                            {String(remaining % 60).padStart(2, '0')}
-                          </span>
-                        </div>
-                        <input
-                          id="sms-code"
-                          aria-invalid={!!fieldError || remaining === 0}
-                          aria-describedby={
-                            fieldError || remaining === 0 ? 'user-sms-error' : undefined
-                          }
-                          inputMode="numeric"
-                          autoComplete="one-time-code"
-                          maxLength={6}
-                          placeholder="6자리 인증번호"
-                          value={sms}
-                          disabled={busy || smsRestart || remaining === 0}
-                          onChange={(e) => setSms(e.target.value.replace(/\D/g, ''))}
-                        />
-                        {(fieldError || remaining === 0) && (
-                          <p className="uw-field-error" id="user-sms-error">
-                            {fieldError || '인증번호가 만료되었어요. 새 인증번호를 받아 주세요.'}
-                          </p>
-                        )}
-                      </div>
-                      <div className={mode === 'signup' ? 'signup-actions' : undefined}>
-                        {mode === 'signup' && (
-                          <button
-                            type="button"
-                            className="secondary"
-                            disabled={busy}
-                            onClick={previousSignupStep}
-                          >
-                            이전
-                          </button>
-                        )}
-                        <button
-                          className="primary full"
-                          type="submit"
-                          aria-label="인증번호 확인"
-                          disabled={busy || smsRestart || sms.length !== 6 || !remaining}
-                        >
-                          {mode === 'signup' ? '다음' : '인증번호 확인'}
-                        </button>
-                      </div>
-                    </>
-                  )}
-                  <div className={mode === 'signup' && !challenge ? 'signup-actions' : undefined}>
-                    {mode === 'signup' && !challenge && (
-                      <button
-                        type="button"
-                        className="secondary"
-                        disabled={busy}
-                        onClick={previousSignupStep}
-                      >
-                        이전
-                      </button>
-                    )}
-                    <button
-                      className={challenge ? 'secondary full' : 'primary full'}
-                      type="button"
-                      disabled={busy || wait > 0 || resend > 0}
-                      onClick={() => void send()}
-                    >
-                      {busy
-                        ? '요청 중…'
-                        : Math.max(wait, resend) > 0
-                          ? `${challenge ? '재발송' : '인증 요청'}까지 ${Math.max(wait, resend)}초`
-                          : challenge
-                            ? '인증번호 재발송'
-                            : '인증번호 발송'}{' '}
-                    </button>
-                  </div>
-                </>
-              )}
-            </form>
-          </section>
-
-          {mode !== 'reset' && (
-            <div className="auth-links">
-              {mode !== 'access' && <Link to={authBase + '/login'}>로그인</Link>}
-              <Link to={authBase + '/recover'}>PIN 찾기</Link>
-              {!adminDestination && mode !== 'signup' && <Link to="/mobile/signup">회원가입</Link>}
-            </div>
-          )}
-        </>
-      )}
-      <ErrorBox
-        error={
-          error ||
-          (proofExpired && !unknown
-            ? '인증 결과가 만료되었습니다. 전화번호부터 다시 인증해 주세요.'
-            : challenge && remaining === 0 && step === 'phone'
-              ? '인증번호가 만료되었습니다. 다시 발송해 주세요.'
-              : locked
-                ? 'PIN 로그인이 제한되었습니다. PIN 찾기에서 계정을 복구해 주세요.'
-                : undefined)
-        }
-      />
-      {showPinPolicy && (
-        <MessagePopup title="PIN 설정 안내" onClose={() => setShowPinPolicy(false)}>
-          <ul className="pin-guidance">
-            <li>숫자 6자리로 설정해 주세요.</li>
-            <li>6자리 전체가 연속된 숫자는 사용할 수 없어요.</li>
-            <li>같은 숫자를 3번 연속 사용할 수 없어요.</li>
-          </ul>
-        </MessagePopup>
-      )}{' '}
-      {(proofExpired ||
-        (error instanceof ServiceError &&
-          ['REGISTRATION', 'SMS_REQUIRED', 'AUTH', 'RECOVERY'].includes(error.code))) &&
-        !unknown && (
-          <button className="text-button" onClick={startPhone}>
-            {mode === 'access' ? '전화번호 다시 입력' : '전화번호 인증 다시 시작'}
-          </button>
-        )}
-      {notice && (
-        <p className="auth-notice" role="status">
-          {notice}
-        </p>
-      )}
-      {existingAccount && (
-        <MessagePopup
-          title="이미 가입된 전화번호예요"
-          onClose={() => setExistingAccount(false)}
-          action={{
-            label: '로그인하기',
-            onClick: () => {
-              clearDraft(mode);
-              nav(authBase + '/login', { replace: true });
-            },
-          }}
-        >
-          <p>
-            기존 계정으로 로그인해 주세요. PIN이 기억나지 않으면 로그인 화면에서 PIN 찾기를 이용해
-            주세요.
-          </p>
-        </MessagePopup>
-      )}
-      {missingAccount && (
-        <MessagePopup
-          title="가입되지 않은 전화번호예요"
-          onClose={() => {
-            setMissingAccount(false);
-            startPhone();
-          }}
-          action={
-            adminDestination
-              ? undefined
-              : { label: '회원가입', onClick: () => nav('/mobile/signup') }
-          }
-        >
-          <p>
-            {adminDestination
-              ? '관리자 계정의 전화번호를 다시 확인해 주세요.'
-              : '전화번호를 다시 확인하거나 회원가입을 진행해 주세요.'}
-          </p>
-        </MessagePopup>
-      )}
-    </div>
-  );
+  const remaining = challenge ? Math.max(0, Math.ceil((challenge.expiresAt - now) / 1000)) : 0;
+  const wait = Math.max(0, Math.ceil((retryAt - now) / 1000));
+  return <div className="auth-flow">
+    <div className="auth-top"><Link to={authBase + '/login'} aria-label="로그인으로"><ArrowLeft size={20} /></Link><span>{mode === 'signup' ? '회원가입' : mode === 'reset' ? 'PIN 재설정' : '로그인'}</span></div>
+    {unknown ? <div><h1>처리 결과를 확인해 주세요</h1><p>이전 요청이 이미 완료되었을 수 있습니다. 같은 요청의 결과를 확인해 주세요.</p><button className="secondary full" disabled={busy} onClick={() => void run(async () => {
+      try { complete(await authApi.result(key.current)); }
+      catch (e) { if (e instanceof ServiceError && e.code !== 'UNKNOWN' && e.code !== 'RECOVERY_UNCONFIRMED') { clearPending(); setUnknown(false); key.current = ''; } throw e; }
+    })}>결과 다시 확인</button><button className="text-button" disabled={busy} onClick={() => { clearPending(); key.current = ''; setUnknown(false); setChallenge(undefined); setVerified(false); setPin(''); setFirstPin(''); setStep(mode === 'signup' ? 'profile' : 'kakao'); setNotice('이전 요청이 완료되었을 수 있습니다. 가입했다면 로그인하고, PIN을 변경했다면 새 PIN으로 로그인해 주세요.'); }}>인증 다시 시작</button></div>
+    : step === 'boot' ? <Loading text="로그인 방법을 확인하고 있어요" /> : step === 'profile' ? <>
+      <p className="signup-progress">1 / 4 · 프로필</p><h1>반가워요!<br />어떻게 불러드릴까요?</h1>
+      <form onSubmit={(e) => { e.preventDefault(); if (!name.trim() || !occupation.trim()) { setError(new Error('이름과 직업을 입력해 주세요.')); return; } setStep('kakao'); }}>
+        <label>이름<input autoComplete="name" maxLength={40} value={name} onChange={(e) => setName(e.target.value)} /></label>
+        <label>직업<select aria-label="직업" className="occupation-select" value={occupation} onChange={(e) => setOccupation(e.target.value)}><option value="">직업을 선택해 주세요</option>{['학생', '직장인', '자영업', '프리랜서', '구직 중', '기타'].map((v) => <option key={v}>{v}</option>)}</select></label>
+        <button className="primary full" type="submit">다음</button>
+      </form>
+    </> : step === 'kakao' ? <>
+      {mode === 'signup' && <p className="signup-progress">2 / 4 · 카카오톡 연결</p>}
+      <ShieldCheck className="auth-symbol" /><h1>카카오톡으로 연결해 주세요</h1>
+      <p>TagBack 채널에 아래 코드를 입력한 뒤 이 화면으로 돌아와 주세요.</p>
+      {challenge ? <><p className="auth-code" aria-label="인증 코드"><strong>{challenge.code}</strong></p><p>남은 시간 {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')}</p>
+        {channelUrl ? <a className="primary full" href={channelUrl} target="_blank" rel="noopener noreferrer">카카오톡 채널 열기</a> : <p>카카오톡에서 TagBack 채널을 열어 주세요.</p>}
+        <button className="secondary full" type="button" disabled={busy || !remaining} onClick={() => void run(() => checkStatus(challenge))}>인증 확인</button>
+        <button className="text-button" type="button" disabled={busy} onClick={() => void issue()}>새 코드 발급</button>
+        <button className="text-button" type="button" disabled={busy} onClick={() => void cancel()}>인증 취소</button></>
+        : <button className="primary full" disabled={busy} onClick={() => void issue()}>카카오톡 인증 시작</button>}
+    </> : step === 'done' ? <><ShieldCheck className="auth-symbol" /><h1>PIN이 재설정되었습니다.</h1><p>새 PIN으로 다시 로그인해 주세요.</p><Link className="primary full" to={authBase + '/login'}>로그인으로</Link></>
+      : <section className="auth-login-card"><LockKeyhole className="auth-symbol" /><h1>{step === 'setup' ? '사용할 PIN을 설정해 주세요' : step === 'confirm' ? 'PIN을 한 번 더 입력해 주세요' : 'PIN을 입력해 주세요'}</h1>
+        <form onSubmit={(e) => void submit(e)}><label>PIN 숫자 6자리<input type="password" inputMode="numeric" autoComplete={step === 'pin' ? 'current-password' : 'new-password'} maxLength={6} value={pin} disabled={busy || unknown || wait > 0 || locked} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))} /></label>
+          <button type="submit" className="primary full" disabled={busy || unknown || wait > 0 || locked || pin.length !== 6}>{wait ? `${wait}초 후 다시 시도` : '확인'}</button></form>
+        {(mode !== 'access' || !registered) && <button className="text-button" disabled={busy || unknown} onClick={() => void cancel()}>인증 취소</button>}
+        {mode === 'access' && registered && <button className="text-button" disabled={busy || unknown} onClick={() => { setRegistered(false); setPin(''); setStep('kakao'); }}>다른 브라우저로 인증하기</button>}
+      </section>}
+    {notice && <p className="auth-notice" role="status">{notice}</p>}
+    {locked && <p>PIN 로그인이 제한되었습니다. PIN 찾기에서 재설정해 주세요.</p>}
+    {step !== 'done' && <div className="auth-links"><Link to={authBase + '/login'}>로그인</Link><Link to={authBase + '/recover'}>PIN 찾기</Link>{!adminDestination && <Link to="/mobile/signup">회원가입</Link>}</div>}
+    <ErrorBox error={error} />
+  </div>;
 }

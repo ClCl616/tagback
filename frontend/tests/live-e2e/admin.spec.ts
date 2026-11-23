@@ -1,3 +1,4 @@
+import { signupKakao, registeredLogin } from './kakao-auth';
 import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -29,41 +30,16 @@ test('real database: admin authorization, item CRUD, tag retry, state history, a
   page,
   context,
 }) => {
-  const phone = '010' + String(Date.now()).slice(-8);
   const request = context.request;
-  const sms = await request.post('/api/v1/auth/sms/requests', {
-    data: { phoneNumber: phone, purpose: 'SIGNUP' },
-    headers: { 'Idempotency-Key': randomUUID() },
-  });
-  expect(sms.ok(), await sms.text()).toBeTruthy();
-  const { requestId } = await sms.json();
-  const delivered = await request.get(`/api/v1/dev/sms/requests/${requestId}`);
-  const { code } = await delivered.json();
-  const verify = await request.post('/api/v1/auth/sms/verifications', {
-    data: { requestId, code },
-  });
-  const { verificationToken } = await verify.json();
-  const signup = await request.post('/api/v1/auth/signup', {
-    data: {
-      verificationToken,
-      pin: '048259',
-      profile: { name: '실연동 검증', occupation: '학생' },
-    },
-    headers: { 'Idempotency-Key': randomUUID() },
-  });
-  expect(signup.status(), await signup.text()).toBe(201);
+  const userId = await signupKakao(context, '실연동 검증');
   expect((await request.get('/api/items/1/tag')).status()).toBe(403);
   await page.goto('/admin/items');
   await expect(page.getByRole('alert')).toContainText('관리자 계정');
-  sql(`update users set role='ADMIN' where phone_number='+82${phone.slice(1)}'`);
+  sql(`update users set role='ADMIN' where user_id=${Number(userId)}`);
   const typeId = sql(
     `insert into item_types(name) values ('실연동 종류-${Date.now()}') returning item_type_id`,
   ).split('\n')[0];
-  const login = await request.post('/api/v1/auth/login/phone', {
-    data: { phoneNumber: phone, pin: '048259' },
-    headers: { 'Idempotency-Key': randomUUID() },
-  });
-  expect(login.ok(), await login.text()).toBeTruthy();
+  await registeredLogin(context);
   await page.reload();
   await page.getByRole('button', { name: '물품 등록', exact: true }).click();
   let dialog = page.getByRole('dialog', { name: '물품 등록', exact: true });

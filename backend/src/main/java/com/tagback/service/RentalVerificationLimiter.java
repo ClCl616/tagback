@@ -2,7 +2,6 @@ package com.tagback.service;
 
 import com.tagback.domain.repository.RentalAuthorizationStore;
 import com.tagback.exception.RentalException;
-import com.tagback.service.sms.SmsSecrets;
 import java.time.Clock;
 import java.time.temporal.ChronoUnit;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,16 +12,16 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
-@Profile("sms-mock & !prod & !production")
+@Profile(com.tagback.config.AuthProfiles.CORE)
 public class RentalVerificationLimiter {
     private final RentalAuthorizationStore store;
-    private final SmsSecrets secrets;
+    private final AuthSecrets secrets;
     private final Clock clock;
     private final TransactionTemplate counters;
     private final int perAddress;
     private final int global;
 
-    public RentalVerificationLimiter(RentalAuthorizationStore store, SmsSecrets secrets, Clock clock,
+    public RentalVerificationLimiter(RentalAuthorizationStore store, AuthSecrets secrets, Clock clock,
             PlatformTransactionManager manager,
             @Value("${tagback.rental.verify-per-address-per-minute:10}") int perAddress,
             @Value("${tagback.rental.verify-global-per-minute:60}") int global) {

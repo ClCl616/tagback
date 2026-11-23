@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests/live-e2e',
-  testMatch: 'return.spec.ts',
+  testMatch: ['return.spec.ts', 'admin-search.spec.ts'],
   outputDir: './test-results/kiosk-live',
   timeout: 60000,
   workers: 1,
@@ -10,6 +10,7 @@ export default defineConfig({
     baseURL: process.env.TAGBACK_LIVE_BASE_URL || 'http://127.0.0.1:5182',
     ignoreHTTPSErrors: true,
     headless: true,
+    ...(process.env.TAGBACK_PLAYWRIGHT_CHANNEL ? { channel: process.env.TAGBACK_PLAYWRIGHT_CHANNEL } : {}),
   },
   reporter: 'list',
 });

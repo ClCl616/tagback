@@ -13,7 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@Profile("sms-mock & !prod & !production")
+@Profile(com.tagback.config.AuthProfiles.CORE)
 @RequestMapping("/api/v1/rentals")
 public class RentalController {
     private final RentalOperationService operations;

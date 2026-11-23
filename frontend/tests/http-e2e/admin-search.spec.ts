@@ -21,7 +21,6 @@ async function mockAdminApi(page: Page, role = 'ADMIN') {
             name: '운영자',
             role,
             occupation: null,
-            maskedPhoneNumber: '010-****-0000',
           },
           sessionExpiresAt: '2030-01-01T00:00:00Z',
         },

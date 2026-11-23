@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.Objects;
-import com.tagback.dto.auth.SmsPurpose;
 
 @Entity
 @Table(name = "browser_registrations")

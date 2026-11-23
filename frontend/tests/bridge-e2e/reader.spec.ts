@@ -27,7 +27,7 @@ test('reader outage stays inline across countdown renders and updates after reco
     route.fulfill({
       json: {
         token: 'test-grant',
-        maskedPhoneNumber: '010****5678',
+        userId: '12', userName: '홍길동',
         expiresAt: new Date(Date.now() + 180000).toISOString(),
       },
     }),

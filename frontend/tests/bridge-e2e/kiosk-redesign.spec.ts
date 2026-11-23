@@ -42,7 +42,7 @@ async function setup(page: Page, tablet = false) {
     r.fulfill({
       json: {
         token: 'fixture-grant',
-        maskedPhoneNumber: '010****5678',
+        userId: '12', userName: '홍길동',
         expiresAt: new Date(Date.now() + 180000).toISOString(),
       },
     }),
@@ -193,6 +193,7 @@ test('대여 응답 유실 후 같은 인증·멱등키·본문으로 복구하�
   await page.getByRole('button', { name: /공용 우산/ }).click();
   await scan(page);
   await expect(page.getByText('대여 완료 후 안내')).toBeVisible();
+  await expect(page.getByText('홍길동 · 회원번호 12')).toBeVisible();
   await page.getByRole('button', { name: '대여 확정', exact: true }).click();
   await expect(page.getByRole('button', { name: '처리 결과 다시 확인' })).toBeVisible();
   await page.clock.fastForward(181000);

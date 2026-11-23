@@ -51,6 +51,7 @@ import { KIOSK, STATION } from '../shared/config';
 import type { Code, Rental } from '../shared/types';
 import { ErrorBox, Loading, useResource } from '../shared/ui';
 import { publicCatalogHttp } from '../shared/catalogHttp';
+import { outstandingRentals, withdrawAccount } from '../shared/withdrawal';
 import AuthFlow from './AuthFlow';
 import './user-web.css';
 
@@ -285,7 +286,7 @@ const savedPositions = new Map<string, { y: number; focus?: string }>();
 function Layout() {
   const location = useLocation();
   const navigationType = useNavigationType();
-  const authScreen = /^\/mobile\/(login|signup|recover|change-phone)/.test(location.pathname);
+  const authScreen = /^\/mobile\/(login|signup|recover)/.test(location.pathname);
   const viewKey =
     location.pathname + ':' + (new URLSearchParams(location.search).get('item') || '');
   const main = useRef<HTMLElement>(null);
@@ -1013,6 +1014,10 @@ function AccountPage() {
               내 이용 코드
               <ChevronRight size={20} />
             </Link>
+            <Link to="/mobile/withdraw">
+              회원 탈퇴
+              <ChevronRight size={20} />
+            </Link>
           </section>
           <button className="secondary full" disabled={busy} onClick={() => void logout()}>
             {busy ? '로그아웃 중…' : '로그아웃'}
@@ -1022,7 +1027,78 @@ function AccountPage() {
     </div>
   );
 }
-function AuthPage({ mode = 'access' }: { mode?: 'access' | 'signup' | 'reset' | 'change' }) {
+const withdrawalPendingKey = 'tagback.withdrawal.pending';
+function pendingWithdrawal() {
+  try { return sessionStorage.getItem(withdrawalPendingKey) === 'pending'; } catch { return true; }
+}
+function WithdrawalPage() {
+  const { token, setToken } = useAuth();
+  const nav = useNavigate();
+  const [pendingResult] = useState(pendingWithdrawal);
+  const eligibility = useResource(async () => {
+    const session = await serverSession();
+    return { userId: session.user.userId, name: session.user.name || '회원', hasOutstanding: await outstandingRentals() };
+  }, [token]);
+  const [confirmed, setConfirmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<unknown>();
+  const locked = useRef(false);
+
+  async function submit() {
+    if (locked.current || !confirmed || !eligibility.data || eligibility.data.hasOutstanding || pendingResult) return;
+    // Keep a pending marker even if the page is reloaded while the request is in flight.
+    try { sessionStorage.setItem(withdrawalPendingKey, 'pending'); }
+    catch { setError(new Error('탈퇴 요청을 안전하게 확인할 수 없습니다. 브라우저 저장 공간을 허용한 뒤 다시 시도해 주세요.')); return; }
+    locked.current = true;
+    setBusy(true);
+    setError(undefined);
+    try {
+      await withdrawAccount(eligibility.data.userId);
+      sessionStorage.removeItem(withdrawalPendingKey);
+      startTransition(() => { nav('/mobile/withdraw-result', { replace: true, state: { completed: true } }); setToken(''); });
+    } catch (e) {
+      if (e instanceof ServiceError && e.code === 'UNKNOWN') {
+        nav('/mobile/withdraw-result', { replace: true });
+      } else {
+        try { sessionStorage.removeItem(withdrawalPendingKey); } catch { /* A stale marker fails closed. */ }
+        setError(e);
+        if (e instanceof ServiceError && e.code === 'OUTSTANDING_RENTALS') eligibility.reload();
+        if (e instanceof ServiceError && e.code === 'ACCOUNT_CHANGED') { setConfirmed(false); eligibility.reload(); }
+      }
+    } finally { locked.current = false; setBusy(false); }
+  }
+  if (pendingResult) return <Navigate to="/mobile/withdraw-result" replace />;
+  return <div className="uw-account uw-withdraw">
+    <Heading title="회원 탈퇴" description="탈퇴하기 전에 아래 내용을 확인해 주세요." />
+    <section className="uw-card uw-withdraw-info">
+      <h2>탈퇴 전 확인해 주세요</h2>
+      <ul>
+        <li>반납하지 않은 물품이 있으면 모두 반납한 뒤 탈퇴할 수 있어요.</li>
+        <li>계정과 카카오톡 연결, 로그인 정보가 삭제돼요.</li>
+        <li>반납 완료 이력은 계정과 분리해 1년간 보관한 뒤 삭제해요.</li>
+        <li>같은 카카오톡으로 다시 가입할 수 있지만 이전 이용 이력은 연결되지 않아요.</li>
+      </ul>
+    </section>
+    {eligibility.loading ? <Loading text="반납 상태를 확인하고 있어요" /> : eligibility.error ?
+      <Failure error={eligibility.error} retry={eligibility.reload} /> : eligibility.data?.hasOutstanding ?
+        <div role="status" className="uw-card uw-withdraw-info"><strong>반납하지 않은 물품이 있어요.</strong><p>모든 물품을 반납한 뒤 다시 확인해 주세요.</p><Link to="/mobile/rentals">대여 중인 물품 확인</Link></div> :
+        <p>{eligibility.data?.name}님 · 회원번호 {eligibility.data?.userId}<br />현재 반납하지 않은 물품이 없어요. 탈퇴할 때 반납 상태를 다시 확인합니다.</p>}
+    {!!error && <div role="alert" className="uw-card uw-withdraw-info"><p>{error instanceof Error ? error.message : '요청을 처리하지 못했습니다.'}</p></div>}
+    <label className="uw-withdraw-confirm"><input type="checkbox" checked={confirmed} disabled={busy} onChange={(e) => setConfirmed(e.target.checked)} /> 위 내용을 확인했으며 회원 탈퇴에 동의합니다.</label>
+    <button className="primary full" disabled={busy || !confirmed || eligibility.loading || !!eligibility.error || !eligibility.data || eligibility.data.hasOutstanding} onClick={() => void submit()}>{busy ? '탈퇴 처리 중…' : '회원 탈퇴하기'}</button>
+    <Link className="secondary full uw-withdraw-back" to="/mobile/account" aria-disabled={busy} onClick={(e) => { if (busy) e.preventDefault(); }}>내 정보로 돌아가기</Link>
+  </div>;
+}
+function WithdrawalResultPage() {
+  const location = useLocation();
+  const completed = location.state?.completed === true && !pendingWithdrawal();
+  return <div className="uw-account uw-withdraw">
+    <Heading title={completed ? '회원 탈퇴가 완료되었어요' : '탈퇴 결과를 확인하지 못했어요'} />
+    {completed ? <p>이용해 주셔서 감사합니다. 같은 카카오톡으로 다시 가입할 수 있어요.</p> : <p role="alert">요청이 이미 처리되었을 수 있습니다. 다시 탈퇴를 요청하지 말고 서비스 담당자에게 처리 결과를 확인해 주세요.</p>}
+    <Link className="primary full uw-withdraw-back" to="/mobile">홈으로</Link>
+  </div>;
+}
+function AuthPage({ mode = 'access' }: { mode?: 'access' | 'signup' | 'reset' }) {
   const { token, setToken } = useAuth();
   return (
     <>
@@ -1150,7 +1226,8 @@ export default function UserWeb() {
                 <Route path="login" element={<AuthPage key="login" />} />
                 <Route path="signup" element={<AuthPage key="signup" mode="signup" />} />
                 <Route path="recover" element={<AuthPage key="reset" mode="reset" />} />
-                <Route path="change-phone" element={<AuthPage key="change" mode="change" />} />
+                <Route path="withdraw-result" element={<WithdrawalResultPage />} />
+                <Route path="withdraw" element={pendingWithdrawal() ? <Navigate to="/mobile/withdraw-result" replace /> : <Protected><WithdrawalPage /></Protected>} />
                 <Route
                   path="code"
                   element={

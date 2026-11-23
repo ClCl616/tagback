@@ -1,45 +1,17 @@
-export type Purpose = 'access' | 'reset' | 'change';
-export type Challenge = { id: string; expiresAt: number; resendAt: number };
-export type Verification = {
-  proof: string;
-  expiresAt: number;
-  maskedPhone: string;
-  existing: boolean;
-  needsPin: boolean;
-};
-export type LoginResult = { token: string; registration: string };
-export type AuthResult = LoginResult | { completed: true };
+export type KakaoPurpose = 'SIGNUP' | 'LOGIN' | 'PIN_RESET';
+export type KakaoChallenge = { id: string; code: string; expiresAt: number };
+export type KakaoStatus = { purpose: KakaoPurpose; status: 'PENDING' | 'VERIFIED' | 'CONSUMED' | 'CANCELED' | 'EXPIRED'; expiresAt: number };
+export type AuthResult = { token: string; registration: string } | { completed: true };
 export interface AuthAdapter {
-  requestSms(phone: string, purpose: Purpose, source: string, reauth?: string): Promise<Challenge>;
-  verifySms(
-    id: string,
-    phone: string,
-    code: string,
-    purpose: Purpose,
-    source: string,
-  ): Promise<Verification>;
-  registration(
-    token: string,
-  ): Promise<{ maskedPhone: string; retryAt: number; locked: boolean } | null>;
-  login(
-    id: string,
-    credential: string,
-    pin: string,
-    registered: boolean,
-    source: string,
-  ): Promise<AuthResult>;
-  loginWithPhone(id: string, phone: string, pin: string, source: string): Promise<AuthResult>;
-  signup(
-    id: string,
-    proof: string,
-    pin: string,
-    source: string,
-    profile: { name: string; occupation: string },
-  ): Promise<AuthResult>;
-  resetPin(id: string, proof: string, pin: string, source: string): Promise<AuthResult>;
-  reauthenticate(token: string, pin: string, source: string): Promise<string>;
-  changePhone(id: string, proof: string, reauth: string, source: string): Promise<AuthResult>;
-  result(id: string): Promise<AuthResult | null>;
-  logout(token: string): Promise<void>;
-  unregister(registration: string): Promise<void>;
+  issue(purpose: KakaoPurpose): Promise<KakaoChallenge>;
+  status(id: string): Promise<KakaoStatus>;
+  cancel(id: string): Promise<void>;
+  registration(): Promise<boolean>;
+  registeredLogin(key: string, pin: string): Promise<AuthResult>;
+  newBrowserLogin(key: string, challengeId: string, pin: string): Promise<AuthResult>;
+  signup(key: string, challengeId: string, pin: string, profile: { name: string; occupation: string }): Promise<AuthResult>;
+  resetPin(key: string, challengeId: string, pin: string): Promise<AuthResult>;
+  result(key: string): Promise<AuthResult>;
+  logout(token?: string): Promise<void>;
+  unregister(): Promise<void>;
 }

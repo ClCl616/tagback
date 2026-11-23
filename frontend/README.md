@@ -8,7 +8,7 @@
 pwsh -NoProfile -File backend/scripts/test-kiosk-live.ps1 -FullJourney -AllBackendTests
 ```
 
-저장소 루트에서 실행한다. 격리 PostgreSQL의 인증/물품 DB로 백엔드 전체 테스트 후 별도 live DB에서 사용자·관리자·Windows 여정을 검증한다. 포트 55439/55442/18082/5182가 비어 있어야 한다. SMS 수신함과 NFC 이벤트만 시험용이며 종료한 컨테이너와 로그는 진단용으로 보존한다.
+저장소 루트에서 실행한다. 격리 PostgreSQL의 인증/물품 DB로 백엔드 전체 테스트 후 별도 live DB에서 사용자·관리자·Windows 여정을 검증한다. 포트 55439/55442/18082/5182가 비어 있어야 한다. 카카오 스킬 요청과 NFC 이벤트는 시험용이며 종료한 컨테이너와 로그는 진단용으로 보존한다.
 
 2026-11-13 최신 추가: 공통 kiosk 빌드를 사용하는 Windows 시험 exe·설치 파일 골격을 구현했다. 실행·설정·검증 한계는 [Windows 호스트 README](../kiosk/windows/README.md)를 참고한다. 아래 P1 시점의 미구현 표시는 해당 날짜/단계의 기록이며 Android APK·실물 검증은 계속 후속 작업이다.
 
@@ -24,6 +24,8 @@ pnpm install
 $env:TAGBACK_API_TARGET = 'http://127.0.0.1:8080'
 $env:TAGBACK_HTTPS_CERT = 'C:\certs\localhost.pem'
 $env:TAGBACK_HTTPS_KEY = 'C:\certs\localhost-key.pem'
+# 실제 채널 주소를 알고 있다면 설정한다. 비워 두면 채널 이동 버튼 대신 안내를 표시한다.
+$env:VITE_KAKAO_CHANNEL_URL = 'https://pf.kakao.com/실제-채널'
 pnpm exec vite --host localhost --port 5173
 ```
 
@@ -31,7 +33,7 @@ pnpm exec vite --host localhost --port 5173
 - 키오스크: https://localhost:5173/kiosk
 - 관리자 현황: https://localhost:5173/admin (물품 관리는 `/admin/items`)
 
-관리자 로그인(`/admin/login`) 또는 사용자 웹에서 실제 ADMIN 계정으로 로그인한 뒤 관리자 화면에 접속한다. 두 영역은 같은 인증 API와 계정 체계를 사용한다. 기본 계정이나 초기 물품을 FE에서 만들지 않는다. 배포 환경은 동일 origin의 `/api`를 백엔드로 전달해야 한다. 백엔드 개발용 `sms-mock` 프로필은 FE mock과 별개이며 실제 문자 발송 검증을 의미하지 않는다.
+관리자 로그인(`/admin/login`) 또는 사용자 웹에서 실제 ADMIN 계정으로 로그인한 뒤 관리자 화면에 접속한다. 두 영역은 같은 카카오 인증 API와 계정 체계를 사용한다. 기본 계정이나 초기 물품을 FE에서 만들지 않는다. 배포 환경은 동일 origin의 `/api`를 백엔드로 전달해야 한다. 로컬 백엔드는 `kakao-auth` 프로필과 별도 비밀이 필요하다. 카카오톡 대화 시험에는 공개 HTTPS 스킬 서버와 실제 채널 설정이 필요하다.
 
 ## 실제 데이터 연결
 
@@ -42,7 +44,7 @@ pnpm exec vite --host localhost --port 5173
 | 경로 | 화면 |
 |---|---|
 | `/mobile` | 비회원·회원 홈 |
-| `/mobile/login`, `/mobile/signup` | 로그인·가입·SMS 인증·PIN 설정 |
+| `/mobile/login`, `/mobile/signup` | 로그인·가입·카카오톡 인증·PIN 설정 |
 | `/mobile/items` | 물품 검색·종류 필터·재고, `?item=종류ID` 상세 패널 |
 | `/mobile/items/:id` | 기존 물품 상세 주소 호환 |
 | `/mobile/code` | 이용 코드 명시적 발급·남은 시간·만료·재시도 |
@@ -54,7 +56,7 @@ pnpm exec vite --host localhost --port 5173
 
 사진 API가 없어 물품은 공통 아이콘으로 표시한다. 코드 QR·공지·알림·관리자 메뉴를 추가하지 않았다. 데이터 실패·빈 목록·재고 없음은 별도 상태로 표시한다. 테스트 fixture는 실행 앱의 데이터가 아니다.
 
-리디자인 검증은 기존 인증·관리자·키오스크 회귀와 사용자 웹 코드 수명·세션 변경·목록·상세·320~1440px 반응형 테스트를 포함한다. 실제 서버·DB·문자·NFC 장치와의 통합 검증 완료를 의미하지 않는다.
+리디자인 검증은 인증·관리자·키오스크 회귀와 사용자 웹 코드 수명·세션 변경·목록·상세·320~1440px 반응형 테스트를 포함한다. 실제 카카오 채널·NFC 장치와의 통합 검증 완료를 의미하지 않는다.
 
 - 물품·종류 조회, 물품 생성·수정·삭제, 상태와 변경 사유 저장
 - 현재 태그 조회 `GET /api/items/{itemId}/tag`, UID 연결 `POST /api/items/{itemId}/tag`
@@ -131,7 +133,7 @@ pwsh -NoProfile -File backend/scripts/test-kiosk-live.ps1
 
 스크립트는 고유 이름 `tagback-kiosk-test-<UUID>`의 전용 컨테이너를 만들고 loopback 55442에만 DB를 노출한다. `tagback_items_test`는 서버 검증, `tagback_live_test`는 브라우저 흐름용이다. 기존 DB나 운영 계정은 사용하지 않는다. 백엔드는 18082, HTTPS 프런트는 localhost:5182를 사용하며 실행 중인 포트가 있으면 중단한다. 임시 자체 서명 인증서는 테스트 디렉터리에서만 생성하고 OS 신뢰 저장소에 설치하지 않는다. 브라우저는 테스트에서만 인증서 오류를 허용한다.
 
-서버·브라우저 테스트는 실제 API·Flyway·PostgreSQL 트랜잭션을 사용한다. SMS는 `sms-mock`, NFC는 테스트 코드의 서명 이벤트이며 실제 문자·리더기 검증이 아니다. 응답 유실은 실제 서버 요청을 완료한 뒤 브라우저 응답만 끊어 재현한다. 테스트용 비밀은 폐기 가능한 로컬 환경 전용이다.
+서버·브라우저 테스트는 실제 API·Flyway·PostgreSQL 트랜잭션을 사용한다. 카카오 스킬 요청과 NFC는 테스트 코드로 생성하며 실제 카카오 대화·리더기 검증은 아니다. 응답 유실은 실제 서버 요청을 완료한 뒤 브라우저 응답만 끊어 재현한다. 테스트용 비밀은 폐기 가능한 로컬 환경 전용이다.
 
 이번 결과: 서버 10개 클래스 65개 테스트(미실행 0, 실패 0), 실제 HTTPS 브라우저 2개 테스트 통과. 브리지 자체 테스트 15개도 통과했다. 동일 코드·키의 대여 재시도, 다른 대여자 코드 거부, 거부/성공 응답 유실 복구, 잘못된 NFC 서명 거부, 정상 반납 AVAILABLE·손상 반납 INSPECTION, DB 대여/반납·상태 이력 중복 없음 등을 확인했다. `playwright.live-return.config.ts`는 반납/키오스크 파일만 실행하도록 지정해 별도 관리자 테스트가 섞이지 않는다.
 

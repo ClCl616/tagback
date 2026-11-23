@@ -49,6 +49,11 @@ public class RentalAuthorizationStore {
                 (rs, n) -> code(rs), id).stream().findFirst();
     }
 
+    public Optional<Long> codeUserId(UUID id) {
+        return jdbc.query("select user_id from rental_codes where rental_code_id = ?", (rs, n) -> rs.getLong(1), id)
+                .stream().findFirst();
+    }
+
     public void insertGrant(UUID id, UUID codeId, String hash, Instant now, Instant expires) {
         jdbc.update("insert into rental_grants (rental_grant_id, rental_code_id, token_hash, created_at, expires_at) "
                 + "values (?, ?, ?, ?, ?)", id, codeId, hash, ts(now), ts(expires));

@@ -11,7 +11,7 @@ import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@Profile("sms-mock & !prod & !production")
+@Profile(com.tagback.config.AuthProfiles.CORE)
 @RequestMapping("/api/v1/auth")
 public class SessionController {
     private final SessionService service;

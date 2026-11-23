@@ -7,6 +7,9 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if ($PSVersionTable.PSVersion.Major -lt 7) { throw 'PowerShell 7 is required for the isolated HTTPS check.' }
+$taskOpenSsl = 'C:/Program Files/Git/usr/bin/openssl.exe'
+if (!(Test-Path -LiteralPath $taskOpenSsl)) { throw 'OpenSSL missing.' }
 $taskRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $taskBackend = Join-Path $taskRoot 'backend'
 $taskFrontend = Join-Path $taskRoot 'frontend'
@@ -44,7 +47,13 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Backend build failed.' }
     } finally { Pop-Location }
 
-    $env:SPRING_PROFILES_ACTIVE = 'sms-mock'
+    $env:SPRING_PROFILES_ACTIVE = 'kakao-auth'
+    $env:TAGBACK_AUTH_COMMON_HASH_KEY = 'isolated-test-common-hash-key-at-least-32-characters'
+    $env:TAGBACK_KAKAO_HMAC_KEY = 'isolated-test-kakao-hmac-key-at-least-32-characters'
+    $env:TAGBACK_KAKAO_SKILL_SECRET = 'isolated-test-kakao-skill-key-at-least-32-characters'
+    $env:TAGBACK_KAKAO_BOT_ID = 'isolated-test-bot'
+    $env:TAGBACK_TEST_KAKAO_SKILL_SECRET = $env:TAGBACK_KAKAO_SKILL_SECRET
+    $env:TAGBACK_TEST_KAKAO_BOT_ID = $env:TAGBACK_KAKAO_BOT_ID
     $env:SPRING_DATASOURCE_URL = "jdbc:postgresql://127.0.0.1:$DbPort/tagback_live_test"
     $env:SPRING_DATASOURCE_USERNAME = 'postgres'
     $env:SPRING_DATASOURCE_PASSWORD = ''
@@ -52,7 +61,7 @@ try {
     $env:NFC_SCAN_SECRET = 'test-only-nfc-scan-secret-32-bytes-long'
     $env:NFC_BRIDGE_ID = 'kiosk-1'
     $env:SERVER_PORT = $BackendPort.ToString()
-    $env:TAGBACK_AUTH_ALLOWED_ORIGINS = "http://127.0.0.1:$FrontendPort"
+    $env:TAGBACK_AUTH_ALLOWED_ORIGINS = "https://localhost:$FrontendPort"
     $jar = Join-Path $taskBackend 'build/libs/tagback-0.0.1-SNAPSHOT.jar'
     $taskBackendProcess = Start-Process -FilePath (Get-Command java).Source -ArgumentList @('-jar', $jar) `
         -WorkingDirectory $taskBackend -RedirectStandardOutput (Join-Path $taskCluster 'backend.out.log') `
@@ -83,14 +92,19 @@ try {
     $env:TAGBACK_API_TARGET = "http://127.0.0.1:$BackendPort"
     $env:TAGBACK_LIVE_PSQL = Join-Path $PostgresBin 'psql.exe'
     $env:TAGBACK_LIVE_DB_PORT = $DbPort.ToString()
+    $env:TAGBACK_LIVE_BASE_URL = "https://localhost:$FrontendPort"
+    $env:TAGBACK_HTTPS_KEY = Join-Path $taskCluster 'localhost-key.pem'
+    $env:TAGBACK_HTTPS_CERT = Join-Path $taskCluster 'localhost-cert.pem'
+    & $taskOpenSsl req -x509 -newkey rsa:2048 -nodes -keyout $env:TAGBACK_HTTPS_KEY -out $env:TAGBACK_HTTPS_CERT -days 1 -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1' 2>$null
+    if ($LASTEXITCODE -ne 0) { throw 'Local test certificate generation failed.' }
     $taskFrontendProcess = Start-Process -FilePath (Get-Command node).Source `
-        -ArgumentList @('node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', $FrontendPort, '--strictPort') `
+        -ArgumentList @('node_modules/vite/bin/vite.js', '--host', 'localhost', '--port', $FrontendPort, '--strictPort') `
         -WorkingDirectory $taskFrontend -RedirectStandardOutput (Join-Path $taskCluster 'frontend.out.log') `
         -RedirectStandardError (Join-Path $taskCluster 'frontend.err.log') -WindowStyle Hidden -PassThru
     $frontendReady = $false
     for ($attempt = 0; $attempt -lt 40; $attempt++) {
         try {
-            $response = Invoke-WebRequest -Uri "http://127.0.0.1:$FrontendPort/mobile" -UseBasicParsing -TimeoutSec 2
+            $response = Invoke-WebRequest -Uri "$env:TAGBACK_LIVE_BASE_URL/mobile" -SkipCertificateCheck -TimeoutSec 2
             if ($response.StatusCode -eq 200) { $frontendReady = $true; break }
         } catch { Start-Sleep -Milliseconds 500 }
     }

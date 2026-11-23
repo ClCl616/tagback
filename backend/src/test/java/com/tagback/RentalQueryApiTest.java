@@ -24,7 +24,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(RentalQueryController.class)
-@ActiveProfiles("sms-mock")
+@ActiveProfiles("kakao-auth")
 @Import({ApiAccessConfiguration.class, ApiExceptionHandler.class})
 class RentalQueryApiTest {
     @Autowired MockMvc mvc;

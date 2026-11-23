@@ -9,6 +9,9 @@ async function fixture(page: Page) {
     failItems: false,
     failCode: false,
     codeSeconds: 180,
+    outstanding: false,
+    withdrawMode: 'success' as 'success' | 'blocked' | 'lost',
+    withdrawCalls: 0,
   };
   const expires = () => new Date(Date.now() + 3600000).toISOString();
   const items = [
@@ -87,10 +90,20 @@ async function fixture(page: Page) {
       name: state.name,
       occupation: '학생',
       role: 'USER',
-      maskedPhoneNumber: '010-****-5678',
     };
+    if (url.pathname === '/api/v1/account/outstanding-rentals')
+      return route.fulfill({ json: { hasOutstandingRentals: state.outstanding } });
+    if (url.pathname === '/api/v1/account' && route.request().method() === 'DELETE') {
+      state.withdrawCalls++;
+      if (route.request().headers()['x-expected-user-id'] !== state.userId)
+        return route.fulfill({ status: 409, json: { error: { code: 'ACCOUNT_CHANGED', message: '로그인 계정이 변경되었습니다. 계정을 다시 확인해 주세요.' } } });
+      if (state.withdrawMode === 'blocked') return route.fulfill({ status: 409, json: { error: { code: 'OUTSTANDING_RENTALS', message: '미반납 물품' } } });
+      if (state.withdrawMode === 'lost') { state.signedIn = false; return route.abort(); }
+      state.signedIn = false;
+      return route.fulfill({ status: 204 });
+    }
     if (url.pathname.endsWith('/browser-registration'))
-      return route.fulfill({ json: { registered: false } });
+      return route.fulfill({ json: { registered: true, expiresAt: expires() } });
     if (url.pathname.includes('/login/')) {
       state.signedIn = true;
       return route.fulfill({
@@ -168,6 +181,72 @@ async function fixture(page: Page) {
   return state;
 }
 
+test('탈퇴 전 미반납 물품을 안내하고 요청을 막는다', async ({ page }) => {
+  const state = await fixture(page); state.outstanding = true;
+  await page.goto('/mobile/account');
+  await page.getByRole('link', { name: '회원 탈퇴' }).click();
+  await expect(page.getByText('반납하지 않은 물품이 있어요.')).toBeVisible();
+  await page.getByRole('checkbox').check();
+  await expect(page.getByRole('button', { name: '회원 탈퇴하기' })).toBeDisabled();
+  expect(state.withdrawCalls).toBe(0);
+  await page.getByRole('link', { name: '대여 중인 물품 확인' }).click();
+  await expect(page).toHaveURL(/\/mobile\/rentals$/);
+});
+
+test('동의 후 탈퇴하고 완료 화면에서 계정 정보가 제거된다', async ({ page }) => {
+  const state = await fixture(page);
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto('/mobile/account');
+  await page.getByRole('link', { name: '회원 탈퇴' }).click();
+  await expect(page.getByText(/현재 반납하지 않은 물품이 없어요/)).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await expect(page.getByRole('button', { name: '회원 탈퇴하기' })).toBeDisabled();
+  await page.getByRole('checkbox').check();
+  await page.getByRole('button', { name: '회원 탈퇴하기' }).click();
+  await expect(page.getByRole('heading', { name: '회원 탈퇴가 완료되었어요' })).toBeVisible();
+  expect(state.withdrawCalls).toBe(1);
+  await page.getByRole('link', { name: '홈으로' }).click();
+  await expect(page.getByText('김민준님')).toHaveCount(0);
+});
+
+test('탈퇴 직전 새 미반납이 생기면 서버 거부를 표시한다', async ({ page }) => {
+  const state = await fixture(page); state.withdrawMode = 'blocked';
+  await page.goto('/mobile/withdraw');
+  await expect(page.getByText(/현재 반납하지 않은 물품이 없어요/)).toBeVisible();
+  await page.getByRole('checkbox').check();
+  state.outstanding = true;
+  await page.getByRole('button', { name: '회원 탈퇴하기' }).click();
+  await expect(page.getByRole('alert')).toContainText('반납하지 않은 물품');
+  await expect(page.getByRole('button', { name: '회원 탈퇴하기' })).toBeDisabled();
+  expect(state.withdrawCalls).toBe(1);
+});
+
+test('탈퇴 확인 중 계정이 바뀌면 삭제를 막고 새 계정 동의를 다시 받는다', async ({ page }) => {
+  const state = await fixture(page);
+  await page.goto('/mobile/withdraw');
+  await expect(page.getByText(/회원번호 12/)).toBeVisible();
+  await page.getByRole('checkbox').check();
+  state.userId = '99'; state.name = '이서연';
+  await page.getByRole('button', { name: '회원 탈퇴하기' }).click();
+  await expect(page.getByRole('alert')).toContainText('계정이 변경');
+  await expect(page.getByText(/회원번호 99/)).toBeVisible();
+  await expect(page.getByRole('checkbox')).not.toBeChecked();
+  await expect(page.getByRole('button', { name: '회원 탈퇴하기' })).toBeDisabled();
+  expect(state.signedIn).toBe(true);
+});
+
+test('탈퇴 응답이 유실되면 완료로 단정하지 않고 새로고침 후에도 재요청하지 않는다', async ({ page }) => {
+  const state = await fixture(page); state.withdrawMode = 'lost';
+  await page.goto('/mobile/withdraw');
+  await expect(page.getByText(/현재 반납하지 않은 물품이 없어요/)).toBeVisible();
+  await page.getByRole('checkbox').check();
+  await page.getByRole('button', { name: '회원 탈퇴하기' }).click();
+  await expect(page.getByRole('heading', { name: '탈퇴 결과를 확인하지 못했어요' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { name: '탈퇴 결과를 확인하지 못했어요' })).toBeVisible();
+  expect(state.withdrawCalls).toBe(1);
+});
+
 test('code is explicitly issued, shared across routes and never reissued by focus or expiry', async ({
   page,
 }) => {
@@ -222,11 +301,11 @@ test('guest login returns to the requested code screen and polling preserves typ
   state.signedIn = false;
   await page.goto('/mobile/code');
   await expect(page).toHaveURL(/login\?next=/);
-  await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
+  await page.getByLabel('PIN 숫자 6자리').fill('048');
   await page.evaluate(() => window.dispatchEvent(new Event('tagback-session')));
-  await expect(page.getByLabel('전화번호', { exact: true })).toHaveValue('01012345678');
-  await page.getByRole('button', { name: '다음', exact: true }).click();
-  await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
+  await expect(page.getByLabel('PIN 숫자 6자리')).toHaveValue('048');
+  await page.getByLabel('PIN 숫자 6자리').fill('048259');
+  await page.getByRole('button', { name: '확인', exact: true }).click();
   await expect(page).toHaveURL(/\/mobile\/code$/);
   expect(state.codes).toBe(0);
 });

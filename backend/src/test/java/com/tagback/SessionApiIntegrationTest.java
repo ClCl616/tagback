@@ -5,7 +5,6 @@ import com.tagback.domain.entity.SessionRevokedReason;
 import com.tagback.domain.repository.LoginSessionRepository;
 import com.tagback.dto.auth.*;
 import com.tagback.service.*;
-import com.tagback.service.sms.*;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -18,30 +17,30 @@ import org.springframework.web.context.WebApplicationContext;
 import java.time.*;
 import java.sql.Timestamp;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.springframework.test.web.servlet.setup.MockMvcBuilders.webAppContextSetup;
 
 @EnabledIfEnvironmentVariable(named = "TAGBACK_AUTH_SCHEMA_TEST", matches = "true")
-@SpringBootTest(properties = {"spring.profiles.active=sms-mock",
+@SpringBootTest(properties = {"spring.profiles.active=kakao-auth",
         "spring.datasource.url=jdbc:postgresql://127.0.0.1:55439/tagback_auth_test",
         "spring.datasource.username=postgres", "spring.datasource.password="})
-@Import(SmsMockApiIntegrationTest.TimeConfiguration.class)
+@Import(TestAuthClock.TimeConfiguration.class)
 class SessionApiIntegrationTest {
     @Autowired WebApplicationContext context;
     @Autowired SessionService service;
-    @Autowired SignupService signup;
+    @Autowired KakaoSignupService signup;
+    @Autowired KakaoChallengeService challenges;
+    @Autowired KakaoLoginService kakaoLogin;
     @Autowired LoginService login;
-    @Autowired SmsAuthService sms;
-    @Autowired SmsSecrets secrets;
+    @Autowired AuthSecrets secrets;
     @Autowired LoginSessionRepository sessions;
-    @Autowired SmsMockApiIntegrationTest.MutableClock clock;
+    @Autowired TestAuthClock.MutableClock clock;
     @Autowired JdbcTemplate jdbc;
     private MockMvc mvc;
-    private final List<String> phones = new ArrayList<>();
-    private static final AtomicLong sequence = new AtomicLong(93000000);
+    private final List<String> identities = new ArrayList<>();
+    private final List<UUID> challengeIds = new ArrayList<>();
     private final Instant initial = Instant.parse("2026-10-06T09:00:00Z");
 
     @BeforeEach void setup() {
@@ -49,28 +48,37 @@ class SessionApiIntegrationTest {
         mvc = webAppContextSetup(context).build();
     }
     @AfterEach void cleanup() {
-        for (String phone : phones) {
-            for (UUID id : jdbc.query("select verification_grant_id from verification_grants where phone_number = ?", (row, n) -> row.getObject(1, UUID.class), phone))
-                jdbc.update("delete from auth_operations where caller_scope_hash in (?, ?)", secrets.tokenHash("signup:" + id), secrets.tokenHash("new-browser-login:" + id));
-            for (UUID id : jdbc.query("select browser_registration_id from browser_registrations where user_id in (select user_id from users where phone_number = ?)", (row, n) -> row.getObject(1, UUID.class), phone))
-                jdbc.update("delete from auth_operations where caller_scope_hash = ?", secrets.tokenHash("registered-login:" + id));
-            jdbc.update("delete from login_sessions where user_id in (select user_id from users where phone_number = ?)", phone);
-            jdbc.update("delete from browser_registrations where user_id in (select user_id from users where phone_number = ?)", phone);
-            jdbc.update("delete from users where phone_number = ?", phone);
-            jdbc.update("delete from verification_grants where phone_number = ?", phone);
-            jdbc.update("delete from sms_verifications where phone_number = ?", phone);
-            jdbc.update("delete from sms_request_gates where phone_number = ?", phone);
-            jdbc.update("delete from auth_operations where caller_scope_hash = ?", secrets.tokenHash("sms-request:" + phone));
+        for (String identity : identities) {
+            var ids = jdbc.queryForList("select user_id from kakao_bot_identities where bot_id=? and bot_user_key=?", Long.class, "test-bot", identity);
+            for (Long id : ids) {
+                for (UUID browser : jdbc.query("select browser_registration_id from browser_registrations where user_id=?", (row, n) -> row.getObject(1, UUID.class), id))
+                    jdbc.update("delete from auth_operations where caller_scope_hash=?", secrets.tokenHash("registered-login:" + browser));
+                jdbc.update("delete from login_sessions where user_id=?", id);
+                jdbc.update("delete from browser_registrations where user_id=?", id);
+                jdbc.update("delete from kakao_bot_identities where user_id=?", id);
+                jdbc.update("delete from users where user_id=?", id);
+            }
+        }
+        for (UUID id : challengeIds) {
+            jdbc.update("delete from auth_operations where caller_scope_hash in (?,?)", secrets.keyedHash("kakao-signup-scope:" + id), secrets.keyedHash("kakao-login-scope:" + id));
+            jdbc.update("delete from kakao_auth_challenges where challenge_id=?", id);
         }
     }
-    private Fixture account() {
-        String phone = "+8210" + sequence.incrementAndGet(); phones.add(phone);
-        var result = signup.signup(new AuthRequests.Signup(grant(phone, SmsPurpose.SIGNUP), "041527", new AuthRequests.Profile("테스트", "학생")), UUID.randomUUID());
-        return new Fixture(phone, result.browserToken(), result.sessionToken());
+    private record Challenge(UUID id, String proof) {}
+    private Challenge challenge(String identity, String purpose) {
+        String proof = challenges.newProof();
+        var issued = challenges.issue(purpose, proof, UUID.randomUUID().toString());
+        challengeIds.add(issued.id());
+        // Session tests use a verified fixture; the skill and rate limits have their own integration tests.
+        jdbc.update("update kakao_auth_challenges set status='VERIFIED', bot_id='test-bot', bot_user_key=?, verified_at=? where challenge_id=?",
+                identity, Timestamp.from(clock.instant()), issued.id());
+        return new Challenge(issued.id(), proof);
     }
-    private String grant(String phone, SmsPurpose purpose) {
-        UUID id = UUID.fromString(sms.request(new AuthRequests.SmsRequest(phone, purpose), UUID.randomUUID()).requestId());
-        return sms.verify(new AuthRequests.SmsVerification(id.toString(), sms.getMockCode(id).code())).verificationToken();
+    private Fixture account() {
+        String identity = UUID.randomUUID().toString(); identities.add(identity);
+        var c = challenge(identity, "SIGNUP");
+        var result = signup.signup(new AuthRequests.KakaoSignup(c.id(), "041527", new AuthRequests.Profile("테스트", "학생")), c.proof(), UUID.randomUUID());
+        return new Fixture(identity, result.browserToken(), result.sessionToken());
     }
     private Cookie session(String token) { return new Cookie(AuthCookies.SESSION_COOKIE, token); }
     private Cookie browser(String token) { return new Cookie(AuthCookies.BROWSER_COOKIE, token); }
@@ -129,7 +137,8 @@ class SessionApiIntegrationTest {
     @Test void replacedSessionHasSpecificErrorAndStaleLogoutRemovalDoNotAffectNewBrowser() throws Exception {
         var old = account();
         clock.advance(Duration.ofMinutes(1));
-        var replacement = login.newBrowser(new AuthRequests.NewBrowserLogin(grant(old.phone(), SmsPurpose.LOGIN), "041527"), UUID.randomUUID());
+        var c = challenge(old.identity(), "LOGIN");
+        var replacement = kakaoLogin.newBrowser(new AuthRequests.KakaoNewBrowserLogin(c.id(), "041527"), c.proof(), UUID.randomUUID());
         mvc.perform(get("/api/v1/auth/session").cookie(session(old.session())))
                 .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.error.code").value("SESSION_REPLACED"));
         mvc.perform(post("/api/v1/auth/logout").cookie(session(old.session()))).andExpect(status().isNoContent());
@@ -138,7 +147,7 @@ class SessionApiIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.authenticated").value(true));
         assertTrue(service.registration(replacement.browserToken()).registered());
     }
-    private record Fixture(String phone, String browser, String session) {
+    private record Fixture(String identity, String browser, String session) {
         @Override public String toString() { return "Fixture[redacted]"; }
     }
 }

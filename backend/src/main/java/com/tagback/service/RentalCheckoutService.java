@@ -42,7 +42,8 @@ public class RentalCheckoutService {
      */
     @Transactional
     public CheckoutResult checkout(long authenticatedUserId, long itemId, long itemTypeId) {
-        var user = users.findById(authenticatedUserId)
+        // Withdrawal holds the same row lock while checking for outstanding rentals and deleting the account.
+        var user = users.findByIdForUpdate(authenticatedUserId)
                 .orElseThrow(() -> new AuthException(AuthErrorCode.ACCOUNT_NOT_FOUND));
         var item = items.findForUpdate(itemId).orElseThrow(ItemException::itemNotFound);
         if (item.getItemType().getId() != itemTypeId) throw RentalException.itemTypeMismatch();

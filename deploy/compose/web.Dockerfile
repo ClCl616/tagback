@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1
 FROM node:24-bookworm-slim AS build
 ENV CI=true
+ARG VITE_KAKAO_CHANNEL_URL=""
+ENV VITE_KAKAO_CHANNEL_URL=$VITE_KAKAO_CHANNEL_URL
 RUN npm install --global pnpm@11.19.0
 WORKDIR /src
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./

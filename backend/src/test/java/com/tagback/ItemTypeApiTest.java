@@ -35,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest({ItemTypeController.class, TagLifecycleController.class})
-@ActiveProfiles("sms-mock")
+@ActiveProfiles("kakao-auth")
 @Import({ApiAccessConfiguration.class, ApiExceptionHandler.class})
 class ItemTypeApiTest {
     @Autowired MockMvc mvc;

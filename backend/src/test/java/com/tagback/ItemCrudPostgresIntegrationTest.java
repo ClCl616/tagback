@@ -3,7 +3,7 @@ package com.tagback;
 import com.tagback.config.AuthCookies;
 import com.tagback.domain.entity.*;
 import com.tagback.domain.repository.*;
-import com.tagback.service.sms.SmsSecrets;
+import com.tagback.service.AuthSecrets;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
 import java.time.Instant;
@@ -27,7 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Opt-in, isolated PostgreSQL only; every test rolls its fixture and changes back. */
 @EnabledIfEnvironmentVariable(named = "TAGBACK_ITEM_DB_TEST", matches = "true")
 @SpringBootTest(properties = {
-        "spring.profiles.active=sms-mock",
+        "spring.profiles.active=kakao-auth",
         "spring.datasource.url=jdbc:postgresql://127.0.0.1:${TAGBACK_ITEM_DB_PORT:55440}/tagback_items_test",
         "spring.datasource.username=postgres", "spring.datasource.password=",
         "spring.jpa.hibernate.ddl-auto=validate", "spring.jpa.open-in-view=false"})
@@ -42,7 +42,7 @@ class ItemCrudPostgresIntegrationTest {
     @Autowired BrowserRegistrationRepository browsers;
     @Autowired LoginSessionRepository sessions;
     @Autowired ItemTypeRepository types;
-    @Autowired SmsSecrets secrets;
+    @Autowired AuthSecrets secrets;
     private Cookie admin;
     private Cookie member;
     private long adminId;

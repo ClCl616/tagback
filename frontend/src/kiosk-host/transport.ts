@@ -36,7 +36,8 @@ export async function kioskRequest(command: KioskCommand): Promise<KioskResponse
       if (command.action === 'verify' && response.status >= 200 && response.status < 300) {
         const value = data as {
           grantHandle?: unknown;
-          maskedPhoneNumber?: unknown;
+          userId?: unknown;
+          userName?: unknown;
           expiresAt?: unknown;
         } | null;
         if (typeof value?.grantHandle !== 'string' || !value.grantHandle.length)
@@ -44,7 +45,8 @@ export async function kioskRequest(command: KioskCommand): Promise<KioskResponse
         // Existing UI model field; in a host runtime this is ONLY an opaque handle, never a bearer token.
         data = {
           token: value.grantHandle,
-          maskedPhoneNumber: value.maskedPhoneNumber,
+          userId: value.userId,
+          userName: value.userName,
           expiresAt: value.expiresAt,
         };
       }

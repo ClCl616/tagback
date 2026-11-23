@@ -38,20 +38,18 @@ export type Rental = {
 };
 export type User = {
   id: string;
-  phone: string;
   name?: string;
   occupation?: string;
   pinHash?: string;
   passwordHash?: string;
 };
-export type SmsChallenge = { id: string; expiresAt: number; resendAt: number };
 export type Code = { value: string; userId: string; expiresAt: number; used: boolean };
 export type Grant = {
   token: string;
-  userId?: string;
   code?: string;
   expiresAt: number;
-  maskedPhone: string;
+  userId: string;
+  userName: string;
 };
 export type NfcScanProof = {
   bridgeId: string;
@@ -66,7 +64,7 @@ export type Receipt = { operationId: string; item: Item; rental: Rental; type: '
 export interface ServiceApi {
   catalog(grant?: Grant): Promise<Catalog>;
   logout(token: string): Promise<void>;
-  me(token: string): Promise<{ phone: string; name: string; occupation: string }>;
+  me(token: string): Promise<{ name: string; occupation: string }>;
   code(token: string, renew?: boolean): Promise<Code>;
   rentals(token: string): Promise<Rental[]>;
   verifyCode(value: string): Promise<Grant>;

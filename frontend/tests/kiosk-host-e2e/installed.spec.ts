@@ -42,7 +42,7 @@ async function installHost(page: Page, platform: 'windows' | 'android', loseRepl
               case 'verify':
                 data = {
                   grantHandle: 'native-grant-handle',
-                  maskedPhoneNumber: '010****5678',
+                  userId: '12', userName: '홍길동',
                   expiresAt: new Date(Date.now() + 180000).toISOString(),
                 };
                 break;

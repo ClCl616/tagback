@@ -1,6 +1,11 @@
+import { registeredLogin, signupKakao } from './kakao-auth';
 import { createHmac, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { expect, test, type BrowserContext } from '@playwright/test';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const { createTransport } = require('../../../kiosk/windows/src/transport.cjs');
 
 const uid = '04A23B1C5D6E80';
 const secret = 'test-only-nfc-scan-secret-32-bytes-long';
@@ -47,44 +52,33 @@ function sql(statement: string): string {
   ).trim();
 }
 
-async function signup(context: BrowserContext, phoneNumber: string) {
-  const request = context.request;
-  const sms = await request.post('/api/v1/auth/sms/requests', {
-    data: { phoneNumber, purpose: 'SIGNUP' },
-    headers: { 'Idempotency-Key': randomUUID() },
-  });
-  expect(sms.ok(), await sms.text()).toBeTruthy();
-  const { requestId } = await sms.json();
-  const delivered = await request.get(`/api/v1/dev/sms/requests/${requestId}`);
-  expect(delivered.ok(), await delivered.text()).toBeTruthy();
-  const { code } = await delivered.json();
-  const verified = await request.post('/api/v1/auth/sms/verifications', {
-    data: { requestId, code },
-  });
-  expect(verified.ok(), await verified.text()).toBeTruthy();
-  const { verificationToken } = await verified.json();
-  const created = await request.post('/api/v1/auth/signup', {
-    data: {
-      verificationToken,
-      pin: '048259',
-      profile: { name: '연동 테스트', occupation: '학생' },
-    },
-    headers: { 'Idempotency-Key': randomUUID() },
-  });
-  expect(created.status(), await created.text()).toBe(201);
-}
+test('실제 사용자 화면에서 탈퇴하고 계정과 세션이 삭제된다', async ({ browser }) => {
+  const owner = await browser.newContext({ baseURL, ignoreHTTPSErrors: true });
+  try {
+    const userId = await signupKakao(owner, '탈퇴 화면 시험');
+    const page = await owner.newPage();
+    await page.goto('/mobile/account');
+    await page.getByRole('link', { name: '회원 탈퇴' }).click();
+    await expect(page.getByText(/현재 반납하지 않은 물품이 없어요/)).toBeVisible();
+    await page.getByRole('checkbox').check();
+    await page.getByRole('button', { name: '회원 탈퇴하기' }).click();
+    await expect(page.getByRole('heading', { name: '회원 탈퇴가 완료되었어요' })).toBeVisible();
+    expect(sql(`select count(*) from users where user_id=${Number(userId)}`)).toBe('0');
+    expect((await owner.request.get('/api/v1/auth/session')).status()).toBe(401);
+  } finally { await owner.close(); }
+});
 
 test('모바일 코드와 실제 반납 API가 대여자 본인만 반납하도록 연결된다', async ({ browser }) => {
   const owner = await browser.newContext({ baseURL, ignoreHTTPSErrors: true });
   const other = await browser.newContext({ baseURL, ignoreHTTPSErrors: true });
   const kioskContext = await browser.newContext({ baseURL, ignoreHTTPSErrors: true });
   try {
-    await signup(owner, '01070000001');
-    await signup(other, '01070000002');
+    const ownerId = await signupKakao(owner, '연동 테스트');
+    await signupKakao(other, '다른 이용자');
     sql(
       'insert into rentals(user_id, item_id, rented_at, due_at, status) ' +
         "select u.user_id, i.item_id, now() - interval '1 hour', now() + interval '1 hour', 'RENTED' " +
-        "from users u cross join items i where u.phone_number = '+821070000001' and i.item_name = 'Live calculator'",
+        `from users u cross join items i where u.user_id = ${Number(ownerId)} and i.item_name = 'Live calculator'`,
     );
 
     const ownerMobile = await owner.newPage();
@@ -179,7 +173,7 @@ test('모바일 코드와 실제 반납 API가 대여자 본인만 반납하도�
       sql(
         'select count(*) from item_status_history h join items i on i.item_id = h.item_id ' +
           "join users u on u.user_id = h.changed_by_user_id where i.item_name = 'Live calculator' " +
-          "and u.phone_number = '+821070000001' and h.to_status = 'AVAILABLE'",
+          `and u.user_id = ${Number(ownerId)} and h.to_status = 'AVAILABLE'`,
       ),
     ).toBe('1');
   } finally {
@@ -194,7 +188,13 @@ test('실제 대여 저장 응답 유실 복구와 손상 반납이 DB에 한 �
   const kioskContext = await browser.newContext({ baseURL, ignoreHTTPSErrors: true });
   const scanUid = '04A23B1C5D6E81';
   try {
-    await signup(owner, '01070000003');
+    const ownerId = await signupKakao(owner, '연동 테스트');
+    await registeredLogin(owner);
+    const session = await owner.request.get('/api/v1/auth/session');
+    expect(session.ok()).toBeTruthy();
+    const sessionUser = (await session.json()).user;
+    expect(sessionUser).toMatchObject({ userId: ownerId, name: '연동 테스트' });
+    expect(sessionUser).not.toHaveProperty('maskedPhoneNumber');
     sql(
       "insert into item_types(name) values ('Live umbrella'); insert into items(item_type_id,item_name,status) select item_type_id,'Live damaged umbrella','TAG_PENDING' from item_types where name='Live umbrella'; insert into nfc_tags(item_id,tag_uid) select item_id,'04A23B1C5D6E81' from items where item_name='Live damaged umbrella'; update items set status='AVAILABLE' where item_name='Live damaged umbrella';",
     );
@@ -221,11 +221,21 @@ test('실제 대여 저장 응답 유실 복구와 손상 반납이 DB에 한 �
     await mobile.getByRole('button', { name: '이용 코드 발급', exact: true }).click();
     await expect(mobile.locator('.code-number')).toHaveText(/^[0-9]{6}$/);
     const rentalCode = (await mobile.locator('.code-number').textContent())!;
+    const nativeTransport = createTransport(baseURL);
+    const nativeGrant = await nativeTransport.request({ version: 2, requestId: randomUUID(), command: { action: 'verify', code: rentalCode } });
+    expect(nativeGrant.status).toBe(201);
+    expect(nativeGrant.data).toMatchObject({ userId: ownerId, userName: '연동 테스트' });
+    expect(nativeGrant.data).not.toHaveProperty('token');
+    expect(nativeGrant.data).not.toHaveProperty('maskedPhoneNumber');
     const kiosk = await kioskContext.newPage();
     await kiosk.goto('/kiosk');
     await kiosk.getByRole('button', { name: /대여하기/ }).click();
     await kiosk.getByLabel('일회성 대여 코드').fill(rentalCode);
+    const verified = kiosk.waitForResponse((r) => r.url().endsWith('/api/v1/kiosk/rental-grants'));
     await kiosk.getByRole('button', { name: '확인', exact: true }).click();
+    const grant = await (await verified).json();
+    expect(grant).toMatchObject({ userId: ownerId, userName: '연동 테스트' });
+    expect(grant).not.toHaveProperty('maskedPhoneNumber');
     await kiosk.getByRole('button', { name: /Live umbrella/ }).click();
     const emit = async (valid = true) => {
       const issuedAt = Date.now(),
@@ -247,6 +257,7 @@ test('실제 대여 저장 응답 유실 복구와 손상 반납이 DB에 한 �
     };
     await emit();
     await expect(kiosk.getByRole('heading', { name: '대여 정보를 확인해 주세요' })).toBeVisible();
+    await expect(kiosk.getByText(`연동 테스트 · 회원번호 ${ownerId}`)).toBeVisible();
     const writes: { key: string; auth: string; body: unknown }[] = [];
     let rentalResponse: any;
     await kiosk.route('**/api/v1/rentals', async (route) => {

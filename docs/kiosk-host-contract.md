@@ -79,12 +79,15 @@ health 외 data는 기존 서버 JSON 형태를 기본으로 한다. 단 verify 
 ```json
 {
   "grantHandle": "opaque-host-owned-reference",
-  "maskedPhoneNumber": "010****5678",
+  "userId": "12",
+  "userName": "홍길동",
   "expiresAt": "2026-11-13T03:03:00Z"
 }
 ```
 
 실제 bearer token은 host가 보관하고 grantHandle로 찾아 사용한다. UI 모델 호환을 위해 현재 `Grant.token` 필드에 이 handle이 들어가지만 호스트 경로에서는 HTTP Authorization에 사용하지 않는다. host는 세션/만료/완료 시 보관한 grant를 정리해야 한다. 웹 adapter의 Grant.token은 기존 실제 bearer token이다. 경로 선택을 고정해 handle이 웹 HTTP로 유출되지 않도록 한다.
+
+이름과 회원번호는 대여자 확인 및 동명이인 구분에 사용한다. 이 응답 계약은 이전 전화번호 필드와 호환되지 않으므로 서버·웹·Windows 호스트를 함께 갱신한다.
 
 P1에서는 기존 reader event/proof와 반납 코드가 UI 메모리를 거친다. NFC 비밀 서명 키는 UI에 주입하지 않는다. proof/티켓까지 불투명 handle로 전환하고 native 세션 정리·저널 저장을 소유하게 하는 작업은 P4에서 계약 버전을 구분해 확장한다. 현재 모든 인증 문맥이 native에만 존재한다고 표현하지 않는다.
 

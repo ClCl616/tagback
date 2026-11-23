@@ -69,11 +69,11 @@ function createTransport(origin, fetcher = fetch) {
     // Health is ResponseEntity<Void>; business responses still require valid JSON.
     let data = c.action==='health' && !responseText.trim() ? null : JSON.parse(responseText);
     if (response.ok && c.action==='verify') {
-      if (typeof data?.token!=='string' || !data.token.length || data.token.length>8192 || typeof data.maskedPhoneNumber!=='string' || !date(data.expiresAt)) throw Error('INVALID_GRANT_RESPONSE');
+      if (typeof data?.token!=='string' || !data.token.length || data.token.length>8192 || !id(data.userId) || typeof data.userName!=='string' || !data.userName.trim() || !date(data.expiresAt)) throw Error('INVALID_GRANT_RESPONSE');
       for (const [key,g] of grants) if (g.expiresAt<Date.now() && pending?.grantRef!==key) grants.delete(key);
       if (grants.size>=32) throw Error('GRANT_CAPACITY');
       const handle=randomUUID(); grants.set(handle,{token:data.token,expiresAt:Date.parse(data.expiresAt)});
-      data={grantHandle:handle,maskedPhoneNumber:data.maskedPhoneNumber,expiresAt:data.expiresAt};
+      data={grantHandle:handle,userId:data.userId,userName:data.userName,expiresAt:data.expiresAt};
     }
     if (response.ok && c.action==='return-scan') {
       if (!uuid(data?.scanTicketId) || !id(data.itemId) || !id(data.rentalId)) throw Error('INVALID_TICKET_RESPONSE');

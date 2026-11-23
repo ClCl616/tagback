@@ -1,6 +1,6 @@
 name: tagback
 
-# Local HTTPS stack. Authentication currently requires the sms-mock profile.
+# Local HTTPS stack. Kakao authentication requires explicit local secrets.
 services:
   db:
     image: postgres:17-bookworm
@@ -27,11 +27,12 @@ services:
       context: .
       dockerfile: deploy/compose/api.Dockerfile
     environment:
-      SPRING_PROFILES_ACTIVE: sms-mock
+      SPRING_PROFILES_ACTIVE: kakao-auth
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/tagback
       SPRING_DATASOURCE_USERNAME: tagback_user
       SPRING_CONFIG_IMPORT: configtree:/run/secrets/
       TAGBACK_AUTH_ALLOWED_ORIGINS: https://localhost:${TAGBACK_HTTPS_PORT:-8443}
+      TAGBACK_KAKAO_BOT_ID: ${TAGBACK_KAKAO_BOT_ID:-local-test-bot}
       NFC_BRIDGE_ID: ${NFC_BRIDGE_ID:-kiosk-1}
       SERVER_PORT: "8080"
       SERVER_SHUTDOWN: graceful
@@ -39,8 +40,12 @@ services:
     secrets:
       - source: db_password
         target: TAGBACK_DB_PASSWORD
-      - source: sms_hash_key
-        target: tagback.auth.sms-hash-key
+      - source: auth_common_key
+        target: tagback.auth.common-hash-key
+      - source: kakao_hmac_key
+        target: tagback.kakao.hmac-key
+      - source: kakao_skill_secret
+        target: tagback.kakao.skill-secret
       - source: nfc_scan_secret
         target: tagback.nfc.scan-secret
     depends_on:
@@ -60,6 +65,8 @@ services:
     build:
       context: .
       dockerfile: deploy/compose/web.Dockerfile
+      args:
+        VITE_KAKAO_CHANNEL_URL: ${VITE_KAKAO_CHANNEL_URL:-}
     ports:
       - "127.0.0.1:${TAGBACK_HTTPS_PORT:-8443}:443"
     volumes:
@@ -83,8 +90,12 @@ services:
 secrets:
   db_password:
     file: ./deploy/compose/local/db-password
-  sms_hash_key:
-    file: ./deploy/compose/local/sms-hash-key
+  auth_common_key:
+    file: ./deploy/compose/local/auth-common-key
+  kakao_hmac_key:
+    file: ./deploy/compose/local/kakao-hmac-key
+  kakao_skill_secret:
+    file: ./deploy/compose/local/kakao-skill-secret
   nfc_scan_secret:
     file: ./deploy/compose/local/nfc-scan-secret
 

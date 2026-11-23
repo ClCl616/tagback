@@ -4,7 +4,6 @@ import com.tagback.domain.repository.RentalAuthorizationStore;
 import com.tagback.domain.repository.UserRepository;
 import com.tagback.dto.rental.RentalResponses;
 import com.tagback.exception.*;
-import com.tagback.service.sms.SmsSecrets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
@@ -16,16 +15,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Profile("sms-mock & !prod & !production")
+@Profile(com.tagback.config.AuthProfiles.CORE)
 public class RentalCodeService {
     private final RentalAuthorizationStore store;
     private final UserRepository users;
-    private final SmsSecrets secrets;
+    private final AuthSecrets secrets;
     private final RentalVerificationLimiter limiter;
     private final Clock clock;
     private final int issueLimit;
 
-    public RentalCodeService(RentalAuthorizationStore store, UserRepository users, SmsSecrets secrets,
+    public RentalCodeService(RentalAuthorizationStore store, UserRepository users, AuthSecrets secrets,
             RentalVerificationLimiter limiter, Clock clock,
             @Value("${tagback.rental.new-codes-per-user-per-hour:10}") int issueLimit) {
         if (issueLimit < 1) throw new IllegalArgumentException("Rental code issuance limit must be positive");
@@ -35,9 +34,9 @@ public class RentalCodeService {
 
     @Transactional
     public RentalResponses.Code issue(long authenticatedUserId) {
-        // Issuance serializes code-space reuse before user/code locks; checkout never acquires this lock.
-        store.lockIssuance();
+        // Match withdrawal's user-first lock order; issuance also serializes code-space reuse.
         users.findByIdForUpdate(authenticatedUserId).orElseThrow(() -> new AuthException(AuthErrorCode.ACCOUNT_NOT_FOUND));
+        store.lockIssuance();
         var now = clock.instant().truncatedTo(ChronoUnit.MICROS);
         store.releaseExpiredCodes(now);
         var active = store.activeCode(authenticatedUserId);
@@ -65,8 +64,8 @@ public class RentalCodeService {
         var user = users.findById(stored.userId()).orElseThrow(RentalException::codeInvalid);
         String token = secrets.generateToken();
         store.insertGrant(UUID.randomUUID(), stored.id(), secrets.tokenHash(token), now, stored.expiresAt());
-        String phone = user.getPhoneNumber();
-        return new RentalResponses.Grant(token, stored.expiresAt(), "010-****-" + phone.substring(phone.length() - 4));
+        return new RentalResponses.Grant(token, stored.expiresAt(), user.getId().toString(),
+                user.getName() == null || user.getName().isBlank() ? "회원" : user.getName());
     }
 
     @Transactional(readOnly = true)
@@ -79,7 +78,7 @@ public class RentalCodeService {
 
     private String codeHash(String code) { return secrets.keyedHash("rental-code-lookup:" + code); }
     private String displayCode(UUID id) {
-        // Re-display an active code without keeping its plaintext; use a separate HMAC domain from SMS.
+        // Re-display an active code without keeping its plaintext; keep its HMAC domain separate.
         long value = Long.parseLong(secrets.keyedHash("rental-code-display:" + id).substring(0, 12), 16);
         return String.format(Locale.ROOT, "%06d", value % 1_000_000);
     }

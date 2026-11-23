@@ -5,7 +5,6 @@ import com.tagback.domain.entity.*;
 import com.tagback.domain.repository.*;
 import com.tagback.dto.auth.*;
 import com.tagback.exception.*;
-import com.tagback.service.sms.SmsSecrets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.Duration;
@@ -16,53 +15,23 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
-@Profile("sms-mock & !prod & !production")
+@Profile(com.tagback.config.AuthProfiles.CORE)
 public class LoginService {
     private final UserRepository users;
     private final BrowserRegistrationRepository browsers;
     private final LoginSessionRepository sessions;
-    private final VerificationGrantRepository grants;
-    private final SmsRequestGateRepository gates;
     private final AuthOperationRepository operations;
     private final PinService pins;
-    private final PhoneNumberNormalizer phones;
-    private final SmsSecrets secrets;
+    private final AuthSecrets secrets;
     private final AuthProperties policy;
     private final Clock clock;
     private final ObjectMapper json;
 
     public LoginService(UserRepository users, BrowserRegistrationRepository browsers, LoginSessionRepository sessions,
-                        VerificationGrantRepository grants, SmsRequestGateRepository gates, AuthOperationRepository operations,
-                        PinService pins, PhoneNumberNormalizer phones, SmsSecrets secrets, AuthProperties policy, Clock clock, ObjectMapper json) {
-        this.users = users; this.browsers = browsers; this.sessions = sessions; this.grants = grants;
-        this.gates = gates; this.operations = operations; this.pins = pins; this.phones = phones; this.secrets = secrets;
+                        AuthOperationRepository operations, PinService pins, AuthSecrets secrets, AuthProperties policy, Clock clock, ObjectMapper json) {
+        this.users = users; this.browsers = browsers; this.sessions = sessions;
+        this.operations = operations; this.pins = pins; this.secrets = secrets;
         this.policy = policy; this.clock = clock; this.json = json;
-    }
-
-    @Transactional(noRollbackFor = PinLoginFailure.class)
-    public Result phone(AuthRequests.PhoneLogin input, UUID key) {
-        requirePinFormat(input.pin());
-        String phone = phones.normalize(input.phoneNumber());
-        var user = users.findByPhoneNumberForUpdate(phone)
-                .orElseThrow(() -> new AuthException(AuthErrorCode.ACCOUNT_NOT_FOUND));
-        Instant now = clock.instant();
-        String scope = secrets.tokenHash("phone-login:" + user.getId());
-        String fingerprint = secrets.keyedHash(scope + ":" + input.pin());
-        String browserToken = secrets.keyedHash("phone-login-browser:" + user.getId() + ":" + key);
-        String sessionToken = secrets.keyedHash("phone-login-session:" + user.getId() + ":" + key);
-        var replay = replay(scope, "PHONE_LOGIN", key, fingerprint, browserToken, sessionToken, now);
-        if (replay != null) return replay;
-        Instant operationExpiry = now.plus(policy.smsRequestWindow());
-        verifyPin(user, input.pin(), scope, "PHONE_LOGIN", key, fingerprint, operationExpiry);
-        now = clock.instant();
-        boolean replaced = browsers.existsByUserIdAndRevokedAtIsNull(user.getId());
-        sessions.revokeAllForUser(user.getId(), now, SessionRevokedReason.SESSION_REPLACED);
-        browsers.revokeAllForUser(user.getId(), now);
-        user.setPinFailureState(0, null);
-        var browser = browsers.saveAndFlush(new BrowserRegistration(user, secrets.tokenHash(browserToken),
-                now.plus(policy.browserRegistrationTtl()), now));
-        return finish(user, browser, browserToken, sessionToken, replaced, scope, "PHONE_LOGIN", key,
-                fingerprint, operationExpiry, now);
     }
 
     // Only explicit PIN failures commit. All failures during successful-login storage roll back.
@@ -83,7 +52,7 @@ public class LoginService {
         String sessionToken = secrets.keyedHash("registered-login-session:" + browser.getId() + ":" + key);
         var replay = replay(scope, "REGISTERED_LOGIN", key, fingerprint, browserToken, sessionToken, now);
         if (replay != null) return replay;
-        Instant operationExpiry = now.plus(policy.smsRequestWindow());
+        Instant operationExpiry = now.plus(policy.loginOperationTtl());
         verifyPin(user, input.pin(), scope, "REGISTERED_LOGIN", key, fingerprint, operationExpiry);
         now = clock.instant();
         if (!browser.getExpiresAt().isAfter(now)) throw new AuthException(AuthErrorCode.BROWSER_REGISTRATION_INVALID);
@@ -94,43 +63,7 @@ public class LoginService {
                 fingerprint, operationExpiry, now);
     }
 
-    @Transactional(noRollbackFor = PinLoginFailure.class)
-    public Result newBrowser(AuthRequests.NewBrowserLogin input, UUID key) {
-        requirePinFormat(input.pin());
-        String hash = secrets.tokenHash(input.verificationToken());
-        String phone = grants.findPhoneNumberByTokenHash(hash)
-                .orElseThrow(() -> new AuthException(AuthErrorCode.VERIFICATION_INVALID));
-        // Gate -> grant -> user. Registered login only takes the user lock.
-        gates.findForUpdate(phone).orElseThrow(() -> new AuthException(AuthErrorCode.VERIFICATION_INVALID));
-        var grant = grants.findByTokenHashForUpdate(hash)
-                .orElseThrow(() -> new AuthException(AuthErrorCode.VERIFICATION_INVALID));
-        if (grant.getPurpose() != SmsPurpose.LOGIN) throw new AuthException(AuthErrorCode.VERIFICATION_PURPOSE_MISMATCH);
-        var user = users.findByPhoneNumberForUpdate(phone)
-                .orElseThrow(() -> new AuthException(AuthErrorCode.ACCOUNT_NOT_FOUND));
-        Instant now = clock.instant();
-        String scope = secrets.tokenHash("new-browser-login:" + grant.getId());
-        String fingerprint = secrets.keyedHash(scope + ":" + input.pin());
-        String browserToken = secrets.keyedHash("new-browser-login-browser:" + grant.getId() + ":" + key);
-        String sessionToken = secrets.keyedHash("new-browser-login-session:" + grant.getId() + ":" + key);
-        var replay = replay(scope, "NEW_BROWSER_LOGIN", key, fingerprint, browserToken, sessionToken, now);
-        if (replay != null) return replay;
-        if (grant.getConsumedAt() != null) throw new AuthException(AuthErrorCode.VERIFICATION_CONSUMED);
-        if (!grant.getExpiresAt().isAfter(now)) throw new AuthException(AuthErrorCode.VERIFICATION_EXPIRED);
-        verifyPin(user, input.pin(), scope, "NEW_BROWSER_LOGIN", key, fingerprint, grant.getExpiresAt());
-        now = clock.instant();
-        if (grants.consumeIfAvailable(grant.getId(), phone, SmsPurpose.LOGIN, now) != 1)
-            throw new AuthException(AuthErrorCode.VERIFICATION_EXPIRED);
-        boolean replaced = browsers.existsByUserIdAndRevokedAtIsNull(user.getId());
-        sessions.revokeAllForUser(user.getId(), now, SessionRevokedReason.SESSION_REPLACED);
-        browsers.revokeAllForUser(user.getId(), now);
-        user.setPinFailureState(0, null);
-        var browser = browsers.saveAndFlush(new BrowserRegistration(user, secrets.tokenHash(browserToken),
-                now.plus(policy.browserRegistrationTtl()), now));
-        return finish(user, browser, browserToken, sessionToken, replaced, scope, "NEW_BROWSER_LOGIN", key,
-                fingerprint, grant.getExpiresAt(), now);
-    }
-
-    private void verifyPin(User user, String pin, String scope, String type, UUID key,
+    void verifyPin(User user, String pin, String scope, String type, UUID key,
                            String fingerprint, Instant expiry) {
         Instant now = clock.instant();
         if (user.getPinFailedCount() >= 20) fail(AuthErrorCode.PIN_LOGIN_BLOCKED, null, scope, type, key, fingerprint, expiry, now);
@@ -164,7 +97,7 @@ public class LoginService {
         throw new PinLoginFailure(code, retryAt);
     }
 
-    private Result replay(String scope, String type, UUID key, String fingerprint,
+    Result replay(String scope, String type, UUID key, String fingerprint,
                           String browserToken, String sessionToken, Instant now) {
         var previous = operations.findForUpdate(scope, type, key.toString());
         if (previous.isEmpty()) return null;
@@ -181,13 +114,13 @@ public class LoginService {
         return new Result(stored.response(), browserToken, sessionToken, session.getAbsoluteExpiresAt(), stored.previousBrowserRevoked());
     }
 
-    private Result finish(User user, BrowserRegistration browser, String browserToken, String sessionToken,
+    Result finish(User user, BrowserRegistration browser, String browserToken, String sessionToken,
                           boolean replaced, String scope, String type, UUID key, String fingerprint,
                           Instant operationExpiry, Instant now) {
         Instant idleExpiry = now.plus(policy.sessionIdleTimeout());
         Instant absoluteExpiry = now.plus(policy.sessionAbsoluteTimeout());
         sessions.saveAndFlush(new LoginSession(browser, secrets.tokenHash(sessionToken), idleExpiry, absoluteExpiry, now));
-        var summary = new AuthResponses.UserSummary(user.getId().toString(), "010-****-" + user.getPhoneNumber().substring(user.getPhoneNumber().length() - 4), user.getRole().name(), user.getName(), user.getOccupation());
+        var summary = new AuthResponses.UserSummary(user.getId().toString(), user.getRole().name(), user.getName(), user.getOccupation());
         var response = new AuthResponses.LoginResult(summary, idleExpiry, browser.getExpiresAt());
         var operation = new AuthOperation(scope, type, key.toString(), fingerprint, operationExpiry, now);
         operation.completeSuccessfully(json.writeValueAsString(new StoredResult(response, replaced)), now);
@@ -195,7 +128,7 @@ public class LoginService {
         return new Result(response, browserToken, sessionToken, absoluteExpiry, replaced);
     }
 
-    private void requirePinFormat(String pin) {
+    void requirePinFormat(String pin) {
         if (pin == null || !pin.matches("[0-9]{6}")) throw new AuthException(AuthErrorCode.INVALID_INPUT);
     }
 

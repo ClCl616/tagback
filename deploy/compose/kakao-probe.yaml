@@ -1,0 +1,68 @@
+name: tagback-kakao-probe
+
+# Isolated, disposable test data only. No host ports and no sms-mock profile.
+services:
+  db:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_DB: tagback_probe
+      POSTGRES_USER: tagback_probe
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets: [db_password]
+    volumes:
+      - probe_db:/var/lib/postgresql/data
+    networks: [private]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/compose/api.Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: kakao-skill-probe
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/tagback_probe
+      SPRING_DATASOURCE_USERNAME: tagback_probe
+      SPRING_CONFIG_IMPORT: configtree:/run/secrets/
+    secrets:
+      - source: db_password
+        target: TAGBACK_DB_PASSWORD
+      - source: skill_secret
+        target: TAGBACK_KAKAO_SKILL_SECRET
+    networks: [private]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  proxy:
+    image: nginx:1.27-alpine
+    volumes:
+      - type: bind
+        source: ./kakao-probe.nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+    networks: [private, edge]
+    depends_on: [api]
+
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.2
+    command: [tunnel, --no-autoupdate, --url, 'http://proxy:8080']
+    networks: [edge]
+    depends_on: [proxy]
+
+secrets:
+  db_password:
+    file: ./local/kakao-probe/db-password
+  skill_secret:
+    file: ./local/kakao-probe/skill-secret
+
+volumes:
+  probe_db:
+
+networks:
+  private:
+    internal: true
+  edge:

@@ -4,7 +4,7 @@ $localDir = Join-Path $PSScriptRoot 'local'
 $tlsDir = Join-Path $localDir 'tls'
 $null = New-Item -ItemType Directory -Force -Path $tlsDir
 $utf8 = [Text.UTF8Encoding]::new($false)
-foreach ($name in @('db-password', 'sms-hash-key', 'nfc-scan-secret')) {
+foreach ($name in @('db-password', 'auth-common-key', 'kakao-hmac-key', 'kakao-skill-secret', 'nfc-scan-secret')) {
     $path = Join-Path $localDir $name
     if (!(Test-Path -LiteralPath $path)) {
         $bytes = New-Object byte[] 32

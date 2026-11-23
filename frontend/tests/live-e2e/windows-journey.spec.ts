@@ -1,3 +1,4 @@
+import { registeredLogin } from './kakao-auth';
 import { test, expect, _electron, type Page } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 import { createHmac, randomUUID } from 'node:crypto';
@@ -31,29 +32,27 @@ function sql(statement: string) {
     { encoding: 'utf8' },
   ).trim();
 }
-async function signup(page: Page, phone: string, name: string) {
+async function signup(page: Page, name: string): Promise<string> {
+  const secret = process.env.TAGBACK_TEST_KAKAO_SKILL_SECRET;
+  const botId = process.env.TAGBACK_TEST_KAKAO_BOT_ID;
+  if (!secret || !botId) throw Error('Isolated Kakao test configuration required');
   await page.goto('/mobile/signup');
   await page.getByLabel('이름', { exact: true }).fill(name);
   await page.getByLabel('직업', { exact: true }).selectOption('학생');
   await page.getByRole('button', { name: '다음', exact: true }).click();
-  await page.getByLabel('전화번호', { exact: true }).fill(phone);
-  const requested = page.waitForResponse(
-    (r) => r.url().endsWith('/api/v1/auth/sms/requests') && r.request().method() === 'POST',
-  );
-  await page.getByRole('button', { name: '인증번호 발송', exact: true }).click();
-  const response = await requested;
-  expect(response.ok()).toBeTruthy();
-  const { requestId } = await response.json();
-  const delivered = await page.request.get(`/api/v1/dev/sms/requests/${requestId}`);
-  expect(delivered.ok()).toBeTruthy();
-  await page.getByLabel('SMS 인증번호').fill((await delivered.json()).code);
-  await page.getByRole('button', { name: '인증번호 확인', exact: true }).click();
-  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
-  await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
-  await page.getByRole('button', { name: '다음', exact: true }).click();
-  await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
-  await page.getByRole('button', { name: '가입 완료', exact: true }).click();
+  const requested = page.waitForResponse(r => r.url().endsWith('/api/v1/auth/kakao/challenges') && r.request().method() === 'POST');
+  await page.getByRole('button', { name: '카카오톡 인증 시작' }).click();
+  const { code } = await (await requested).json();
+  const skill = await page.request.post('/api/v1/auth/kakao/skill', { headers: { 'X-Tagback-Skill-Secret': secret },
+    data: { bot: { id: botId }, userRequest: { utterance: code, user: { type: 'botUserKey', id: randomUUID() } } } });
+  expect(skill.ok()).toBeTruthy();
+  await page.getByRole('button', { name: '인증 확인' }).click();
+  await page.getByLabel('PIN 숫자 6자리').fill('048259');
+  await page.getByRole('button', { name: '확인', exact: true }).click();
+  await page.getByLabel('PIN 숫자 6자리').fill('048259');
+  await page.getByRole('button', { name: '확인', exact: true }).click();
   await expect(page).toHaveURL(/\/mobile$/);
+  return (await (await page.request.get('/api/v1/auth/session')).json()).user.userId as string;
 }
 async function issueCode(page: Page) {
   await page.goto('/mobile/code');
@@ -77,15 +76,11 @@ test('사용자 가입·코드 → 실제 Windows exe 대여/정상·손상 반�
     manage = await admin.newPage();
   let electron: Awaited<ReturnType<typeof _electron.launch>> | undefined;
   try {
-    await signup(mobile, '01070000011', 'Windows 이용자');
+    await signup(mobile, 'Windows 이용자');
     expect((await owner.request.get('/api/v1/admin/users')).status()).toBe(403);
-    await signup(manage, '01070000012', 'Windows 관리자');
-    sql("update users set role='ADMIN' where phone_number='+821070000012'");
-    const login = await admin.request.post('/api/v1/auth/login/phone', {
-      data: { phoneNumber: '01070000012', pin: '048259' },
-      headers: { 'Idempotency-Key': randomUUID() },
-    });
-    expect(login.ok()).toBeTruthy();
+    const adminId = await signup(manage, 'Windows 관리자');
+    sql(`update users set role='ADMIN' where user_id=${Number(adminId)}`);
+    await registeredLogin(admin);
     const typeId = sql(
       `insert into item_types(name) values ('${typeName}') returning item_type_id`,
     ).split('\n')[0];

@@ -33,6 +33,7 @@ target/
 Thumbs.db
 
 # Local analysis / NFC captures
+.local-backups/
 .analysis-tools/
 .venv/
 __pycache__/

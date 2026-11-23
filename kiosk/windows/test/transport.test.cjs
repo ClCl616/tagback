@@ -7,7 +7,7 @@ const req=command=>({version:2,requestId:randomUUID(),command});
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json'}});
 const rentReceipt={rentalId:'1',itemId:'2',itemTypeId:'3',rentalStatus:'RENTED',itemStatus:'RENTED',rentedAt:'2026-11-13T00:00:00Z',dueAt:'2026-11-14T00:00:00Z'};
 async function grant(host) {return (await host.request(req({action:'verify',code:'123456'}))).data.grantHandle;}
-const grantReply=()=>json({token:'server-secret-grant',maskedPhoneNumber:'010-****-1234',expiresAt:'2099-01-01T00:00:00Z'});
+const grantReply=()=>json({token:'server-secret-grant',userId:'12',userName:'홍길동',expiresAt:'2099-01-01T00:00:00Z'});
 test('origin and privileged input are allowlisted',()=>{
   for(const value of ['http://localhost:8080','https://user:pw@example.com','https://example.com/path','https://example.com/?x=1']) assert.throws(()=>apiOrigin(value));
   assert.equal(apiOrigin('https://example.com'),'https://example.com');

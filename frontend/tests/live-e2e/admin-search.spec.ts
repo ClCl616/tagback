@@ -1,9 +1,16 @@
+import { signupKakao, registeredLogin } from './kakao-auth';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { expect, test, type BrowserContext } from '@playwright/test';
 
 function sql(statement: string): string {
-  if (!process.env.TAGBACK_TEST_CONTAINER) throw new Error('Isolated test container required');
+  if (!process.env.TAGBACK_TEST_CONTAINER) {
+    if (!process.env.TAGBACK_LIVE_PSQL || !process.env.TAGBACK_LIVE_DB_PORT)
+      throw new Error('Isolated test database required');
+    return execFileSync(process.env.TAGBACK_LIVE_PSQL,
+      ['-h', '127.0.0.1', '-p', process.env.TAGBACK_LIVE_DB_PORT, '-U', 'postgres', '-d', 'tagback_live_test',
+        '-v', 'ON_ERROR_STOP=1', '-t', '-A', '-c', statement], { encoding: 'utf8' }).trim();
+  }
   return execFileSync(
     'docker',
     [
@@ -25,33 +32,6 @@ function sql(statement: string): string {
   ).trim();
 }
 
-async function signup(context: BrowserContext, phoneNumber: string) {
-  const request = context.request;
-  const sms = await request.post('/api/v1/auth/sms/requests', {
-    data: { phoneNumber, purpose: 'SIGNUP' },
-    headers: { 'Idempotency-Key': randomUUID() },
-  });
-  expect(sms.ok(), await sms.text()).toBeTruthy();
-  const { requestId } = await sms.json();
-  const delivered = await request.get(`/api/v1/dev/sms/requests/${requestId}`);
-  expect(delivered.ok(), await delivered.text()).toBeTruthy();
-  const { code } = await delivered.json();
-  const verified = await request.post('/api/v1/auth/sms/verifications', {
-    data: { requestId, code },
-  });
-  expect(verified.ok(), await verified.text()).toBeTruthy();
-  const { verificationToken } = await verified.json();
-  const created = await request.post('/api/v1/auth/signup', {
-    data: {
-      verificationToken,
-      pin: '048259',
-      profile: { name: '조회 테스트', occupation: '학생' },
-    },
-    headers: { 'Idempotency-Key': randomUUID() },
-  });
-  expect(created.status(), await created.text()).toBe(201);
-}
-
 test('실제 로그인과 PostgreSQL 데이터로 관리자 검색·필터·페이지·오류 복구를 검증한다', async ({
   browser,
 }) => {
@@ -68,9 +48,9 @@ test('실제 로그인과 PostgreSQL 데이터로 관리자 검색·필터·페�
     ignoreHTTPSErrors: true,
   });
   try {
-    await signup(admin, '01070000021');
-    await signup(member, '01070000022');
-    sql("update users set role = 'ADMIN' where phone_number = '+821070000021'");
+    const adminId = await signupKakao(admin, '관리자 테스트');
+    await signupKakao(member, '회원 테스트');
+    sql(`update users set role = 'ADMIN' where user_id = ${Number(adminId)}`);
     sql(
       "insert into item_types(name) values ('Search umbrella'); " +
         "insert into items(item_type_id,item_name,status) select t.item_type_id, 'SearchUnit ' || n, 'TAG_PENDING' " +
@@ -79,11 +59,7 @@ test('실제 로그인과 PostgreSQL 데이터로 관리자 검색·필터·페�
         "update items set status='AVAILABLE' where item_name='SearchUnit 1'",
     );
 
-    const login = await admin.request.post('/api/v1/auth/login/phone', {
-      data: { phoneNumber: '01070000021', pin: '048259' },
-      headers: { 'Idempotency-Key': randomUUID() },
-    });
-    expect(login.ok(), await login.text()).toBeTruthy();
+    await registeredLogin(admin);
     expect((await member.request.get('/api/v1/admin/items')).status()).toBe(403);
     expect((await anonymous.request.get('/api/v1/admin/items')).status()).toBe(401);
     const catalog = await anonymous.request.get('/api/v1/catalog/item-types?keyword=SearchUnit%2021');

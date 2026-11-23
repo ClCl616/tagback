@@ -13,7 +13,7 @@ import java.util.List;
 public final class RentalResponses {
     private RentalResponses() {}
     public record Code(String code, Instant expiresAt) {}
-    public record Grant(String token, Instant expiresAt, String maskedPhoneNumber) {}
+    public record Grant(String token, Instant expiresAt, String userId, String userName) {}
     public record Checkout(String rentalId, String itemId, String itemTypeId,
                            RentalStatus rentalStatus, ItemStatus itemStatus,
                            Instant rentedAt, Instant dueAt, Instant returnedAt) {

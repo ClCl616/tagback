@@ -12,8 +12,6 @@ export { ServiceError } from './serviceError';
 export const fail = (code: string, message: string): never => {
   throw new ServiceError(code, message);
 };
-export const normalizePhone = (v: string) => v.replace(/[\s-]/g, '');
-export const phoneValid = (v: string) => /^010\d{8}$/.test(normalizePhone(v));
 export function notify() {
   window.dispatchEvent(new Event('tagback-change'));
 }
@@ -23,7 +21,6 @@ export const api: ServiceApi = {
   async me() {
     const { user } = await serverSession();
     return {
-      phone: user.maskedPhoneNumber,
       name: user.name || '회원',
       occupation: user.occupation || '',
     };

@@ -103,7 +103,6 @@ async function server(page: Page) {
         name: state.userId === '1' ? '운영자' : '다른 관리자',
         occupation: '직원',
         role: state.role,
-        maskedPhoneNumber: '010-****-1234',
       },
       sessionExpiresAt: '2030-01-01T00:00:00Z',
     });
@@ -114,7 +113,11 @@ async function server(page: Page) {
       state.signedIn = false;
       return route.fulfill({ status: 204 });
     }
-    if (path.endsWith('/auth/login/phone')) {
+    if (path.endsWith('/auth/kakao/challenges') && method === 'POST')
+      return ok({ id: 'challenge', code: '0123456789', expiresAt: '2030-01-01T00:00:00Z' }, 201);
+    if (path.endsWith('/auth/kakao/challenges/challenge') && method === 'GET')
+      return ok({ purpose: 'LOGIN', status: 'VERIFIED', expiresAt: '2030-01-01T00:00:00Z' });
+    if (path.endsWith('/auth/kakao/login/new-browser')) {
       state.signedIn = true;
       return ok({
         user: session().user,
@@ -217,9 +220,10 @@ test('admin login preserves its requested destination and does not offer adminis
   await page.goto('/admin/tags?selected=102');
   await page.getByRole('link', { name: '로그인', exact: true }).click();
   await expect(page.getByRole('link', { name: '회원가입' })).toHaveCount(0);
-  await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
-  await page.getByRole('button', { name: '다음', exact: true }).click();
-  await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
+  await page.getByRole('button', { name: '카카오톡 인증 시작' }).click();
+  await page.getByRole('button', { name: '인증 확인' }).click();
+  await page.getByLabel('PIN 숫자 6자리').fill('048259');
+  await page.getByRole('button', { name: '확인', exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/tags\?selected=102$/);
   await expect(page.getByRole('complementary', { name: '물품 상세' })).toContainText('우산');
 });
