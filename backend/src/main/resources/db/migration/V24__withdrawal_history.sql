@@ -15,6 +15,6 @@ CREATE INDEX ix_withdrawn_history_delete_after ON withdrawn_rental_history(delet
 ALTER TABLE item_status_history DROP CONSTRAINT chk_item_status_history_admin_actor;
 ALTER TABLE item_status_history ADD COLUMN actor_withdrawn BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE item_status_history ADD CONSTRAINT chk_item_status_history_admin_actor
-    CHECK (source <> 'ADMIN_API' OR changed_by_user_id IS NOT NULL OR actor_withdrawn);
+    CHECK (source <> 'ADMIN_API' OR changed_by_user_id IS NOT NULL OR admin_session_id IS NOT NULL OR actor_withdrawn);
 ALTER TABLE item_status_history ADD CONSTRAINT chk_item_status_history_withdrawn_actor
     CHECK (NOT actor_withdrawn OR changed_by_user_id IS NULL);

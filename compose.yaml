@@ -46,6 +46,8 @@ services:
         target: tagback.kakao.hmac-key
       - source: kakao_skill_secret
         target: tagback.kakao.skill-secret
+      - source: admin_password_hash
+        target: tagback.admin.password-hash
       - source: nfc_scan_secret
         target: tagback.nfc.scan-secret
     depends_on:
@@ -96,6 +98,8 @@ secrets:
     file: ./deploy/compose/local/kakao-hmac-key
   kakao_skill_secret:
     file: ./deploy/compose/local/kakao-skill-secret
+  admin_password_hash:
+    file: ./deploy/compose/local/admin-password-hash
   nfc_scan_secret:
     file: ./deploy/compose/local/nfc-scan-secret
 

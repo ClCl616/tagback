@@ -34,12 +34,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest({ItemTypeController.class, TagLifecycleController.class})
+@WebMvcTest({ItemTypeController.class, TagLifecycleController.class, com.tagback.controller.TagRegistrationController.class})
 @ActiveProfiles("kakao-auth")
 @Import({ApiAccessConfiguration.class, ApiExceptionHandler.class})
-class ItemTypeApiTest {
+class ItemTypeApiTest extends SharedAdminMvcSupport {
     @Autowired MockMvc mvc;
     @MockitoBean ItemTypeService types;
+    @MockitoBean com.tagback.service.TagRegistrationService registration;
     @MockitoBean TagLifecycleService lifecycle;
     @MockitoBean SessionService sessions;
     @MockitoBean RentalCodeService rentalCodes;

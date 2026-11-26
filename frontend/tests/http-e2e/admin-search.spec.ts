@@ -12,19 +12,9 @@ async function mockAdminApi(page: Page, role = 'ADMIN') {
   }));
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
-    if (url.pathname.endsWith('/auth/session'))
-      return route.fulfill({
-        json: {
-          authenticated: true,
-          user: {
-            userId: '1',
-            name: '운영자',
-            role,
-            occupation: null,
-          },
-          sessionExpiresAt: '2030-01-01T00:00:00Z',
-        },
-      });
+    if (url.pathname === '/api/v1/admin/auth/session')
+      return route.fulfill(role === 'ADMIN' ? {json:{sessionId:'1',channel:'WEB',expiresAt:'2030-01-01T00:00:00Z'}}
+        : {status:403,json:{error:{code:'FORBIDDEN',message:'관리자 권한이 필요합니다.'}}});
     if (url.pathname.endsWith('/item-types'))
       return route.fulfill({ json: { itemTypes: [{ itemTypeId: '1', itemTypeName: '우산' }] } });
     const key = url.pathname.split('/').at(-1)!;
@@ -96,6 +86,6 @@ test('서버 오류를 표시하고 재시도한다', async ({ page }) => {
 test('일반 사용자에게 관리자 권한 오류를 표시한다', async ({ page }) => {
   const api = await mockAdminApi(page, 'USER');
   await page.goto('/admin/items');
-  await expect(page.getByRole('alert')).toContainText('관리자 계정으로 로그인');
+  await expect(page.getByRole('alert')).toContainText('관리자 권한이 필요');
   expect(api.requests).toHaveLength(0);
 });

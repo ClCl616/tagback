@@ -42,14 +42,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest({TagLifecycleController.class, TagLookupController.class})
+@WebMvcTest({TagLifecycleController.class, TagLookupController.class, com.tagback.controller.TagRegistrationController.class})
 @ActiveProfiles("kakao-auth")
 @Import({ApiAccessConfiguration.class, ApiExceptionHandler.class})
-class TagLifecycleAuthorizationTest {
+class TagLifecycleAuthorizationTest extends SharedAdminMvcSupport {
     @Autowired MockMvc mvc;
     @MockitoBean SessionService sessions;
     @MockitoBean RentalCodeService rentalCodes;
     @MockitoBean TagLifecycleService lifecycle;
+    @MockitoBean TagRegistrationService registration;
 
     @Test
     void replacementAndDeactivationRequireSession() throws Exception {
@@ -92,58 +93,14 @@ class TagLifecycleAuthorizationTest {
     }
 
     @Test
-    void adminCanReplaceAndDeactivateAndRetryGetsOk() throws Exception {
-        when(sessions.authenticate("admin-session")).thenReturn(new AuthenticatedUser(8L, UserRole.ADMIN));
-        Cookie admin = new Cookie(AuthCookies.SESSION_COOKIE, "admin-session");
-        TagRegistrationResponse response = new TagRegistrationResponse(
-                new TagRegistrationResponse.Tag(1L, "04A23B1C5D6E80", 12L, "ACTIVE", null));
-        when(lifecycle.replace(12L, "04A23B1C5D6E80", null, 8L))
-                .thenReturn(new TagRegistrationService.RegistrationResult(response, true),
-                        new TagRegistrationService.RegistrationResult(response, false));
-        for (int i = 0; i < 2; i++) {
-            mvc.perform(put("/api/items/12/tag").cookie(admin).contentType(MediaType.APPLICATION_JSON)
-                            .content("{\"uid\":\"04A23B1C5D6E80\",\"expectedUid\":null}"))
-                    .andExpect(i == 0 ? status().isCreated() : status().isOk())
-                    .andExpect(jsonPath("$.tag.tagId").value(1));
-        }
-        mvc.perform(delete("/api/items/12/tag").cookie(admin).param("expectedUid", "04A23B1C5D6E80"))
-                .andExpect(status().isNoContent());
-        verify(lifecycle).deactivate(12L, "04A23B1C5D6E80", 8L);
-    }
-
-    @Test
-    void missingExpectedUidIsValidationError() throws Exception {
-        when(sessions.authenticate("admin-session")).thenReturn(new AuthenticatedUser(8L, UserRole.ADMIN));
-        Cookie admin = new Cookie(AuthCookies.SESSION_COOKIE, "admin-session");
-        mvc.perform(put("/api/items/12/tag").cookie(admin).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"uid\":\"04A23B1C5D6E80\"}"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.code").value("VALIDATION"));
-        mvc.perform(delete("/api/items/12/tag").cookie(admin))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.error.code").value("VALIDATION"));
+    void sharedAdministratorCannotUseRetiredUidOnlyWrites() throws Exception {
+        var cookie=new Cookie(com.tagback.config.AdminCredentials.COOKIE,"admin-session");
+        mvc.perform(put("/api/items/12/tag").cookie(cookie).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"uid\":\"04A23B1C5D6E80\",\"expectedUid\":null}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(delete("/api/items/12/tag").cookie(cookie).param("expectedUid","04A23B1C5D6E80"))
+                .andExpect(status().isForbidden());
         verifyNoInteractions(lifecycle);
-        mvc.perform(delete("/api/items/12/tag").cookie(admin).param("expectedUid", ""))
-                .andExpect(status().isNoContent());
-        verify(lifecycle).deactivate(12L, "", 8L);
-    }
-
-    @Test
-    void replacementConflictsUseSharedErrorEnvelope() throws Exception {
-        when(sessions.authenticate("admin-session")).thenReturn(new AuthenticatedUser(8L, UserRole.ADMIN));
-        Cookie admin = new Cookie(AuthCookies.SESSION_COOKIE, "admin-session");
-        when(lifecycle.replace(12L, "04A23B1C5D6E81", "04A23B1C5D6E80", 8L))
-                .thenThrow(new TagRegistrationException(HttpStatus.CONFLICT, "TAG_CHANGED", "활성 태그가 변경되었습니다."));
-        mvc.perform(put("/api/items/12/tag").cookie(admin).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"uid\":\"04A23B1C5D6E81\",\"expectedUid\":\"04A23B1C5D6E80\"}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("TAG_CHANGED"));
-        when(lifecycle.replace(12L, "04A23B1C5D6E82", "04A23B1C5D6E80", 8L))
-                .thenThrow(new TagRegistrationException(HttpStatus.CONFLICT, "ITEM_RENTED", "대여 중입니다."));
-        mvc.perform(put("/api/items/12/tag").cookie(admin).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"uid\":\"04A23B1C5D6E82\",\"expectedUid\":\"04A23B1C5D6E80\"}"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("ITEM_RENTED"));
     }
 
     @Test

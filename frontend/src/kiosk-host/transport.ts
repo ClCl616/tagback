@@ -50,6 +50,11 @@ export async function kioskRequest(command: KioskCommand): Promise<KioskResponse
           expiresAt: value.expiresAt,
         };
       }
+      if (command.action === 'admin-login' && response.status >= 200 && response.status < 300) {
+        const value = data as { adminHandle?: unknown; sessionId?: unknown; expiresAt?: unknown };
+        if (typeof value?.adminHandle !== 'string') throw new Error('KIOSK_HOST_INVALID_ADMIN');
+        data = { token: value.adminHandle, sessionId: value.sessionId, expiresAt: value.expiresAt };
+      }
       return {
         status: response.status,
         ok: response.status >= 200 && response.status < 300,
@@ -64,6 +69,20 @@ export async function kioskRequest(command: KioskCommand): Promise<KioskResponse
   let token: string | undefined;
   let key: string | undefined;
   switch (command.action) {
+    case 'admin-login':
+      path = '/api/v1/kiosk/admin/login'; body = { password: command.password }; break;
+    case 'admin-session':
+      path = '/api/v1/kiosk/admin/session'; token = command.adminRef; break;
+    case 'admin-logout':
+      path = '/api/v1/kiosk/admin/logout'; token = command.adminRef; body = {}; break;
+    case 'admin-items':
+      path = `/api/v1/kiosk/admin/items?keyword=${encodeURIComponent(command.keyword)}&page=${command.page}&pending=${command.pending}`;
+      token = command.adminRef; break;
+    case 'admin-tag-current':
+      path = `/api/v1/kiosk/admin/items/${encodeURIComponent(command.itemId)}/tag`; token=command.adminRef; break;
+    case 'admin-tag':
+      path = '/api/v1/kiosk/admin/tags'; token=command.adminRef;
+      body = { operationId: command.operationId, itemId: command.itemId, expectedUid: command.expectedUid, proof: command.proof }; break;
     case 'health':
       path = '/api/v1/kiosk/health';
       break;

@@ -31,6 +31,13 @@ async function main() {
   try {
     const page=await electron.firstWindow();await page.waitForLoadState('domcontentloaded');
     await page.waitForFunction(()=>document.querySelector('#root')?.textContent?.includes('대여'));
+    await expect.poll(()=>electron.windows().length).toBe(2);
+    const setup=electron.windows().find(p=>p!==page);
+    await setup.waitForURL('tagback://operator/index.html');
+    await expect(setup.getByRole('heading',{name:'연결·설정',exact:true})).toBeVisible();
+    await expect(setup.locator('#apiBaseUrl')).toHaveValue('https://tagback.chiro1.cloud');
+    await setup.screenshot({path:path.join(output,'first-run-settings.png')});
+    await setup.close();
     assert.equal(page.url(),'tagback://app/kiosk-app.html');
     assert.equal(await electron.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isFullScreen()),true);
     const press=async(keyCode,modifiers=[])=>electron.evaluate(({BrowserWindow},{keyCode,modifiers})=>{
@@ -69,6 +76,13 @@ async function main() {
       return {packaged:app.isPackaged,sandbox:p.sandbox,contextIsolation:p.contextIsolation,nodeIntegration:p.nodeIntegration,devToolsOpened:wc.isDevToolsOpened()};
     });
     assert.deepEqual(security,{packaged:true,sandbox:true,contextIsolation:true,nodeIntegration:false,devToolsOpened:false});
+    await page.getByRole('button',{name:'연결·설정',exact:true}).click();
+    await expect.poll(()=>electron.windows().length).toBe(2);
+    const panel=electron.windows().find(p=>p!==page);await panel.waitForURL('tagback://operator/index.html');
+    assert.equal(await panel.evaluate(()=>typeof window.require),'undefined');
+    const blocked=await page.evaluate(()=>window.tagbackKioskHost.request({version:2,requestId:crypto.randomUUID(),command:{action:'operator:action'}}).then(()=>false,()=>true));
+    assert.equal(blocked,true);
+    await panel.close();
     await page.screenshot({path:path.join(output,'windows-kiosk.png')});
     fs.writeFileSync(path.join(output,'result.json'),JSON.stringify({state,security,physicalReaderTested:false,serverDatabaseTested:false},null,2));
     console.log('PASS packaged Electron: local UI, host v2, isolated renderer, missing-config gate, denied arbitrary commands/network.');

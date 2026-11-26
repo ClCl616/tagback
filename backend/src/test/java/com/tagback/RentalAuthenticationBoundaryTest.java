@@ -21,7 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(RentalController.class)
 @ActiveProfiles("kakao-auth")
 @Import({ApiAccessConfiguration.class, ApiExceptionHandler.class, AuthOriginGuard.class})
-class RentalAuthenticationBoundaryTest {
+class RentalAuthenticationBoundaryTest extends SharedAdminMvcSupport {
     @Autowired MockMvc mvc;
     @MockitoBean RentalOperationService operations;
     @MockitoBean SessionService sessions;

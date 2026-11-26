@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('tagbackKioskHost', {
   version:2, platform:'windows', capabilities:{transport:1},
+  openOperatorPanel:()=>ipcRenderer.invoke('kiosk:operator'),
   request: request => ipcRenderer.invoke('kiosk:request', request),
   reader: { subscribe(listener, options) {
     let active=true;

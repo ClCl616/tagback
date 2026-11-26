@@ -26,6 +26,7 @@ import { type ReaderStatus } from '../shared/nfc';
 import { Badge, Brand, date, ErrorBox, Loading, ProductArt, useResource } from '../shared/ui';
 import { getKioskPlatform } from './platform';
 import './kiosk-redesign.css';
+import KioskAdmin from './KioskAdmin';
 import type { Catalog, Grant, Item, NfcScanProof, NfcRead, Receipt } from '../shared/types';
 type Stage = 'start' | 'select' | 'code' | 'scan' | 'condition' | 'confirm' | 'done';
 type Completion = {
@@ -36,6 +37,10 @@ type Completion = {
   recovered?: boolean;
 };
 export default function KioskApp() {
+  const [admin,setAdmin]=useState(false);
+  return admin ? <KioskAdmin close={() => setAdmin(false)} /> : <CustomerKiosk openAdmin={() => setAdmin(true)} />;
+}
+function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
   const platform = useMemo(getKioskPlatform, []);
   const pendingWrite = useRef<(() => Promise<Receipt>) | undefined>(undefined);
   const [now, setNow] = useState(Date.now());
@@ -498,6 +503,8 @@ export default function KioskApp() {
                 </span>
               </button>
             </div>
+            <button className="secondary" onClick={openAdmin} disabled={busy || unknown}>관리자 태그 등록</button>
+            {window.tagbackKioskHost?.openOperatorPanel && <button className="secondary" onClick={() => void window.tagbackKioskHost?.openOperatorPanel?.().catch(setError)}>연결·설정</button>}
             <div className="welcome-tip">
               <ShieldCheck size={22} />
               <span>NFC 인식 후, 정보를 확인하고 직접 확정해 주세요.</span>

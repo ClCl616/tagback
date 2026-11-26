@@ -71,6 +71,12 @@ public class ItemService {
 
     @Transactional
     public ItemResponses.Detail changeStatus(long itemId, ItemRequests.StatusChange request, long actorUserId) {
+        return changeStatusAsAdmin(itemId, request, actorUserId, null);
+    }
+
+    @Transactional
+    public ItemResponses.Detail changeStatusAsAdmin(long itemId, ItemRequests.StatusChange request,
+            Long actorUserId, java.util.UUID adminSessionId) {
         var item = items.findForUpdate(itemId).orElseThrow(ItemException::itemNotFound);
         var targetStatus = ItemStatus.valueOf(request.getStatus());
         var previousStatus = item.getStatus();
@@ -84,8 +90,10 @@ public class ItemService {
         }
 
         item.updateStatus(targetStatus);
-        statusHistory.save(new ItemStatusHistory(itemId, previousStatus, targetStatus,
-                ItemStatusChangeSource.ADMIN_API, actorUserId, request.getReason()));
+        var history = new ItemStatusHistory(itemId, previousStatus, targetStatus,
+                ItemStatusChangeSource.ADMIN_API, actorUserId, request.getReason());
+        history.setAdminSessionId(adminSessionId);
+        statusHistory.save(history);
         try {
             items.flush();
             statusHistory.flush();

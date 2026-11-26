@@ -12,10 +12,16 @@ function proof(p) {
 function validate(request) {
   if (!fields(request, 'version requestId command') || request.version !== 2 || !uuid(request.requestId)) throw Error('INVALID_REQUEST');
   const c = request.command;
-  const schemas = { health:'action', verify:'action code', catalog:'action grantRef', scan:'action uid grantRef',
+  const schemas = { 'admin-login':'action password', 'admin-session':'action adminRef', 'admin-logout':'action adminRef',
+    'admin-items':'action adminRef keyword page pending', 'admin-tag-current':'action adminRef itemId',
+    'admin-tag':'action adminRef operationId itemId expectedUid proof', health:'action', verify:'action code', catalog:'action grantRef', scan:'action uid grantRef',
     rent:'action operationId grantRef itemId itemTypeId', 'return-scan':'action proof',
     return:'action operationId scanTicketId proof condition returnCode' };
   if (!c || !Object.hasOwn(schemas, c.action) || !fields(c, schemas[c.action])) throw Error('INVALID_COMMAND');
+  if (('adminRef' in c && !uuid(c.adminRef)) || ('password' in c && (typeof c.password!=='string'||!c.password.length||c.password.length>128)) ||
+      ('keyword' in c && (typeof c.keyword!=='string'||c.keyword.length>100)) ||
+      ('page' in c && (!Number.isSafeInteger(c.page)||c.page<0||c.page>100000)) ||
+      ('pending' in c && typeof c.pending!=='boolean') || ('expectedUid' in c && c.expectedUid!==null&&!uid(c.expectedUid))) throw Error('INVALID_COMMAND');
   if (('grantRef' in c && !uuid(c.grantRef)) || ('operationId' in c && !uuid(c.operationId)) ||
       ('itemId' in c && !id(c.itemId)) || ('itemTypeId' in c && !id(c.itemTypeId)) ||
       ('uid' in c && !uid(c.uid)) || ('code' in c && !code(c.code)) ||
@@ -30,16 +36,31 @@ function apiOrigin(value) {
 }
 const date = v => typeof v === 'string' && Number.isFinite(Date.parse(v));
 function receipt(c, d, ticket) {
+  if (c.action==='admin-tag') return d?.itemId===c.itemId && d.uid===c.proof.uid && ['AVAILABLE','INSPECTION','REPAIR','NOT_APPLIED'].includes(d.status);
   if (!d || !id(d.rentalId) || !id(d.itemId) || !date(d.rentedAt) || !date(d.dueAt)) return false;
   if (c.action === 'rent') return d.itemId === c.itemId && d.itemTypeId === c.itemTypeId && d.rentalStatus === 'RENTED' && d.itemStatus === 'RENTED';
   return ticket && d.itemId === ticket.itemId && d.rentalId === ticket.rentalId && d.rentalStatus === 'RETURNED' &&
     d.itemStatus === (c.condition === 'NORMAL' ? 'AVAILABLE':'INSPECTION') && d.condition === c.condition && date(d.returnedAt);
 }
-// P2 memory-only guard. Durable operations and restart reconciliation belong to P4.
-function createTransport(origin, fetcher = fetch) {
+// Optional encrypted journal is supplied by the Windows main process.
+function createTransport(origin, fetcher = fetch, journal) {
   const base = origin ? apiOrigin(origin) : null;
   const grants = new Map(), tickets = new Map(), finished = new Map();
-  let pending;
+  let pending, admin;
+  const saved=journal?.load();
+  if(saved) {
+    if(saved.version!==1||saved.origin!==base||!saved.pending?.command||!Array.isArray(saved.grants)||!Array.isArray(saved.tickets))throw Error('JOURNAL_INVALID');
+    validate({version:2,requestId:randomUUID(),command:saved.pending.command});
+    for(const [key,value] of saved.grants)grants.set(key,value);
+    for(const [key,value] of saved.tickets)tickets.set(key,value);
+    admin=saved.admin;
+    pending={...saved.pending,unknown:true};
+  }
+  function persist() {
+    journal?.save(pending ? {version:1,origin:base,pending:{id:pending.id,fingerprint:pending.fingerprint,
+      grantRef:pending.grantRef,adminTag:pending.adminTag,unknown:true,command:pending.command,createdAt:pending.createdAt},
+      grants:[...grants],tickets:[...tickets],admin} : null);
+  }
   async function execute(c) {
     if (!base) throw Error('HOST_NOT_CONFIGURED');
     let route, body, token;
@@ -47,7 +68,17 @@ function createTransport(origin, fetcher = fetch) {
       token = grants.get(c.grantRef)?.token;
       if (!token) throw Error('UNKNOWN_GRANT');
     }
+    if ('adminRef' in c) {
+      if (!admin || admin.handle!==c.adminRef) throw Error('ADMIN_SESSION_REQUIRED');
+      token=admin.token;
+    }
     switch (c.action) {
+      case 'admin-login': route='/api/v1/kiosk/admin/login'; body={password:c.password}; break;
+      case 'admin-session': route='/api/v1/kiosk/admin/session'; break;
+      case 'admin-logout': route='/api/v1/kiosk/admin/logout'; body={}; break;
+      case 'admin-items': route=`/api/v1/kiosk/admin/items?keyword=${encodeURIComponent(c.keyword)}&page=${c.page}&pending=${c.pending}`; break;
+      case 'admin-tag-current': route=`/api/v1/kiosk/admin/items/${c.itemId}/tag`; break;
+      case 'admin-tag': route='/api/v1/kiosk/admin/tags'; body={operationId:c.operationId,itemId:c.itemId,expectedUid:c.expectedUid,proof:c.proof}; break;
       case 'health': route='/api/v1/kiosk/health'; break;
       case 'verify': route='/api/v1/kiosk/rental-grants'; body={code:c.code}; break;
       case 'catalog': route='/api/v1/item-types'; break;
@@ -67,7 +98,13 @@ function createTransport(origin, fetcher = fetch) {
     }
     const responseText=Buffer.concat(chunks).toString('utf8');
     // Health is ResponseEntity<Void>; business responses still require valid JSON.
-    let data = c.action==='health' && !responseText.trim() ? null : JSON.parse(responseText);
+    let data = (c.action==='health' || c.action==='admin-logout') && !responseText.trim() ? null : JSON.parse(responseText);
+    if (response.ok && c.action==='admin-login') {
+      if (typeof data?.token!=='string'||!data.token.length||!uuid(data.sessionId)||!date(data.expiresAt)) throw Error('INVALID_ADMIN_RESPONSE');
+      admin={handle:randomUUID(),token:data.token};
+      data={adminHandle:admin.handle,sessionId:data.sessionId,expiresAt:data.expiresAt};
+    }
+    if (c.action==='admin-logout' && (response.ok||response.status===401)) admin=undefined;
     if (response.ok && c.action==='verify') {
       if (typeof data?.token!=='string' || !data.token.length || data.token.length>8192 || !id(data.userId) || typeof data.userName!=='string' || !data.userName.trim() || !date(data.expiresAt)) throw Error('INVALID_GRANT_RESPONSE');
       for (const [key,g] of grants) if (g.expiresAt<Date.now() && pending?.grantRef!==key) grants.delete(key);
@@ -82,28 +119,44 @@ function createTransport(origin, fetcher = fetch) {
     }
     return {status:response.status,data};
   }
-  return {
+  const host = {
     hasPending:()=>!!pending,
+    pendingSummary:()=>pending?{operationId:pending.id,action:pending.command.action,itemId:pending.command.itemId||tickets.get(pending.command.scanTicketId)?.itemId,createdAt:pending.createdAt}:null,
+    async recover(password) {
+      if(!pending)return null;
+      let command={...pending.command};
+      if(command.action==='admin-tag') {
+        const login=await execute({action:'admin-login',password});
+        if(login.status!==200&&login.status!==201)throw Error('ADMIN_LOGIN_FAILED');
+        command.adminRef=admin.handle;
+      }
+      return host.request({version:2,requestId:randomUUID(),command});
+    },
+    acknowledgeReconciliation(){if(pending?.promise)throw Error('OPERATION_BUSY');journal?.save(null);pending=undefined;},
     async request(request) {
-      const c=validate(request), write=c.action==='rent'||c.action==='return';
+      const c=validate(request), write=c.action==='rent'||c.action==='return'||c.action==='admin-tag';
+      if (c.action==='admin-tag' && (!admin || admin.handle!==c.adminRef)) throw Error('ADMIN_SESSION_REQUIRED');
       const wrap = result => ({version:2,requestId:request.requestId,...result});
       if (!write) {
-        if (pending && c.action!=='health') throw Error('OPERATION_UNRESOLVED');
+        if (pending && c.action!=='health' && !(pending.adminTag && ['admin-login','admin-session'].includes(c.action))) throw Error('OPERATION_UNRESOLVED');
         return wrap(await execute(c));
       }
       // Canonical keys, independent of IPC object property order.
-      const fingerprint=JSON.stringify(Object.fromEntries(Object.keys(c).sort().map(k=>[k,c[k]])));
+      const fingerprint=JSON.stringify(Object.fromEntries(Object.keys(c).filter(k=>c.action!=='admin-tag'||k!=='adminRef').sort().map(k=>[k,c[k]])));
       const old=finished.get(c.operationId);
       if (old) { if(old.fingerprint!==fingerprint) throw Error('OPERATION_CHANGED'); return wrap(old.result); }
       if (pending && (pending.id!==c.operationId || pending.fingerprint!==fingerprint)) throw Error('OPERATION_UNRESOLVED');
-      if (!pending) pending={id:c.operationId,fingerprint,grantRef:c.grantRef,unknown:false};
+      if (!pending) pending={id:c.operationId,fingerprint,grantRef:c.grantRef,adminTag:c.action==='admin-tag',unknown:false,command:c,createdAt:new Date().toISOString()};
       const operation=pending;
+      // Flush before sending any write. A failed local save must never send the request.
+      if(!operation.promise)persist();
       if (!operation.promise) operation.promise=(async()=>{
         try {
           const result=await execute(c);
           const confirmed=result.status>=200&&result.status<300&&receipt(c,result.data,tickets.get(c.scanTicketId));
           const rejected=!operation.unknown&&result.status>=400&&result.status<500&&typeof result.data?.error?.code==='string';
           if (confirmed||rejected) {
+            journal?.save(null);
             finished.set(c.operationId,{fingerprint,result});
             if(finished.size>32) finished.delete(finished.keys().next().value);
             pending=undefined;
@@ -115,5 +168,6 @@ function createTransport(origin, fetcher = fetch) {
       return wrap(await operation.promise);
     },
   };
+  return host;
 }
 module.exports={createTransport,validate,apiOrigin,proof};

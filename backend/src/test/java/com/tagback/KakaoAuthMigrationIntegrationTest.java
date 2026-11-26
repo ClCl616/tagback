@@ -15,7 +15,7 @@ class KakaoAuthMigrationIntegrationTest {
         String url = "jdbc:postgresql://127.0.0.1:55439/tagback_auth_test";
         try (var db = DriverManager.getConnection(url, "postgres", "")) {
             try {
-                Flyway.configure().dataSource(url, "postgres", "").schemas(schema).defaultSchema(schema).target("20").load().migrate();
+                Flyway.configure().dataSource(url, "postgres", "").schemas(schema).defaultSchema(schema).target("21").load().migrate();
                 try (var s = db.createStatement()) {
                     s.execute("SET search_path TO " + schema);
                     s.execute("INSERT INTO users(user_id,phone_number,password_hash) VALUES (101,'+821011111111','legacy'),(102,'+821022222222','legacy')");

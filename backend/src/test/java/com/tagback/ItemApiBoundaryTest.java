@@ -21,7 +21,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest(ItemController.class)
 @Import({ApiAccessConfiguration.class, ApiExceptionHandler.class, ItemApiExceptionHandler.class, AuthOriginGuard.class})
-class ItemApiBoundaryTest {
+class ItemApiBoundaryTest extends SharedAdminMvcSupport {
     @Autowired MockMvc mvc;
     @MockitoBean ItemService items;
     @MockitoBean SessionService sessions;
@@ -78,7 +78,7 @@ class ItemApiBoundaryTest {
     }
 
     @Test void duplicateSessionCookiesAreRejectedBeforeAuthentication() throws Exception {
-        mvc.perform(delete("/api/v1/items/10").cookie(cookie("admin"), cookie("user")))
+        mvc.perform(delete("/api/v1/items/10").cookie(cookie("admin"), cookie("admin")))
                 .andExpect(status().isUnauthorized()).andExpect(jsonPath("$.error.code").value("SESSION_REQUIRED"));
         verifyNoInteractions(items);
         verify(sessions, never()).authenticate(any());
@@ -100,5 +100,5 @@ class ItemApiBoundaryTest {
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("secret"))));
     }
 
-    private Cookie cookie(String token) { return new Cookie(AuthCookies.SESSION_COOKIE, token); }
+    private Cookie cookie(String token) { return new Cookie(token.startsWith("admin") ? com.tagback.config.AdminCredentials.COOKIE : AuthCookies.SESSION_COOKIE, token); }
 }

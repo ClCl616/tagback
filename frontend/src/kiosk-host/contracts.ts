@@ -3,6 +3,11 @@ import type { NfcScanProof } from '../shared/types';
 
 export const HOST_PROTOCOL_VERSION = 2 as const;
 export type KioskCommand =
+  | { action: 'admin-login'; password: string }
+  | { action: 'admin-session' | 'admin-logout'; adminRef: string }
+  | { action: 'admin-items'; adminRef: string; keyword: string; page: number; pending: boolean }
+  | { action: 'admin-tag-current'; adminRef: string; itemId: string }
+  | { action: 'admin-tag'; adminRef: string; operationId: string; itemId: string; expectedUid: string | null; proof: NfcScanProof }
   | { action: 'health' }
   | { action: 'verify'; code: string }
   | { action: 'catalog'; grantRef: string }

@@ -1,5 +1,11 @@
 # TagBack 리디자인 진행 보고서
 
+최신 통합 범위(2026-11-19): [0.1.2 이후 통합 변경](post-release-integration-2026-11-19.md)을 우선 참고한다. 공통 관리자·모바일·Windows 0.1.4 구현과 과거 배포 기록을 구분하며, 아래 날짜별 기록의 미구현 표기는 당시 상태다.
+
+## 2026-11-18 임시 인증코드 콘솔 발송
+
+카카오톡 챗봇 구현 전까지 `sms-mock` 인증코드를 API 콘솔에서 확인하도록 변경했다. `MockSmsDelivery`가 DB 커밋 후 전화번호 끝 4자리·요청 용도·6자리 코드·만료 시각·요청 ID를 출력한다. 기존 mock 수신함과 인증 API, 만료·재발송 제한을 유지한다. 롤백된 요청은 출력하지 않는다. 실행 안내는 [Compose 안내](../deploy/compose/README.md)의 임시 인증코드 절을 참고한다. 실제 SMS/챗봇 발송 또는 운영 배포 완료를 뜻하지 않는다.
+
 ## 2026-11-13 Docker Compose 구성
 
 작업 분리: `codex/docker-compose` 브랜치에서 관리한다. 기존 개발 런처 브랜치의 Compose 파일·배포 정책 문서를 별도 작업 폴더로 옮겼으며 기준 커밋은 `652b4b7`이다. 이동 시 파일 동일성과 Compose 구성 검사를 확인했다. 기존 실행 검증은 아래 기록을 유지하며 이동 후 전체 기동 검사를 반복하지 않았다.
@@ -211,3 +217,39 @@ Android 앱은 사용자 요청으로 보류한다. [통합 검증 보고서](in
 최종 live 4개 통과, 관련 백엔드 65개(단위/경계/DB 합계), Windows 호스트 9개 및 실제 패키지 smoke 통과. native health의 빈 200 응답을 JSON으로 읽어 정상 서버를 끊김으로 표시하던 오류를 수정했다. 업무 응답 검증은 유지한다. 시험 DB bootstrap 준비 확인도 TCP로 수정했다. 실제 SMS·물리 NFC·네이티브 응답 유실·전원 장애 복구·운영 배포는 여전히 별도다.
 
 수정 설치 파일은 `kiosk/windows/out/make/squirrel.windows/x64/TagBackKiosk-0.1.2-trial-Setup.exe`. 새 버전 설치는 수행하지 않았다. 최종 테스트 서버와 컨테이너를 중지하고 진단 기록은 보존했다. 작업 폴더/브랜치/HEAD는 기존 `C:/Projects/tagback-user-web`, `codex/user-web-redesign`, `54cca26`; 로컬 미커밋 상태다.
+
+## 2026-11-18 기존 Compose 환경 반영 및 실행
+
+사용자 요청으로 codex/sms-console의 인증코드 콘솔 출력 소스·테스트·안내를 C:/Projects/tagback-compose, codex/docker-compose (HEAD 9cbc985)에 반영했다. Docker Desktop Linux 엔진을 시작하고 docker compose up -d --build --wait --wait-timeout 240을 실행했다. API 이미지는 변경 소스로 재빌드했고 기본 tagback 프로젝트의 웹/API/DB 모두 healthy를 확인했다. 기존 기본 프로젝트가 없어 tagback_postgres_data 볼륨을 새로 생성했으며 다른 프로젝트의 볼륨은 변경하지 않았다.
+
+Test-Compose.ps1 -SkipCertificateCheck 통과: SPA·JS, API health/카탈로그, 미인증 401·Secure 쿠키·Origin 거부 확인. HTTPS health 200 추가 확인. 실제 인증 요청/시험 계정 생성은 하지 않았다. 콘솔 출력 관련 테스트 3개는 원본 작업 폴더의 통과 기록을 유지하며 이번 실행에서 반복하지 않았다. 접속 주소 https://localhost:8443/mobile, 로그 명령 docker compose logs -f --tail 50 api. 컨테이너는 실행 상태로 유지했다. 변경은 로컬 미커밋 상태이며 커밋·푸시는 하지 않았다.
+
+## 2026-11-19 모바일 화면 수정본 기존 Compose 적용
+
+사용자 요청으로 C:/Projects/tagback-mobile-viewport의 UserWeb.tsx·mobile-viewport.css·화면 회귀 테스트·frontend/README.md를 C:/Projects/tagback-compose (codex/docker-compose, HEAD 9cbc985)에 반영했다. 대상 프론트 파일의 미커밋 변경이 없음을 확인하고 기존 SMS 변경을 보존했다. docker compose build web 후 docker compose up -d --no-build --wait --wait-timeout 240으로 중지 상태의 기존 DB/API를 시작하고 웹을 재생성했다. 기존 tagback_postgres_data 볼륨을 사용하며 API 이미지는 재빌드하지 않았다.
+
+웹/API/DB 모두 healthy, Test-Compose.ps1 -SkipCertificateCheck 통과. 실제 HTTPS HTML에서 참조한 /assets/index-Cyn-6YAn.css에 모바일 viewport/이용 안내 스타일이 포함됨을 확인했다. 소스 작업 폴더의 빌드·HTTP fixture 42개 통과 기록은 유지하며 이번 배포에서 전체 업무 테스트는 반복하지 않았다. 기존 주소 https://localhost:8443/mobile에서 제공한다. 포트는 기존 127.0.0.1 바인딩을 유지하며 LAN 공개/인증서/방화벽 변경은 없다. 로컬 미커밋 상태이며 커밋·푸시는 수행하지 않았다.
+
+## 2026-11-19 공통 관리자·키오스크 태그 기능 Compose 반영 완료
+
+C:/Projects/tagback-compose, codex/docker-compose (HEAD 9cbc985)에 codex/admin-password-kiosk-tags의 로컬 구현을 반영했다. 기존 모바일 화면 개선과 SMS 콘솔 변경을 보존했고 API·웹 이미지를 재빌드하여 기본 tagback 프로젝트에서 실행했다. DB는 기존 볼륨을 유지하고 V21(shared admin sessions) 마이그레이션 성공을 확인했다. 변경 전 DB dump와 소스 백업은 deploy/compose/local에 보관했다.
+
+임의 생성한 공통 관리자 비밀번호를 PBKDF2 해시로 설정했다. 전달용 원문은 Git/Docker 문맥 제외 파일 deploy/compose/local/admin-password.txt에 있으며 서버에는 해시만 마운트한다. 원문은 비밀번호 관리자에 옮겨 보관한 뒤 필요 없으면 삭제할 수 있다. 삭제해도 서버 로그인에는 영향이 없다.
+
+검증: API·웹·DB healthy, Test-Compose.ps1 통과, 실제 HTTPS 웹/키오스크 비밀번호 로그인·보호 목록 조회·로그아웃/폐기 확인, 실제 브라우저 관리자 로그인·태그 없는 등록 폼·키오스크 관리자 로그인/종료 확인. 기존 모바일 변경을 포함한 HTTP fixture 42개 전체 통과. 시험 물품/사용자/대여는 생성하지 않았다. 실물 NFC 등록/교체 검증과 Windows 설치 업데이트는 수행하지 않았다. 서비스는 실행 중이며 변경은 로컬 미커밋 상태, 원격 푸시/병합은 하지 않았다.
+
+## 2026-11-19 Windows 키오스크 0.1.4 연결·설정·복구 및 설치 업데이트
+
+사용자 요청으로 C:/Projects/tagback-kiosk-upgrade, codex/windows-kiosk-usability를 cfdd5f7에서 분리하고 당시 tagback-compose의 미커밋 공통 관리자·태그 등록/교체·모바일·SMS 소스를 복사해 호환 기준으로 삼았다. 기존 worktree와 로컬/운영 Compose 서비스는 수정하거나 재배포하지 않았다.
+
+변경: 첫 실행 설정, 시작 화면 연결·설정 버튼/Ctrl+Shift+S, 관리자 비밀번호 기반 5분 설정 해제, 서버·키·리더기 진단, 인증서 선택 및 지문 확인, 앱 origin 범위의 추가 CA 신뢰, 구버전 localhost server.crt 호환, 키 암호화 저장, 리더기 목록 조회/재시작, 비밀 없는 진단 내보내기, 선택형 Windows 자동 실행. TLS 호스트명·유효기간 검증과 리다이렉트 거부를 유지한다. 기본 새 설정 주소는 https://tagback.chiro1.cloud이며 기존 설치 주소는 유지한다.
+
+대여/반납/태그 쓰기 전에 Windows CurrentUser DPAPI 암호화 journal을 원자적으로 저장한다. 재시작 시 새 거래를 차단하고 같은 operationId/본문으로 재확인한다. 인증 만료 등 서버 한계로 자동 확인이 불가능하면 관리자 웹 기록/실물 대조 후 새 관리자 인증·확인 내용·명시 확인을 요구하는 수동 운영 재개를 제공한다. 서버 거래를 임의 변경하거나 성공으로 표시하지 않는다. 손상/해독 실패한 기록은 삭제하지 않고 차단한다. 최초 Electron safeStorage 구현이 첫 실행 직후 강제 종료 시험에서 Local State 저장 시점 문제로 복호화 실패해, 새 저장은 DPAPI로 변경했다. 기존 safeStorage 리더기 키 읽기는 호환한다.
+
+검증: Windows 단위 20개, 설치형 UI fixture 13개, Java bridge 17개 통과. 최종 패키지 smoke와 upgrade-smoke 통과(자체 서명 TLS 거부/앱 인증서 등록 후 연결, 설정 권한, 암호화 키, 관리자 화면, 강제 종료 후 동일 요청 재확인, 토큰 만료 차단/관리자 수동 확인). 실제 운영 HTTPS health 200, 기존 설치 프로필 복사본 및 실제 설치 프로필에서 localhost 인증서/기존 키 호환과 서버 연결 정상 확인. 설정·복구·설치 홈 화면 캡처 시각 확인. 실제 NFC 업무·운영 DB 대여/반납·다른 PC 설치·OS 로그인 자동 실행은 이번 범위 밖이다.
+
+이 PC의 기존 설치 0.1.2를 최종 0.1.4 Setup.exe --silent로 업데이트했다(exit 0). 설치 asar 소스가 검증한 소스와 일치하고 기존 host-config.json/reader-secret.bin SHA256이 전후 일치함을 확인했다. 실제 프로필은 %APPDATA%/TagBackKiosk이며 과거 README의 tagback-kiosk는 잘못된 표기였다. 기존 프로필의 upgrade-backup-0.1.4-* 폴더에 설정/암호화 키/Local State/인증서/실행기를 보존했다. Start-TagBackLocal.ps1의 0.1.2 고정 경로를 버전 독립 실행기로 변경했다. 확인 후 앱은 종료했다.
+
+현재 Smart Card 서비스는 Running이나 연결된 SmartCardReader 장치가 조회되지 않고 앱은 리더기 disconnected다. 실물 USB 장치 연결/드라이버와 태그 업무 인수가 필요하다. 기본 로컬 서버 주소와 리더기 이름/키는 보존했으며 운영 서버로 자동 변경하지 않았다.
+
+산출물: kiosk/windows/out/make/squirrel.windows/x64/TagBackKiosk-0.1.4-trial-Setup.exe, full.nupkg, RELEASES, SHA256SUMS.txt. Setup SHA256 d6d2d973bdf327602db572d02b3288e92ed9d0dcf8f2350a1fc064e09a994035. 코드 서명/공개 Release 게시는 하지 않았다. 변경은 로컬 미커밋이며 커밋·푸시·병합 없음. 세부 실행법은 해당 kiosk/windows/README.md의 0.1.4 절, 검사 증거는 out/smoke, out/upgrade-smoke, out/installed-check.json, out/installed-settings.png, out/installed-home.png에 있다.

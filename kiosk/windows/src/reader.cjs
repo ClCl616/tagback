@@ -1,9 +1,9 @@
-const {spawn}=require('node:child_process');
+const {spawn,execFile}=require('node:child_process');
 const path=require('node:path');
 const {proof}=require('./transport.cjs');
 function startReader(resources, config, secret, publish) {
   let child, timer, stopped=false, failures=0, status='disconnected';
-  const emit=event=>{if(event.type==='READER_CONNECTED') status='connected';if(event.type==='READER_DISCONNECTED') status='disconnected';publish(event);};
+  const emit=event=>{if(stopped)return;if(event.type==='READER_CONNECTED') status='connected';if(event.type==='READER_DISCONNECTED') status='disconnected';publish(event);};
   function start() {
     if(stopped) return;
     child=spawn(path.join(resources,'java','bin','java.exe'),['--add-modules=java.smartcardio','-cp',path.join(resources,'bridge.jar'),'com.tagback.nfc.bridge.PrivateBridgeMain'],{windowsHide:true,stdio:['pipe','pipe','pipe'],env:{SystemRoot:process.env.SystemRoot}});
@@ -37,4 +37,15 @@ function startReader(resources, config, secret, publish) {
   if(secret) start();
   return {status:()=>status,stop(){stopped=true;clearTimeout(timer);child?.stdin.end();child?.kill();}};
 }
-module.exports={startReader};
+function listReaders(resources) {
+  return new Promise((resolve,reject)=>execFile(path.join(resources,'java/bin/java.exe'),
+    ['--add-modules=java.smartcardio','-cp',path.join(resources,'bridge.jar'),'com.tagback.nfc.bridge.ReaderInventoryMain'],
+    {windowsHide:true,timeout:8000,maxBuffer:65536,encoding:'utf8'},(error,stdout)=>{
+      if(error)return reject(Error('리더기 목록을 읽지 못했습니다. USB 연결·드라이버·Windows Smart Card 서비스를 확인하세요.'));
+      const lines=stdout.trim().split(/\r?\n/);if(lines.shift()!=='TAGBACK_READERS_V1')return reject(Error('리더기 목록 응답 오류'));
+      const names=lines.filter(Boolean).map(line=>Buffer.from(line,'base64').toString('utf8'));
+      if(names.length>64||names.some(name=>!name||name.length>200))return reject(Error('리더기 목록 응답 오류'));
+      resolve(names);
+    }));
+}
+module.exports={startReader,listReaders};
