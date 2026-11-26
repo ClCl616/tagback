@@ -5,7 +5,8 @@ export default defineConfig({
   outputDir: './test-results/bridge',
   timeout: 30000,
   workers: 1,
-  use: { baseURL: 'http://127.0.0.1:5177', headless: true },
+  use: { baseURL: 'http://127.0.0.1:5177', headless: true,
+    ...(process.env.TAGBACK_PLAYWRIGHT_CHANNEL ? { channel: process.env.TAGBACK_PLAYWRIGHT_CHANNEL } : {}) },
   webServer: {
     command: 'node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5177 --strictPort',
     url: 'http://127.0.0.1:5177',

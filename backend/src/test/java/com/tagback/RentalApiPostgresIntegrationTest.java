@@ -3,7 +3,7 @@ package com.tagback;
 import com.tagback.config.AuthCookies;
 import com.tagback.domain.entity.*;
 import com.tagback.domain.repository.*;
-import com.tagback.service.sms.SmsSecrets;
+import com.tagback.service.AuthSecrets;
 import jakarta.servlet.http.Cookie;
 import java.sql.Timestamp;
 import java.time.*;
@@ -31,7 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** HTTP boundary + actual Flyway/PostgreSQL transactions. No test-wide transaction or mocked authentication. */
 @EnabledIfEnvironmentVariable(named = "TAGBACK_ITEM_DB_TEST", matches = "true")
 @SpringBootTest(properties = {
-        "spring.profiles.active=sms-mock",
+        "spring.profiles.active=kakao-auth",
         "spring.datasource.url=jdbc:postgresql://127.0.0.1:${TAGBACK_ITEM_DB_PORT:55440}/tagback_items_test",
         "spring.datasource.username=postgres", "spring.datasource.password=",
         "tagback.nfc.scan-secret=test-only-nfc-scan-secret-32-bytes-long",
@@ -62,7 +62,7 @@ class RentalApiPostgresIntegrationTest {
     @Autowired ItemTypeRepository types;
     @Autowired ItemRepository items;
     @Autowired NfcTagRepository tags;
-    @Autowired SmsSecrets secrets;
+    @Autowired AuthSecrets secrets;
     private long userId;
     private long otherUserId;
     private long itemId;
@@ -76,8 +76,8 @@ class RentalApiPostgresIntegrationTest {
         clock.set(NOW);
         jdbc.update("delete from rental_verification_limits");
         transactions.executeWithoutResult(tx -> {
-            var user = users.saveAndFlush(new User("+821033333333", "test-only", NOW));
-            var other = users.saveAndFlush(new User("+821044444444", "test-only", NOW));
+            var user = users.saveAndFlush(User.withoutPhone("test-only", NOW));
+            var other = users.saveAndFlush(User.withoutPhone("test-only", NOW));
             userId = user.getId(); otherUserId = other.getId();
             member = session(user); otherMember = session(other);
             var type = types.saveAndFlush(new ItemType("반출 API " + UUID.randomUUID(), null));
@@ -664,7 +664,8 @@ class RentalApiPostgresIntegrationTest {
     }
     private String verify(String code) throws Exception {
         var result = json.readTree(mvc.perform(post("/api/v1/kiosk/rental-grants").contentType("application/json").content("{\"code\":\"" + code + "\"}"))
-                .andExpect(status().isCreated()).andExpect(jsonPath("$.maskedPhoneNumber").isString())
+                .andExpect(status().isCreated()).andExpect(jsonPath("$.maskedPhoneNumber").doesNotExist())
+                .andExpect(jsonPath("$.userId").isString()).andExpect(jsonPath("$.userName").isString())
                 .andReturn().getResponse().getContentAsString());
         return result.get("token").asString();
     }

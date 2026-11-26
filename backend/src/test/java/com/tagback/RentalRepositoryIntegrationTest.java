@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Exercises the existing Flyway schema and partial unique index on isolated PostgreSQL. */
 @EnabledIfEnvironmentVariable(named = "TAGBACK_ITEM_DB_TEST", matches = "true")
 @SpringBootTest(properties = {
-        "spring.profiles.active=sms-mock",
+        "spring.profiles.active=kakao-auth",
         "spring.datasource.url=jdbc:postgresql://127.0.0.1:${TAGBACK_ITEM_DB_PORT:55440}/tagback_items_test",
         "spring.datasource.username=postgres", "spring.datasource.password=",
         "spring.jpa.hibernate.ddl-auto=validate", "spring.jpa.open-in-view=false"})
@@ -109,6 +109,8 @@ class RentalRepositoryIntegrationTest {
         em.clear();
 
         assertTrue(rentals.existsByItem_IdAndReturnedAtIsNull(item.getId()));
+        assertTrue(rentals.existsByUser_IdAndReturnedAtIsNull(user.getId()));
+        assertFalse(rentals.existsByUser_IdAndReturnedAtIsNull(user.getId() + 1000000));
         assertEquals(RentalStatus.OVERDUE,
                 rentals.findByItem_IdAndReturnedAtIsNull(item.getId()).orElseThrow().getStatus());
         assertTrue(items.hasActiveRental(item.getId()));
@@ -125,6 +127,7 @@ class RentalRepositoryIntegrationTest {
         em.clear();
 
         assertFalse(rentals.existsByItem_IdAndReturnedAtIsNull(item.getId()));
+        assertFalse(rentals.existsByUser_IdAndReturnedAtIsNull(user.getId()));
         assertTrue(rentals.findByItem_IdAndReturnedAtIsNull(item.getId()).isEmpty());
         assertFalse(items.hasActiveRental(item.getId()));
         assertEquals(RENTED_AT.plusSeconds(3600), rentals.findById(oldId).orElseThrow().getReturnedAt());

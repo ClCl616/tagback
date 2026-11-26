@@ -1,5 +1,9 @@
 # 모바일 프론트 ↔ 인증 API 계약
 
+> **과거 SMS mock 계약:** 아래 내용은 이력으로 보존하며 현재 API가 아니다. SMS 인증·전화번호 로그인 API는 제거됐다. 현재 카카오 인증 경로와 상태는 [카카오 인증 설계](kakao-chatbot-auth-design.md)를 따른다.
+
+현재 가입·로그인·세션의 `user`는 `userId`, `role`, `name`, `occupation`을 반환하며 `maskedPhoneNumber`는 반환하지 않는다. 브라우저 등록 상태는 `registered`, `expiresAt`을 반환한다. 키오스크 대여 인증 계약은 [대여 API 계약](item-checkout-api-contract.md)을 따른다.
+
 기준: `develop`의 `sms-mock` 서버 API와 `frontend/src/shared/httpAuth.ts`의 HTTP 어댑터. `VITE_AUTH_MODE=http`에서 아래 인증 API를 호출하며, 미설정 시 기존 브라우저 Mock을 사용한다. 이 문서는 필드·오류·재시도 규칙과 아직 연결하지 않은 흐름을 정한다. 서버의 인증 컨트롤러는 `sms-mock` 프로필에서만 활성화되며 운영 SMS 공급자는 연결되지 않았다.
 
 ## SMS 용도와 화면

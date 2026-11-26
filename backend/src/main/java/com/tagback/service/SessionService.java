@@ -6,7 +6,6 @@ import com.tagback.domain.entity.*;
 import com.tagback.domain.repository.*;
 import com.tagback.dto.auth.AuthResponses;
 import com.tagback.exception.*;
-import com.tagback.service.sms.SmsSecrets;
 import java.time.Clock;
 import java.time.Instant;
 import org.springframework.context.annotation.Profile;
@@ -14,17 +13,17 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Profile("sms-mock & !prod & !production")
+@Profile(com.tagback.config.AuthProfiles.CORE)
 public class SessionService {
     private final UserRepository users;
     private final BrowserRegistrationRepository browsers;
     private final LoginSessionRepository sessions;
-    private final SmsSecrets secrets;
+    private final AuthSecrets secrets;
     private final AuthProperties policy;
     private final Clock clock;
 
     public SessionService(UserRepository users, BrowserRegistrationRepository browsers, LoginSessionRepository sessions,
-                          SmsSecrets secrets, AuthProperties policy, Clock clock) {
+                          AuthSecrets secrets, AuthProperties policy, Clock clock) {
         this.users = users; this.browsers = browsers; this.sessions = sessions;
         this.secrets = secrets; this.policy = policy; this.clock = clock;
     }
@@ -44,7 +43,7 @@ public class SessionService {
             browser.revoke(now);
             return unregistered();
         }
-        return new AuthResponses.BrowserStatus(true, mask(browser.getUser().getPhoneNumber()), browser.getExpiresAt());
+        return new AuthResponses.BrowserStatus(true, browser.getExpiresAt());
     }
 
     // Request authentication does not count as user activity or extend any expiry.
@@ -133,12 +132,11 @@ public class SessionService {
 
     private AuthResponses.SessionStatus status(LoginSession session) {
         var user = session.getUser();
-        var summary = new AuthResponses.UserSummary(user.getId().toString(), mask(user.getPhoneNumber()), user.getRole().name(), user.getName(), user.getOccupation());
+        var summary = new AuthResponses.UserSummary(user.getId().toString(), user.getRole().name(), user.getName(), user.getOccupation());
         return new AuthResponses.SessionStatus(true, summary, session.getIdleExpiresAt());
     }
-    private AuthResponses.BrowserStatus unregistered() { return new AuthResponses.BrowserStatus(false, null, null); }
+    private AuthResponses.BrowserStatus unregistered() { return new AuthResponses.BrowserStatus(false, null); }
     private boolean missing(String token) { return token == null || token.isBlank(); }
-    private String mask(String phone) { return "010-****-" + phone.substring(phone.length() - 4); }
     public static final class SessionInvalid extends AuthException {
         public SessionInvalid(AuthErrorCode code) { super(code); }
     }

@@ -181,11 +181,12 @@ async function request(command: Extract<KioskCommand, { action: Action }>): Prom
 
 export async function verifyRentalCode(code: string): Promise<Grant> {
   const data = await request({ action: 'verify', code });
-  if (typeof data.token !== 'string' || typeof data.maskedPhoneNumber !== 'string')
+  if (typeof data.token !== 'string' || !data.token || !positiveId(data.userId) || typeof data.userName !== 'string' || !data.userName.trim())
     throw new ServiceError('UNKNOWN', '코드 확인 응답을 확인하지 못했습니다.');
   return {
     token: data.token,
-    maskedPhone: data.maskedPhoneNumber,
+    userId: data.userId,
+    userName: data.userName,
     expiresAt: timestamp(data.expiresAt),
   };
 }

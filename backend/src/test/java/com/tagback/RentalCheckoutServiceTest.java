@@ -37,7 +37,7 @@ class RentalCheckoutServiceTest {
         ReflectionTestUtils.setField(type, "id", 1L);
         item = new Item("우산 1", ItemStatus.AVAILABLE, type);
         ReflectionTestUtils.setField(item, "id", 10L);
-        when(users.findById(77L)).thenReturn(Optional.of(new User("+821033333333", "test", Instant.EPOCH)));
+        when(users.findByIdForUpdate(77L)).thenReturn(Optional.of(new User("+821033333333", "test", Instant.EPOCH)));
         when(items.findForUpdate(10L)).thenReturn(Optional.of(item));
         when(tags.existsByItem_Id(10L)).thenReturn(true);
     }

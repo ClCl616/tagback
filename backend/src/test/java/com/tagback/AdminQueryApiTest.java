@@ -31,7 +31,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(AdminQueryController.class)
-@ActiveProfiles("sms-mock")
+@ActiveProfiles("kakao-auth")
 @Import({ApiAccessConfiguration.class, ApiExceptionHandler.class, AdminQueryService.class, AdminQueryApiTest.TimeConfig.class})
 class AdminQueryApiTest extends SharedAdminMvcSupport {
     @TestConfiguration static class TimeConfig {

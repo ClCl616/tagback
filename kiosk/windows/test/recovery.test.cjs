@@ -4,7 +4,7 @@ const {randomUUID}=require('node:crypto');
 const {createTransport}=require('../src/transport.cjs');
 const req=command=>({version:2,requestId:randomUUID(),command});
 const json=data=>new Response(JSON.stringify(data));
-const grant=()=>json({token:'private-grant',maskedPhoneNumber:'010-****-1234',expiresAt:'2099-01-01T00:00:00Z'});
+const grant=()=>json({token:'private-grant',userId:'1',userName:'홍길동',expiresAt:'2099-01-01T00:00:00Z'});
 const receipt={rentalId:'1',itemId:'2',itemTypeId:'3',rentalStatus:'RENTED',itemStatus:'RENTED',rentedAt:'2026-11-19T00:00:00Z',dueAt:'2026-11-22T00:00:00Z'};
 test('write is durably recorded before network; new process replays same body and key',async()=>{
   let disk=null,originalKey;

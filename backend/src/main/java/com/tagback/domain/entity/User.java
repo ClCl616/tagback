@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 import java.util.Objects;
-import com.tagback.dto.auth.SmsPurpose;
 
 @Entity
 @Table(name = "users")
@@ -14,7 +13,7 @@ public class User {
     @Column(name = "user_id")
     private Long id;
 
-    @Column(name = "phone_number", nullable = false, unique = true, length = 20)
+    @Column(name = "phone_number", unique = true, length = 20)
     private String phoneNumber;
 
     @Column(name = "pin_hash", length = 255)
@@ -45,6 +44,14 @@ public class User {
         this.phoneNumber = Objects.requireNonNull(phoneNumber, "phoneNumber");
         this.pinHash = Objects.requireNonNull(pinHash, "pinHash");
         this.createdAt = Objects.requireNonNull(createdAt, "createdAt");
+    }
+
+    /** For a separately verified, phone-free identity; does not authenticate or link it. */
+    public static User withoutPhone(String pinHash, Instant createdAt) {
+        var user = new User();
+        user.pinHash = Objects.requireNonNull(pinHash, "pinHash");
+        user.createdAt = Objects.requireNonNull(createdAt, "createdAt");
+        return user;
     }
 
     public Long getId() { return id; }

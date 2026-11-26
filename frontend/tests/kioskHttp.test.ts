@@ -3,12 +3,16 @@ import { checkoutRental, lookupRentalTag, lookupReturnTag, probeServerConnection
 import type { Grant } from '../src/shared/types';
 import { issueRentalCode } from '../src/shared/rentalCodeHttp';
 
-const grant: Grant = { token: 'rental-token', maskedPhone: '010****5678', expiresAt: Date.now() + 60000 };
+const grant: Grant = { token: 'rental-token', userId: '12', userName: '홍길동', expiresAt: Date.now() + 60000 };
 const json = (body: unknown, status = 200) => ({ ok: status >= 200 && status < 300,
   status, json: async () => body });
 afterEach(() => vi.unstubAllGlobals());
 
 describe('real kiosk HTTP contract', () => {
+  it('대여자 이름과 회원번호가 없는 인증 응답을 거부한다', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ token: 'grant', expiresAt: new Date(Date.now() + 60000).toISOString() }, 201)));
+    await expect(verifyRentalCode('123456')).rejects.toMatchObject({ code: 'UNKNOWN' });
+  });
   it('모바일 세션으로 일회성 대여·반납 코드를 발급받는다', async () => {
     const fetch = vi.fn().mockResolvedValue(json({ code: '123456', expiresAt: '2026-10-14T10:03:00Z' }));
     vi.stubGlobal('fetch', fetch);
@@ -52,7 +56,7 @@ describe('real kiosk HTTP contract', () => {
     const fetch = vi.fn()
       .mockRejectedValueOnce(new TypeError('offline'))
       .mockResolvedValueOnce(json({ error: { code: 'RENTAL_CODE_INVALID' } }, 401))
-      .mockResolvedValueOnce(json({ token: grant.token, maskedPhoneNumber: grant.maskedPhone,
+      .mockResolvedValueOnce(json({ token: grant.token, userId: grant.userId, userName: grant.userName,
         expiresAt: new Date(grant.expiresAt).toISOString() }, 201));
     vi.stubGlobal('fetch', fetch);
     await expect(verifyRentalCode('123456')).rejects.toMatchObject({ code: 'NETWORK' });
@@ -120,7 +124,7 @@ describe('real kiosk HTTP contract', () => {
 
   it('코드 검증 후 토큰을 받고 목록을 인증하여 조회한다', async () => {
     const fetch = vi.fn()
-      .mockResolvedValueOnce(json({ token: grant.token, maskedPhoneNumber: grant.maskedPhone,
+      .mockResolvedValueOnce(json({ token: grant.token, userId: grant.userId, userName: grant.userName,
         expiresAt: new Date(grant.expiresAt).toISOString() }, 201))
       .mockResolvedValueOnce(json({ itemTypes: [{ itemTypeId: '12', itemTypeName: '우산' }] }));
     vi.stubGlobal('fetch', fetch);

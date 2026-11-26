@@ -8,12 +8,11 @@ async function server(page: import('@playwright/test').Page) {
     name: '홍길동',
     occupation: '학생',
     role: 'USER',
-    maskedPhoneNumber: '010-****-5678',
   };
   await page.route('**/api/v1/auth/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/browser-registration'))
-      return route.fulfill({ json: { registered: false } });
+      return route.fulfill({ json: { registered: true, expiresAt: expiry } });
     if (path.includes('/login/')) {
       signedIn = true;
       return route.fulfill({
@@ -44,8 +43,6 @@ test('initial connection failure remains recoverable after closing popup', async
 test('a delayed pre-login session response cannot erase successful login', async ({ page }) => {
   await server(page);
   await page.goto('/mobile/login');
-  await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
-  await page.getByRole('button', { name: '다음', exact: true }).click();
   let captured: import('@playwright/test').Route | undefined;
   await page.route('**/api/v1/auth/session', async (route) => {
     if (!captured) {
@@ -56,7 +53,8 @@ test('a delayed pre-login session response cannot erase successful login', async
   });
   await page.evaluate(() => window.dispatchEvent(new Event('tagback-session')));
   await expect.poll(() => !!captured).toBe(true);
-  await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
+  await page.getByLabel('PIN 숫자 6자리').fill('048259');
+  await page.getByRole('button', { name: '확인', exact: true }).click();
   await expect(page).toHaveURL(/\/mobile$/);
   await captured!.fulfill({
     status: 401,
@@ -72,9 +70,8 @@ test('an existing session does not prove a lost PIN reset completed after reload
 }) => {
   await server(page);
   await page.goto('/mobile/login');
-  await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
-  await page.getByRole('button', { name: '다음', exact: true }).click();
-  await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
+  await page.getByLabel('PIN 숫자 6자리').fill('048259');
+  await page.getByRole('button', { name: '확인', exact: true }).click();
   await expect(page).toHaveURL(/\/mobile$/);
   await page.evaluate(() =>
     sessionStorage.setItem(
@@ -83,9 +80,9 @@ test('an existing session does not prove a lost PIN reset completed after reload
     ),
   );
   await page.goto('/mobile/recover');
-  await page.getByRole('button', { name: '처리 결과 다시 확인', exact: true }).click();
+  await page.getByRole('button', { name: '결과 다시 확인', exact: true }).click();
   await expect(page.getByRole('dialog')).toContainText(
-    '이전 요청의 완료 여부를 확인할 수 없습니다.',
+    '이전 요청의 결과를 확인할 수 없습니다.',
   );
   await expect(page).toHaveURL(/\/mobile\/recover$/);
   await expect(page.getByRole('heading', { name: 'PIN이 재설정되었습니다.' })).toHaveCount(0);

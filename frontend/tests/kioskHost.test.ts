@@ -9,7 +9,7 @@ const proof = {
   nonce: key,
   signature: 'a'.repeat(64),
 };
-const grant = { token: 'opaque-handle', maskedPhone: '010****5678', expiresAt: Date.now() + 60000 };
+const grant = { token: 'opaque-handle', userId: '12', userName: '홍길동', expiresAt: Date.now() + 60000 };
 function host(
   request = vi.fn(async (r: HostRequest) => ({
     version: 2 as const,
@@ -67,7 +67,7 @@ describe('installed kiosk boundary', () => {
         r.command.action === 'verify'
           ? {
               grantHandle: 'native-handle',
-              maskedPhoneNumber: '010****5678',
+              userId: '12', userName: '홍길동',
               expiresAt: '2026-12-01T00:00:00Z',
             }
           : { itemTypes: [] },

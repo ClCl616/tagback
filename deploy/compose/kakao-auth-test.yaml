@@ -1,0 +1,94 @@
+name: tagback-kakao-auth-test
+
+# Isolated test database. Only the real skill endpoint is exposed through the tunnel.
+services:
+  db:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_DB: tagback_auth_test
+      POSTGRES_USER: tagback_auth_test
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets: [db_password]
+    volumes: [auth_test_db:/var/lib/postgresql/data]
+    networks: [private]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/compose/api.Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: kakao-auth
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/tagback_auth_test
+      SPRING_DATASOURCE_USERNAME: tagback_auth_test
+      SPRING_CONFIG_IMPORT: configtree:/run/secrets/
+      TAGBACK_AUTH_ALLOWED_ORIGINS: https://localhost:8443
+      TAGBACK_KAKAO_BOT_ID: ${TAGBACK_TEST_KAKAO_BOT_ID:-local-test-bot}
+      NFC_BRIDGE_ID: test-kiosk
+    secrets:
+      - source: db_password
+        target: TAGBACK_DB_PASSWORD
+      - source: common_key
+        target: tagback.auth.common-hash-key
+      - source: hmac_key
+        target: tagback.kakao.hmac-key
+      - source: skill_secret
+        target: tagback.kakao.skill-secret
+      - source: nfc_secret
+        target: tagback.nfc.scan-secret
+    networks: [private]
+    depends_on:
+      db:
+        condition: service_healthy
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/compose/web.Dockerfile
+      args:
+        VITE_KAKAO_CHANNEL_URL: https://pf.kakao.com/_cqXNX
+    ports:
+      - '127.0.0.1:8443:443'
+    volumes:
+      - type: bind
+        source: ./local/kakao-auth-test/tls
+        target: /etc/nginx/tls
+        read_only: true
+        bind:
+          create_host_path: false
+    networks: [private, web_access]
+    depends_on: [api]
+  proxy:
+    image: nginx:1.27-alpine
+    volumes:
+      - type: bind
+        source: ./kakao-auth-test.nginx.conf
+        target: /etc/nginx/nginx.conf
+        read_only: true
+    networks: [private, edge]
+    depends_on: [api]
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.2
+    command: [tunnel, --no-autoupdate, --url, 'http://proxy:8080']
+    networks: [edge]
+    depends_on: [proxy]
+secrets:
+  db_password:
+    file: ./local/kakao-auth-test/db-password
+  common_key:
+    file: ./local/kakao-auth-test/common-key
+  hmac_key:
+    file: ./local/kakao-auth-test/hmac-key
+  skill_secret:
+    file: ./local/kakao-auth-test/skill-secret
+  nfc_secret:
+    file: ./local/kakao-auth-test/nfc-secret
+volumes:
+  auth_test_db:
+networks:
+  private:
+    internal: true
+  edge:
+  web_access:

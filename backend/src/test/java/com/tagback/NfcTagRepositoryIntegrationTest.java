@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @EnabledIfEnvironmentVariable(named = "TAGBACK_ITEM_DB_TEST", matches = "true")
 @SpringBootTest(properties = {
-        "spring.profiles.active=sms-mock",
+        "spring.profiles.active=kakao-auth",
         "spring.datasource.url=jdbc:postgresql://127.0.0.1:${TAGBACK_ITEM_DB_PORT:55440}/tagback_items_test",
         "spring.datasource.username=postgres", "spring.datasource.password=",
         "spring.jpa.hibernate.ddl-auto=validate", "spring.jpa.open-in-view=false"})

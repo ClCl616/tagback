@@ -18,7 +18,7 @@ New-Item -ItemType Directory -Path $taskLogs | Out-Null
 try {
   $taskExtraPorts=@()
   if($AllBackendTests) { $taskExtraPorts=@('--publish','127.0.0.1:55439:5432') }
-  & docker run --detach --name $taskContainer --label tagback.test=kiosk --publish "127.0.0.1:${DbPort}:5432" @taskExtraPorts --env POSTGRES_HOST_AUTH_METHOD=trust --env POSTGRES_DB=tagback_live_test postgres:17
+  & docker run --detach --name $taskContainer --label tagback.test=kiosk --publish "127.0.0.1:${DbPort}:5432" @taskExtraPorts --env POSTGRES_HOST_AUTH_METHOD=trust --env POSTGRES_DB=tagback_live_test postgres:17 -c max_connections=300
   if($LASTEXITCODE -ne 0) { throw 'Test database startup failed.' }
   $taskCreated=$true
   $ready=$false
@@ -53,7 +53,13 @@ try {
     & .\gradlew.bat bootJar --offline
     if($LASTEXITCODE -ne 0) {throw 'Backend build failed.'}
   } finally {Pop-Location}
-  $env:SPRING_PROFILES_ACTIVE='sms-mock'
+  $env:SPRING_PROFILES_ACTIVE='kakao-auth'
+  $env:TAGBACK_AUTH_COMMON_HASH_KEY='isolated-test-common-hash-key-at-least-32-characters'
+  $env:TAGBACK_KAKAO_HMAC_KEY='isolated-test-kakao-hmac-key-at-least-32-characters'
+  $env:TAGBACK_KAKAO_SKILL_SECRET='isolated-test-kakao-skill-key-at-least-32-characters'
+  $env:TAGBACK_KAKAO_BOT_ID='isolated-test-bot'
+  $env:TAGBACK_TEST_KAKAO_SKILL_SECRET=$env:TAGBACK_KAKAO_SKILL_SECRET
+  $env:TAGBACK_TEST_KAKAO_BOT_ID=$env:TAGBACK_KAKAO_BOT_ID
   $env:SPRING_DATASOURCE_URL="jdbc:postgresql://127.0.0.1:$DbPort/tagback_live_test"
   $env:SPRING_DATASOURCE_USERNAME='postgres'
   $env:SPRING_DATASOURCE_PASSWORD=''
@@ -80,7 +86,7 @@ try {
   $env:TAGBACK_LIVE_BASE_URL="https://localhost:$FrontendPort"
   # Trust only this generated test certificate in the child Node/Electron processes.
   # The packaged host keeps HTTPS verification enabled; no system trust changes.
-  if($FullJourney) { $env:NODE_EXTRA_CA_CERTS=$env:TAGBACK_HTTPS_CERT }
+  $env:NODE_EXTRA_CA_CERTS=$env:TAGBACK_HTTPS_CERT
   $taskProcesses+=Start-Process -FilePath (Get-Command node).Source -ArgumentList @('node_modules/vite/bin/vite.js','--host','localhost','--port',$FrontendPort,'--strictPort') -WorkingDirectory $taskFrontend -RedirectStandardOutput (Join-Path $taskLogs 'frontend.out.log') -RedirectStandardError (Join-Path $taskLogs 'frontend.err.log') -WindowStyle Hidden -PassThru
   $ready=$false
   for($i=0;$i -lt 40;$i++) {

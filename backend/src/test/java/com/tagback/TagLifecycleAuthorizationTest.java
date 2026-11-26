@@ -43,7 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest({TagLifecycleController.class, TagLookupController.class, com.tagback.controller.TagRegistrationController.class})
-@ActiveProfiles("sms-mock")
+@ActiveProfiles("kakao-auth")
 @Import({ApiAccessConfiguration.class, ApiExceptionHandler.class})
 class TagLifecycleAuthorizationTest extends SharedAdminMvcSupport {
     @Autowired MockMvc mvc;

@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@Profile("sms-mock & !prod & !production")
+@Profile(com.tagback.config.AuthProfiles.CORE)
 @RequestMapping("/api/v1/rentals/me")
 public class RentalQueryController {
     private final RentalQueryService queries;

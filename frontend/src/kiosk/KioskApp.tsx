@@ -846,7 +846,7 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
                       <>
                         <div>
                           <dt>대여자</dt>
-                          <dd>{grant?.maskedPhone}</dd>
+                          <dd>{grant?.userName} · 회원번호 {grant?.userId}</dd>
                         </div>
                         <div className="due-row">
                           <dt>반납 예정</dt>

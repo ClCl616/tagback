@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Uses real committed transactions: a test-wide rollback must not hide partial service writes. */
 @EnabledIfEnvironmentVariable(named = "TAGBACK_ITEM_DB_TEST", matches = "true")
 @SpringBootTest(properties = {
-        "spring.profiles.active=sms-mock",
+        "spring.profiles.active=kakao-auth",
         "spring.datasource.url=jdbc:postgresql://127.0.0.1:${TAGBACK_ITEM_DB_PORT:55440}/tagback_items_test",
         "spring.datasource.username=postgres", "spring.datasource.password=",
         "tagback.nfc.scan-secret=test-only-nfc-scan-secret-32-bytes-long",

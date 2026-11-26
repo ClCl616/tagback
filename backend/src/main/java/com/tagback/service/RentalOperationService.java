@@ -2,6 +2,7 @@ package com.tagback.service;
 
 import com.tagback.domain.repository.RentalAuthorizationStore;
 import com.tagback.domain.repository.RentalAuthorizationStore.Grant;
+import com.tagback.domain.repository.UserRepository;
 import com.tagback.dto.rental.RentalResponses;
 import com.tagback.exception.AuthErrorCode;
 import com.tagback.exception.AuthException;
@@ -14,19 +15,23 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Profile("sms-mock & !prod & !production")
+@Profile(com.tagback.config.AuthProfiles.CORE)
 public class RentalOperationService {
     private final RentalAuthorizationStore store;
     private final RentalCheckoutService checkout;
+    private final UserRepository users;
     private final Clock clock;
 
-    public RentalOperationService(RentalAuthorizationStore store, RentalCheckoutService checkout, Clock clock) {
-        this.store = store; this.checkout = checkout; this.clock = clock;
+    public RentalOperationService(RentalAuthorizationStore store, RentalCheckoutService checkout, UserRepository users, Clock clock) {
+        this.store = store; this.checkout = checkout; this.users = users; this.clock = clock;
     }
 
     @Transactional
     public Outcome checkout(Grant authenticatedGrant, UUID key, long itemId, long itemTypeId) {
         var grant = store.grantById(authenticatedGrant.id()).orElseThrow(RentalException::grantInvalid);
+        long userId = store.codeUserId(grant.codeId()).orElseThrow(RentalException::grantInvalid);
+        users.findByIdForUpdate(userId).orElseThrow(RentalException::grantInvalid);
+        // Withdrawal locks the user first; re-read the code under lock after waiting.
         var code = store.lockCode(grant.codeId()).orElseThrow(RentalException::grantInvalid);
         requireUnexpired(grant.expiresAt(), code.expiresAt());
         var prior = store.operation(grant.id(), key);

@@ -845,6 +845,11 @@
 .user-web .uw-settings {
   padding-block: 4px;
 }
+.user-web .uw-withdraw-info h2 { margin-top: 0; }
+.user-web .uw-withdraw-info ul { padding-left: 1.35rem; line-height: 1.65; }
+.user-web .uw-withdraw-confirm { display: flex; align-items: flex-start; gap: .65rem; line-height: 1.5; }
+.user-web .uw-withdraw-confirm input { width: 1.2rem; height: 1.2rem; flex: 0 0 auto; margin-top: .15rem; }
+.user-web .uw-withdraw-back { display: flex; justify-content: center; align-items: center; text-decoration: none; }
 .user-web .uw-settings a {
   display: flex;
   min-height: 64px;
@@ -989,9 +994,6 @@
 .user-web .auth-flow .auth-label-row {
   flex-wrap: wrap;
   gap: 4px;
-}
-.user-web .auth-flow .auth-sms-field input {
-  border-color: #7a889e;
 }
 .user-web .uw-field-error {
   color: #b42318;

@@ -23,10 +23,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @EnabledIfEnvironmentVariable(named="TAGBACK_ADMIN_TEST",matches="true")
-@SpringBootTest(properties={"spring.profiles.active=sms-mock",
+@SpringBootTest(properties={"spring.profiles.active=kakao-auth",
         "spring.datasource.url=jdbc:postgresql://127.0.0.1:55461/tagback_admin_test",
         "spring.datasource.username=postgres","spring.datasource.password=",
-        "tagback.auth.sms-hash-key=isolated-admin-test-key-at-least-32-bytes",
+        "tagback.auth.common-hash-key=isolated-admin-common-key-at-least-32-bytes",
+        "tagback.kakao.hmac-key=isolated-admin-hmac-key-at-least-32-bytes",
+        "tagback.kakao.skill-secret=isolated-admin-secret-key-at-least-32-bytes",
+        "tagback.kakao.bot-id=test-bot",
         "tagback.nfc.scan-secret=isolated-nfc-test-key-at-least-32-bytes","tagback.nfc.bridge-id=test-reader"})
 @AutoConfigureMockMvc
 class SharedAdminIntegrationTest {

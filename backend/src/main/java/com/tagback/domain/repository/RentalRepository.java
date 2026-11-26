@@ -11,6 +11,8 @@ public interface RentalRepository extends JpaRepository<Rental, Long> {
     // OVERDUE is still active. Checkout must lock the item before checking and saving.
     boolean existsByItem_IdAndReturnedAtIsNull(Long itemId);
 
+    boolean existsByUser_IdAndReturnedAtIsNull(Long userId);
+
     Optional<Rental> findByItem_IdAndReturnedAtIsNull(Long itemId);
 
     @EntityGraph(attributePaths = {"item", "item.itemType"})
