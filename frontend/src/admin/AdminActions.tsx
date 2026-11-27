@@ -11,18 +11,22 @@ function Dialog({
   children,
   close,
   busy,
+  page = false,
 }: {
   title: string;
   children: ReactNode;
   close: () => void;
   busy: boolean;
+  page?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const opener = useRef(document.activeElement as HTMLElement);
   useEffect(() => {
     const dialog = ref.current;
-    dialog?.showModal();
-    dialog?.querySelector<HTMLElement>('[data-aw-autofocus]')?.focus();
+    if (!page) dialog?.showModal();
+    (page ? document.querySelector('.aw-editor-page') : dialog)
+      ?.querySelector<HTMLElement>('[data-aw-autofocus]')
+      ?.focus();
     return () => {
       dialog?.close();
       queueMicrotask(() => {
@@ -30,6 +34,24 @@ function Dialog({
       });
     };
   }, []);
+  if (page)
+    return (
+      <section
+        className="aw-dialog aw-editor-page"
+        aria-label={title}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && !busy) close();
+        }}
+      >
+        <header>
+          <h2>기본 정보</h2>
+          <button type="button" aria-label="닫기" disabled={busy} onClick={close}>
+            <X size={20} />
+          </button>
+        </header>
+        {children}
+      </section>
+    );
   return (
     <dialog
       ref={ref}
@@ -112,6 +134,7 @@ export function ItemEditor({
   const op = useOperation();
   return (
     <Dialog
+      page
       title={original ? '물품 수정' : '물품 등록'}
       close={() => close(uncertain)}
       busy={op.busy}

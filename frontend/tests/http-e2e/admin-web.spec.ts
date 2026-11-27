@@ -206,6 +206,22 @@ async function server(page: Page) {
   });
   return state;
 }
+test('admin login form keeps a readable width and follows field order', async ({ page }) => {
+  await server(page);
+  for (const width of [320, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/admin/login');
+    const number = page.getByLabel('관리자 번호');
+    await expect(number).toBeFocused();
+    const form = await page.locator('form.aw-card').boundingBox();
+    expect(form!.width).toBeLessThanOrEqual(480);
+    expect(form!.x).toBeGreaterThanOrEqual(0);
+    expect(form!.x + form!.width).toBeLessThanOrEqual(width);
+    await page.keyboard.press('Tab');
+    await expect(page.getByLabel('관리자 비밀번호')).toBeFocused();
+  }
+});
+
 test('admin login preserves its requested destination and does not offer administrator signup', async ({
   page,
 }) => {
@@ -225,12 +241,10 @@ test('overview links, direct details, history and same-name users preserve ident
 }) => {
   await server(page);
   await page.goto('/admin');
-  await expect(page.getByRole('heading', { name: '현황', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '운영 현황', exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: '전체 현황' })).toContainText(/등록 물품\s*4/);
-  const priorities = page.getByRole('region', { name: '확인이 필요한 항목' });
-  await expect(priorities.getByRole('link')).toHaveCount(3);
-  await expect(priorities.getByRole('link', { name: /태그 등록 대기/ })).toContainText('1');
-  await priorities.getByRole('link', { name: /태그 등록 대기/ }).click();
+  await expect(page.getByRole('region', { name: '운영 수량' }).getByRole('link')).toHaveCount(4);
+  await page.getByRole('link', { name: 'NFC 태그 관리', exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/tags$/);
   await expect(page.getByRole('button', { name: '우산 상세 보기' })).toBeVisible();
   await page.goto('/admin/users?selected=2');
@@ -256,7 +270,7 @@ test('web creates pending item without a reader or UID field', async ({ page }) 
   const state = await server(page);
   await page.goto('/admin/items');
   await page.getByRole('button', { name: '물품 등록', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '물품 등록', exact: true });
+  const dialog = page.getByRole('region', { name: '물품 등록', exact: true });
   await expect(dialog.getByLabel('NFC 태그 UID')).toHaveCount(0);
   await dialog.getByLabel('물품명', { exact: true }).fill('새 우산');
   await dialog.getByLabel('물품 종류', { exact: true }).selectOption('1');
@@ -269,7 +283,7 @@ test('web creates pending item without a reader or UID field', async ({ page }) 
     '태그 등록 대기',
   );
   await page.getByRole('button', { name: '물품 정보 수정' }).click();
-  await expect(page.getByRole('dialog')).toContainText('키오스크');
+  await expect(page.getByRole('region', { name: '물품 수정' })).toContainText('키오스크');
   await expect(page.getByLabel('NFC 태그 UID')).toHaveCount(0);
 });
 test('lost create response blocks resubmission and refresh failure does not repeat a saved mutation', async ({
@@ -279,7 +293,7 @@ test('lost create response blocks resubmission and refresh failure does not repe
   state.loseCreate = true;
   await page.goto('/admin/items');
   await page.getByRole('button', { name: '물품 등록', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: '물품 등록', exact: true });
+  const dialog = page.getByRole('region', { name: '물품 등록', exact: true });
   await dialog.getByLabel('물품명', { exact: true }).fill('응답 유실 물품');
   await dialog.getByLabel('물품 종류', { exact: true }).selectOption('1');
   await dialog.getByRole('button', { name: '등록하기' }).click();
@@ -417,11 +431,16 @@ test('admin layout, dialogs and focus remain usable on narrow and wide screens',
   await page.getByRole('button', { name: '물품 등록', exact: true }).click();
   for (let index = 0; index < 12; index++) {
     await page.keyboard.press('Tab');
-    expect(await page.evaluate(() => !!document.activeElement?.closest('dialog[open]'))).toBe(true);
+    expect(
+      await page.evaluate(
+        () => !!document.activeElement && document.activeElement.getBoundingClientRect().width > 0,
+      ),
+    ).toBe(true);
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
     true,
   );
+  await page.getByRole('region', { name: '물품 등록', exact: true }).getByRole('button', { name: '닫기', exact: true }).first().focus();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: '물품 등록', exact: true })).toBeFocused();
 });

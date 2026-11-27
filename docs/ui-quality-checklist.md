@@ -100,3 +100,157 @@
 | 문서 구조 | 과거 PIN/SMS·공통 관리자·종류별 목록 기록이 최신 정책과 공존. 이번 진입 문서에 우선순위를 명시했으며 개별 역사 문서를 현재 계약으로 사용하지 않도록 유지 |
 
 미검증: 실측 색 대비, 모든 hover/active/disabled 상태, 모든 화면의 직접 시각 확인, 스크린리더·전체 키보드/200% 확대·가상 키보드·폰트 실패, 키오스크 관리자 반전 테마의 이번 직접 렌더, 전체 기능 회귀·오류/빈 데이터, 실제 카카오·운영 API/DB·실물 NFC·Windows 설치 패키지·Android 실앱. 이번 5개 검사로 전체 접근성/상용 품질 완료를 선언하지 않는다. 배포·운영 데이터 변경 없음. 발견 사항의 수정/재검수는 별도 UI 개선 범위에서 수행한다.
+
+
+## 전체 UI/UX 실행 검수·개선 — 2026-11-27
+
+이번 기록은 위 **최초 적용·분석 기록 이후 실제 소스를 수정하고 재검수한 결과**다. 앞의 미수정·미검증 표는 당시 기록으로 보존한다. 전체 접근성 인증이나 운영 배포 완료를 의미하지 않는다.
+
+작업 위치: `C:/Projects/tagback-approved-ui`, `codex/approved-ui`, 기준 HEAD `b285bf2` 및 작업 시작 시 존재하던 승인 시안 미커밋 변경. 루트 `C:/Projects/tagback`의 로컬 결정 이력과 두 폴더의 AGENTS.md, CONTRIBUTING.md 및 현재 설계/승인 시안/체크리스트를 적용했다. 실제 마운트는 사용자 UserWeb, 관리자 AdminWeb, 키오스크 KioskApp/공유 관리자이며, 과거 ServerAdminApp·AdminRecords 등 미마운트 구현을 현재 별도 서비스 화면으로 세지 않았다.
+
+### 화면·인터페이스 및 렌더 범위
+
+| 인터페이스 | 확인한 화면·상태 | 방법·크기 |
+|---|---|---|
+| 사용자 웹 | 홈(로그인 전/후), 물품 목록·검색·필터·개별 상세, 내 대여·상세, 이용 이력·상세, 내 정보, 자동 이용 코드, 카카오 진입·취소·가입 프로필, 조회 오류 | Vite + Playwright HTTP fixture. 직접 캡처 390×900/1440×900; 기존 반응형/스크롤 검사는 320·390·768·1024·1440px 및 글자 확대. 이전 items/:id·recover·change-phone 리디렉션은 기존 회귀 검사/소스로 확인 |
+| 관리자 웹 | 로그인, 현황, 물품 목록·상세·등록 dialog·이미지 입력, NFC 태그·상세, 대여·상세, 연체, 이력, 사용자·상세, 관리자 계정·접속 기록 | HTTP fixture, 390×950/1440×950 캡처, 로그인 추가 검사는 320/1440px. 기존 검색·권한·세션·저장 불확실성·dialog/focus 회귀 포함 |
+| 고객 키오스크 | 시작, 대여 코드/NFC/최종 확인/완료, 반납 코드/NFC/상태 선택/확인/완료, 이용 취소 dialog, 응답 유실 결과 미확인 | 설치형 Vite bundle + 격리된 host fixture. 직접 캡처 1280×720, 기존 크기 검사는 1280×720·1366×768·1920×1080. 정상·손상 반납/거래 재확인 회귀 포함 |
+| 키오스크 관리자 | 별도 로그인, 현황, 물품·상세 상하단, 태그 등록 dialog·태그 목록, 대여·연체·이력(빈 결과 포함), 사용자, 관리자 계정 | host fixture, 1280×720에서 반전 테마 직접 확인. 인증·태그 인식·응답 유실·유휴 로그아웃 회귀 포함 |
+| Windows 운영자 | 연결·설정의 잠금/해제, 이전 거래 결과 확인·복구 경고 | 실제 operator.html/css/js를 격리한 브라우저 fixture에서 390/1024px 렌더. Electron IPC는 가짜 host이며 설치 앱 실실행·장치 검증 아님 |
+
+직접 검토한 before/after 캡처와 축소 모음은 로컬 `frontend/test-results/ui-audit/`에 보관했다. after PNG는 75개이며 캡처 수가 독립 기능 수를 의미하지 않는다. 목록·폼·대화상자·짧은/긴 콘텐츠의 실제 화면을 보고 수정했다. 임시 캡처 harness는 테스트 결과 폴더에 보관하며 상시 테스트 소스에서 제외했다. 재현하려면 같은 테스트 디렉터리 구조로 복사하고 `UI_AUDIT_PHASE=after`를 설정한다. 이 자료는 Git 제외 테스트 산출물이므로 다른 PC에 자동 공유되지 않는다.
+
+### 발견 문제 → 실제 수정 → 재검수
+
+| 문제 | 수정 파일·개선 결과 |
+|---|---|
+| 사용자 그린 버튼의 hover/active가 파랑으로 변함, 일부 보조 표면의 과거 파랑 | `frontend/src/mobile/user-web.css`: 기존 영역 토큰에 그린 상태색을 추가하고 보조 배경/링크를 통일. 카카오 노랑은 별도 상태색 유지 |
+| 모바일 홈의 대여 2건 아래 흰 카드가 지나치게 확장 | 같은 CSS의 홈 요약 flex 확장 제거. 목록이 길면 내부 스크롤하고, 짧으면 콘텐츠만큼 표시. 기존 긴 목록/200% 글자 확대 검사 통과 |
+| 이용 코드 제목·아이콘 중복, 대여 시 존재하지 않는 종류 선택 안내, 반납 순서 불일치 | `UserWeb.tsx`: 전용 코드 화면 중복 제목/장식 제거, 자동 코드 정책 유지, 대여 코드→NFC→확정/반납 코드→NFC→상태→확정 안내. 코드 발급 링크는 코드 보기로 수정 |
+| 인증 상단 중복 캡션, 인접 버튼·라벨 간격 부족 | `AuthFlow.tsx`, `user-web.css`: 캡션 제거, 버튼 간 12px/라벨 8px 간격. 카카오 로그인·가입 정보·실패 복구 문구 유지 |
+| 관리자 로그인 폼이 데스크톱 전체 폭을 차지하고 비밀번호부터 포커스 | `admin-web.css`, `adminAuth.tsx`: 최대 480px와 gap20 적용, 번호부터 입력, 요청 중 필드 상태 일치 |
+| 계정 추가 폼의 배치·행동 강조·긴 이름 줄바꿈 불일치 | `AccountManagement.tsx`, `admin-web.css`: 3열/좁은 화면 1열, 기본 주요 버튼, 제목 중복 제거, 계정 행 줄바꿈, 접속 시간 Asia/Seoul 통일 |
+| 키오스크 관리자 밝은 필드에 밝은 글자, 카드·배지·상세 내 잘못된 배경 상속, 검색 아이콘 겹침 | `admin-web.css` 표면/보조 표면/hover 토큰 + `kiosk-admin.css` 소비자별 반전 테마. 필드·밝은 카드/배지는 어두운 글자, 일반 표는 어두운 표면·밝은 글자. 레거시 section 규칙 범위 제한, 검색 패딩·사이드바 높이·태그 버튼 간격 보정 |
+| 반전 테마 표의 텍스트 링크가 작은 밝은 버튼처럼 표시, 폼 라벨 중앙 정렬 | `kiosk-admin.css`: 행 링크 투명 배경과 테마 글자/hover, 폼 라벨 왼쪽 정렬. 추가 전체 메뉴 캡처에서 발견해 수정 후 해당 관리자 검사 재실행 |
+| 키오스크 반납 시작 안내가 NFC 우선으로 오해 유발, 장식 영문/슬로건 | `KioskApp.tsx`: 코드 준비와 코드 입력 시작 명시, 장식 영문/중복 인사 제거. 실제 완료 정보·반납 위치·자동 복귀·오류·거래 보호 유지 |
+| 공통 팝업 해제 시 포커스 복귀와 태그 dialog 이름 연결 부족 | `shared/ui.tsx`: opener/실제 dialog 노드 보관 후 cleanup 복귀. `TagRegistration.tsx`: useId·aria-labelledby 연결. 기존 모달/세션 복구 검사 및 접근 가능한 이름 검사 |
+| Windows 운영자 화면의 과거 파란 브랜드·불필요 영문·좁은 화면 설정 열 | `kiosk/windows/src/operator.html`, `operator.css`: 그린/아이보리, 간결한 제목, 600px 이하 1열과 긴 값 줄바꿈. host 명령·보안·설정 계약 변경 없음 |
+| OAuth fixture의 간헐적 코드 중복 발급 assertion 실패 | `tests/http-e2e/user-web.spec.ts`: 이전 문서 종료 후 mock 제공자 문서에서 인증 완료. 수정 전 소스 별도 실행에서도 3/3 재현한 fixture 경쟁 조건이며 실제 인증 코드 변경 없이 보완. 수정 후 해당 테스트 3회 연속 및 전체 HTTP 검사 통과 |
+
+### 체크리스트 적용 결과
+
+- [x] 문구·정보 계층: 중복 제목/장식 영어/잘못된 이용 순서를 정리하고 필수 경고·오류·반납 안내를 보존했다.
+- [x] 레이아웃·정렬·여백·크기: 홈 요약, 로그인, 계정 폼, 운영자 설정, 키오스크 검색/상세/행 링크를 실제 렌더로 보정했다.
+- [x] 디자인 일관성·토큰: 승인 민트·아이보리·딥그린과 이미지 카드/티켓 유지. 공통 관리자 표면 토큰이 웹/키오스크에서 다르게 적용되도록 했다.
+- [x] 반응형·데이터 양: 아래 기존 회귀 검사의 화면 폭·긴 이름·긴 목록·글자 확대 범위에서 통과했다. 실기기 소프트 키보드는 미검증이다.
+- [x] 접근성 부분 검증: 로그인 필드 포커스 순서, 기존 상세/dialog 탭·Escape, 태그 dialog 이름, 반전 테마 검색 입력·대기 배지 일반 글자 대비 4.5:1 이상을 계산했다. 전체 대비/스크린리더 인증 결과가 아니다.
+- [x] 상태·기능: 인증·권한·검색·필터·이미지 fallback·초안 유지·자동 코드·대여/반납·손상 반납·미확인 거래의 기존 fixture 회귀 검사를 통과했다.
+- [x] 렌더·재검수: 수정 전후 캡처, 추가 메뉴 검수에서 발견한 테마 문제까지 수정 후 재렌더했다. 임시 캡처의 잘못된 반납 제목 locator도 실제 제목에 맞춰 고친 후 통과했다.
+- [x] 문서·참조: 현재 설계의 실제 토큰/폼/운영자 규격 및 이 검수 기록을 갱신했다. 기존 CONTRIBUTING·AGENTS 참조 위치는 유지했다.
+- [ ] 실기기·전체 접근성·운영 연동 검증: 아래 한계대로 후속 검증 필요.
+
+### 실행 결과와 한계
+
+| 실행 | 이번 결과 |
+|---|---|
+| frontend `pnpm test` | 40 passed |
+| frontend `pnpm build` | TypeScript 및 Vite 웹 빌드 통과 |
+| frontend `node node_modules/@playwright/test/cli.js test -c playwright.http.config.ts` | 37 passed: 상시 기능/회귀 34 + 임시 캡처 3 |
+| frontend `node node_modules/@playwright/test/cli.js test -c playwright.kiosk-host.config.ts` | 17 passed: 상시 기능/회귀 14 + 임시 캡처 3. 설정의 build:kiosk 포함 |
+| 위 키오스크 검사 후 행 링크·라벨 CSS 추가 보정 | admin-tags.spec.ts + ui-audit-admin.spec.ts 5 passed, build:kiosk 통과. 표 링크/계정 라벨 최종 캡처 재확인 |
+| 루트 `node --test kiosk/windows/test/*.test.cjs` | 21 passed. 실제 설치형 UI·물리 NFC 검증을 대신하지 않음 |
+| 문서/변경 검증 | `git diff --check`, Markdown 상대 링크 실존 확인, 기존 변경과 작업 전 snapshot 대조 |
+
+보존: 작업 전 `AdminWeb.tsx`, API/types, kiosk-redesign.css, installed.spec.ts, 승인 시안 문서 등 다른 기존 변경은 snapshot과 동일함을 확인했다. 백엔드·DB·NFC bridge/API 계약은 이번 작업에서 수정하지 않았다. 공통 스타일 변경은 사용자 요청 범위 안에서 했으며 새 라이브러리를 추가하지 않았다.
+
+미검증/후속: 실제 카카오 제공자 로그인·운영 API/DB/실제 등록 이미지, Windows 설치 패키지와 IPC·실물 NFC, Android 실앱(보류), 모든 오류 코드/비밀번호 강제 변경의 직접 캡처, 실제 터치·소프트 키보드/safe-area, 스크린리더, 모든 색·hover·disabled 대비·폰트 실패·전체 reduced-motion 조합은 이번 fixture 검사로 보증하지 않는다. 브라우저별 전체 호환성/성능 및 콘솔 전수 수집도 완료로 보고하지 않는다. 승인된 카드의 긴 이름으로 같은 행 높이가 커지는 동작은 내용을 숨기지 않는 의도적 배치로 유지했다. 레거시 전역/후반 CSS 중복은 전면 재작성하지 않았으며 후속 변경 시 최종 computed style 기준으로 점진 관리한다.
+
+Git/배포: fetch·push·PR·병합·배포 없음. 기존 사용자 변경이 같은 파일/규칙에 겹쳐 있으므로 이를 함께 커밋하지 않는 로컬 AGENTS 보존 원칙을 우선하여 이번 변경은 작업 트리에 남겼다. CONTRIBUTING의 일반 로컬 커밋 절차에 대한 이번 범위의 예외이며, 검수된 실제 상태는 기준 HEAD만이 아니라 미커밋 변경을 포함한다. 작업 전 snapshot과 이번 source/test delta는 로컬 검수 자료에 따로 보관했다.
+
+
+## Forest Gallery V3 / Handoff v1.1 구현·재검수 — 2026-11-27
+
+작업 위치 `C:/Projects/tagback-approved-ui`, `codex/approved-ui`, HEAD `b285bf2` + 시작 시25개 미커밋 파일 + 이번 변경. 원본 ZIP과 SHA256, 규격 및 의도적인 차이는 [설계 문서 최상단](frontend-redesign-design.md) 참조. 이번 사용자 요청은 실제 전면 시각 전환/구현이며 과거 문서화 전용 작업이 아니다. 서버/DB/인증 변경·운영 데이터 쓰기·fetch/푸시/병합/배포 없음.
+
+### 이번 변경 파일 및 보호
+
+- 신규 공통 `frontend/src/forest-gallery.css`, 로드 진입 `frontend/src/main.tsx`, `frontend/src/kiosk-main.tsx`.
+- 실제 화면 `frontend/src/mobile/UserWeb.tsx`, `frontend/src/admin/AdminWeb.tsx`, `frontend/src/kiosk/KioskApp.tsx`.
+- 회귀 `frontend/tests/http-e2e/admin-records.spec.ts`, `admin-web.spec.ts`, `session-recovery.spec.ts`, `user-web.spec.ts`, `frontend/tests/kiosk-host-e2e/admin-tags.spec.ts`, `installed.spec.ts`.
+- 문서: 이 파일, `docs/frontend-redesign-design.md`, `docs/approved-ui-20261127.md`, `CONTRIBUTING.md`, 로컬 제외 `AGENTS.md`, 기본 작업 폴더의 `C:/Projects/tagback/docs/frontend-redesign.local.md`.
+- 시작 시 source/docs 전체 snapshot과 기존 diff를 `frontend/test-results/handoff-v1.1/before/`에 보관했다. 기존 backend, shared API/types/ui, Windows operator 변경은 최초 patch와 비교하여 그대로임을 확인했다. 새 source/doc delta는 `task-source-docs.patch`에 저장한다. 기존 미커밋 변경을 임의로 되돌리거나 함께 커밋하지 않는다.
+
+### 시각 검수 범위와 수정
+
+| 범위 | 실행·확인 |
+|---|---|
+| 승인 자료 | PC6/MO6/AD9/KS13 이미지34개를 모음으로 대조하고 각 화면 명세의 이미지 오류 수정 지시를 적용. 원본 이미지를 화면 배경이나 운영 사진으로 사용하지 않음 |
+| 사용자 | 390×844 및1440×900의 물품/상세/코드/대여/이력/카카오 로그인/기존 홈14개 캡처. 계정과 가입 프로필은 기존 반응형 회귀에도 포함. 320/390/768/1024/1440/1920px의 가로 넘침 재검사 |
+| 관리자 | 1440×900의 현황/물품/재고/태그/사용자/대여/연체/이력/관리자 계정/등록 폼10개 캡처. 기존320~1440px 상세/dialog/포커스 검사도 실행 |
+| 키오스크 | 1920×1080 시작/대여 코드·NFC·확정·완료/반납 NFC·상태·코드·확정·완료 및 코드오류/NFC오류/결과미확인13개 캡처. 설치형 host fixture이며 실물 거래 아님 |
+| Windows 실제 앱 | 새로 패키징한 exe를 격리 프로필에서 실행. 실제 fullscreen 렌더 캡처와 키/설정/관리자 진입/보안 차단 smoke. 운영 서버 설정·실제 NFC 없이 연결 불가 안내/시작 비활성 확인 |
+
+37개 최종 화면 캡처는 `frontend/test-results/handoff-v1.1/render/`, 모음은 `render-sheet.jpg`, 승인 모음은 `references.jpg`. 모음과 대표 PC/모바일/관리자/키오스크 원본·오류 원본을 직접 확인했다. 소스만 보고 시각 완료라고 판단하지 않았다. 캡처용 중복 fixture 파일3개는 `harness/`로 이동하여 상시 테스트의 유지보수 중복을 피했다. 재실행은 user/admin harness를 tests/http-e2e, kiosk harness를 tests/kiosk-host-e2e로 복사하고 각각 기존 Playwright 설정으로 실행한다. 모든 캡처의 데이터/코드/사용자 정보는 fixture다.
+
+발견→수정→재검수:
+
+1. PC 과거 sidebar grid의 높은 specificity가 전체 콘텐츠를240px로 축소했다. `.uw-layout:not(.uw-auth-layout)`을 명시적으로 전환하고 desktop 목록 실제 너비900px 초과 assertion을 추가했다. 수정 뒤 PC 캡처/반응형 재통과.
+2. 모바일 flex shell을 새 block 규칙이 덮어 목록/하단 메뉴를 밀어냈다. 모바일 flex 및 내부 스크롤 복원. 390×844와360×740/375×667, 긴 목록/뒤로가기/글자 확대 회귀 통과.
+3. 키오스크 시작의 높은 specificity로 이전 그라데이션·28px 반경·늘어나는 높이가 남았다. 명시적 새 규격/동일 강조/고정 권장 크기 및 작은 화면 조정 후 1280×720/1366×768/1920×1080 재통과, 캡처 재확인.
+4. 기존 메뉴명과 '로그인 전 하단 메뉴 표시'를 기대하던 테스트는 승인된 새 문구/비로그인 메뉴 숨김에 맞게 수정했다. 권한/네트워크 복구 검사는 보존했다.
+5. 사용자 이력 상세를 닫은 직후 URL만 기다리고 필터/다음 click을 진행하는 테스트에서 전환 중 상세가 다시 열린 상태가 발생했다. 상세 DOM 제거도 기다리도록 보완하고 해당 이력 검사3회 연속 통과. 제품 거래/인증 코드는 바꾸지 않았다.
+6. 임시 오류 캡처의 '처리 결과' heading locator는 실제 복구 button에 맞게 수정. 오류3종 캡처 후 성공 화면 미표시 확인. 실패한 캡처 실행을 완료로 세지 않았다.
+7. 최대1600px 안에 필터240px까지 포함하면5열×248px를 확보하지 못하므로 큰 화면은 auto-fit으로 열을 줄였다. 1920px를 반응형 회귀에 추가하여 검증했다.
+
+### 검증 결과
+
+| 실행 | 확인 결과 |
+|---|---|
+| `pnpm test` | frontend 단위40 passed |
+| `pnpm build` | 최종 TypeScript + Vite 웹 빌드 통과 |
+| `pnpm test:http` (임시 캡처2개 포함) | 36개 중35 passed; 이력 전환 테스트1개 실패 후 DOM 대기 보완, 해당 테스트 `--repeat-each=3` 3 passed. 따라서 모든 사례의 통과 근거가 있으나 최종 전체36개를 한 실행에서 재통과했다고 주장하지 않음 |
+| 최종 사용자 반응형 재검사 |320/390/768/1024/1440/1920px, 1 passed. PC 실제 목록 폭·가로 넘침·로그인/가입 프로필 포함 |
+| `pnpm test:kiosk-host` |16 passed(기존14+새 반납 순서/뒤로가기1+임시 정상 캡처1), build:kiosk 포함 |
+| 별도 kiosk 캡처2개 |정상 흐름 + 코드오류/NFC오류/응답유실 2 passed. 임시 오류 locator 보정 후 결과 |
+| `node --test kiosk/windows/test/*.test.cjs` |21 passed |
+| `npm run package` → `npm run test:smoke` |최종 새 Windows 실행 패키지 생성/실제 실행 통과. 암호화된 시험키·분리 프로필, fullscreen/단축키, native host/renderer 격리, 임의 명령/네트워크 차단, Java bridge 장치없음/종료 |
+| 변경 검증 |git diff --check 통과, AGENTS.md와 evidence 로컬 제외 확인, 기존 backend/shared/Windows operator 미커밋 patch 동일 확인 |
+
+실행 파일: `kiosk/windows/out/TagBackKiosk-win32-x64/TagBackKiosk.exe`. 로컬 시험판0.1.6이며 Release/서명/설치 프로그램(make) 게시나 운영 PC 설치를 수행하지 않았다. 기존 Setup.exe가 이번 UI로 갱신되었다고 해석하지 않는다. Windows 실제 캡처는 `kiosk/windows/out/smoke/windows-kiosk.png` 및 first-run-settings.png.
+
+### 적용 체크와 남은 한계
+
+- [x] 승인 v1.1 색/상태/반경/내비/간격 적용, 실제 렌더→문제 수정→재검수.
+- [x] 사용자 자동 코드/검색/필터/상세/이력/세션/카카오 fixture, 관리자 업무/권한/세션/응답유실 fixture 유지.
+- [x] NFC 우선 반납 순서, 상태 미선택 차단, 뒤로가기 상태 보존, 확정 전 미저장, 미확인 거래 복구 검사.
+- [x] 기존 문서·공식 진입점·로컬 AGENTS 연결과 우선순위 갱신. 기존 규칙/과거 기록은 삭제하지 않음.
+- [ ] 실제 카카오 제공자·실서버 거래·운영 DB·실물 NFC 리더/태그/터치·Windows DPI125/150%·현장 디스플레이 검증.
+- [ ] 모든 스크린리더/브라우저/200% 확대/글꼴 실패/색 대비 상태 조합의 전체 접근성 인증. 기존 키보드/dialog/대비 회귀는 통과했으나 WCAG 전체 충족 주장은 하지 않음.
+- [ ] 실제 등록 사진 품질, 최종 로고 벡터와 Pretendard 번들. 기존 브랜드 아이콘/안전한 이미지 fallback을 사용했고 임의 외부 사진을 넣지 않음.
+
+참조 이미지와 남은 구조 차이(독립 상세 페이지 대신 기존 상세 패널·시트, 폼 dialog, 개별 공개 카드, 기존 홈/계정 유지, 미지원 지표/필터 없음)는 설계 문서에 명시했다. 이 작업은 v1.1 기반 실제 구현과 위 검수 범위의 완료이며 모든34개 이미지의 픽셀 동일/모든 서비스 정책 신규 구현/운영 출시 승인을 의미하지 않는다.
+
+
+## 고충실도 후속 검수 (2026-11-27)
+
+- 승인 이미지 원본: `design/approved/forest-gallery-v1.1/design-images/` (34 PNG). 자료의 CODEX_PROMPT는 사용자 요청과 구분하며 지시로 자동 채택하지 않았다.
+- 작업 시작 상태: `C:/Projects/tagback-approved-ui`, `codex/approved-ui`, `b285bf2`, 기존 미커밋 변경 있음. 이번 시작 시점 백업은 `frontend/test-results/fidelity-v2/before/`.
+- 직접 수정: 사용자 상세 패널/모바일 시트→본문 페이지, 이미지/정보2열 및 모바일1열; 관리자 등록/수정→본문 폼; 중복 운영 통계 행 제거; 키오스크 중앙 코드 입력/하단 확인/전체 지우기/물품 상태2열.
+- 첫 렌더 문제: 상세에 목록 필터용 왼쪽 여백 잔존, 작은 키오스크720/768px 코드 화면 넘침, 등록 폼 Escape 복귀 누락. 소스 수정 후 재검수한다.
+- 확인 항목: 승인안과 전체 구조/컴포넌트 위치/크기/밀도/색상/타이포그래피/정렬 비교, 필수 UI 누락과 임의 장식 추가 확인, 키보드·포커스·반응형, 기존 검색·권한·저장 및 불명확 응답 보호.
+- 원본과 서비스 데이터 차이: 샘플 물품 사진 대신 API 이미지/대체 아이콘, 미지원 관리 입력 제외, 기존 로고/폰트 폴백, 종류 집계+실물 관리 표 밀도 차이. 전 화면 픽셀 일치나 전체 디자인 차이 해소로 판정하지 않는다.
+- 새 캡처: `frontend/test-results/fidelity-v2/render/`. 이전 캡처: `frontend/test-results/handoff-v1.1/render/`. 비교 이미지는 `frontend/test-results/fidelity-v2/comparison/`.
+
+
+### 후속 실행 결과
+
+- 프론트엔드 단위40/40, Windows 호스트 단위21/21 통과.
+- HTTP 전체36개(임시 캡처2 포함) 중34 통과 후 상세 h1 탐색/본문 폼 Escape 검사2건 수정. 실패 항목을 포함한 반응형·키보드·재촬영 대상4개 재실행 통과, 관리자 확대/포커스 대상1개 별도 통과. 전체36개를 최종 소스에서 한 번에 재통과한 것으로 표현하지 않는다.
+- 키오스크 호스트17개(임시 캡처2 포함) 통과. 전체 지우기 회귀 추가 및 작은 화면 재검사6개 통과. 최종 타이포/상태 배치 조정 후 렌더·오류·3해상도5개 재검사 통과.
+- 실제 캡처37장(사용자14/관리자10/키오스크13). 직접 비교용5장 PC-02/MO-02/AD-03/KS-02/KS-07은 `frontend/test-results/fidelity-v2/comparison/`. 서로 다른 실제 fixture 자료량/이미지 없음 차이를 표시하고 픽셀 일치율은 계산하지 않았다. 단순 빌드 통과를 시각 일치로 해석하지 않는다.
+- 최종 web/kiosk 빌드 통과, Windows 실행 패키지 재생성. 실물 NFC, 운영 API, 운영 카카오 인증, 설치 프로그램 배포/자동 업데이트는 이번 검증 범위 밖이다.
+- 신규 소스 변경 파일: `frontend/src/mobile/UserWeb.tsx`, `frontend/src/admin/AdminActions.tsx`, `frontend/src/admin/AdminWeb.tsx`, `frontend/src/kiosk/KioskApp.tsx`, `frontend/src/forest-gallery.css`. 테스트3파일도 새 본문 탐색/키패드 계약에 맞춰 갱신. 기존 미커밋 API/백엔드/인증 변경을 리셋하거나 함께 커밋하지 않았다.
+
+- Windows 패키지 smoke 실제 실행 통과: 격리 프로필 암호화 키 전달, 전체화면/F11/F1/종료 취소, 호스트v2/renderer 격리, 임의 명령·네트워크 차단, Java IPC 연결 끊김/종료(실물 장비 없음). 화면은 `kiosk/windows/out/smoke/windows-kiosk.png`, `first-run-settings.png`.
+- 마지막 관리자 재촬영에서 중복 등록 제목을 기본 정보로 수정하고 실물 수량 단위를 개로 정정했다. 재촬영1개 통과. 이미지 인덱스34개와 공식 문서 Markdown 링크를 검사했고 끊어진 경로0개였다.
+- 전체 UI가 승인 이미지와 동일하다는 완료 선언은 하지 않는다. 남은 시각 차이는 설계 문서 최상단에 기록했다. 운영 연동/실물 NFC 미검증, 원격 푸시·병합·배포 없음.

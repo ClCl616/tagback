@@ -94,10 +94,15 @@ async function fixture(page: Page) {
     if (url.pathname.endsWith('/kakao/start')) {
       const next = route.request().postDataJSON().next;
       await page.route('https://kauth.kakao.com/**', async (provider) => {
-        state.signedIn = true;
+        // Complete the provider fixture after the old app document unloads;
+        // a direct 302 races its pending session refresh and code issuance.
+        if (new URL(provider.request().url()).pathname === '/fixture-ready') {
+          state.signedIn = true;
+          return provider.fulfill({ status: 204 });
+        }
         await provider.fulfill({
-          status: 302,
-          headers: { Location: 'http://localhost:5175' + next },
+          contentType: 'text/html',
+          body: `<script>fetch('/fixture-ready').then(() => location.replace(${JSON.stringify('http://localhost:5175' + next)}))</script>`,
         });
       });
       return route.fulfill({
@@ -242,16 +247,16 @@ test('catalog keeps search, distinguishes unavailable stock from request failure
   await page.getByLabel('물품명 검색').fill('계산기');
   await expect(page.locator('.uw-product')).toHaveCount(2);
   await page.locator('.uw-product').first().click();
-  await expect(page.getByRole('dialog', { name: '물품 상세' })).toContainText('공학용 계산기');
+  await expect(page.getByRole('region', { name: '물품 상세' })).toContainText('공학용 계산기');
   await page.getByRole('button', { name: '물품 상세 닫기' }).click();
   await expect(page.getByLabel('물품명 검색')).toHaveValue('계산기');
   await page.getByLabel('물품명 검색').fill('없는 물품');
   await expect(page.getByRole('heading', { name: '검색 결과가 없어요' })).toBeVisible();
   await page.getByRole('button', { name: '검색 초기화' }).click();
   await page.locator('.uw-product').filter({ hasText: '배터리 01' }).click();
-  await expect(page.getByRole('dialog', { name: '물품 상세' })).toContainText('수리 중');
+  await expect(page.getByRole('region', { name: '물품 상세' })).toContainText('수리 중');
   await expect(
-    page.getByRole('dialog', { name: '물품 상세' }).getByRole('link', { name: '이용 코드 발급' }),
+    page.getByRole('region', { name: '물품 상세' }).getByRole('link', { name: '이용 코드 발급' }),
   ).toHaveCount(0);
   state.failItems = true;
   await page.goto('/mobile/items');
@@ -281,6 +286,7 @@ test('server overdue, direct rental history, return-month filter and logout stay
   await expect(page.getByRole('complementary', { name: '대여 상세' })).toContainText('반납 완료');
   await page.getByRole('link', { name: '대여 상세 닫기' }).click();
   await expect(page).toHaveURL(/\/mobile\/history$/);
+  await expect(page.getByRole('complementary', { name: '대여 상세' })).toHaveCount(0);
   await page.getByLabel('반납 월').selectOption('2026-11');
   await expect(page.locator('.uw-rental-row')).toHaveCount(1);
   await page.getByLabel('물품 검색', { exact: true }).fill('계산기');
@@ -306,7 +312,7 @@ test('approved screens and signup reflow without horizontal overflow from 320 to
 }) => {
   test.setTimeout(90000);
   const state = await fixture(page);
-  for (const width of [320, 390, 768, 1024, 1440]) {
+  for (const width of [320, 390, 768, 1024, 1440, 1920]) {
     await page.setViewportSize({ width, height: 900 });
     for (const path of [
       '/mobile',
@@ -319,12 +325,16 @@ test('approved screens and signup reflow without horizontal overflow from 320 to
       '/mobile/code',
     ]) {
       await page.goto(path);
-      await expect(page.locator('h1')).toBeVisible();
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       await expect(page.locator('.loading')).toHaveCount(0);
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
         `${width} ${path}`,
       ).toBe(true);
+      if (path === '/mobile/items' && width >= 1280) {
+        const box = await page.locator('.uw-products').boundingBox();
+        expect(box!.width).toBeGreaterThan(900);
+      }
       if (
         (width === 390 || width === 1440) &&
         [
@@ -372,7 +382,7 @@ test('mobile basic pages fit the viewport and lists scroll inside the frame', as
     ]) {
       await page.goto(path);
       await expect(page.locator('.loading')).toHaveCount(0);
-      await expect(page.locator('h1')).toBeVisible();
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
       const dimensions = await page.locator('.uw-main').evaluate((el) => ({
         scroll: el.scrollHeight,
         client: el.clientHeight,
@@ -392,7 +402,7 @@ test('mobile basic pages fit the viewport and lists scroll inside the frame', as
   state.signedIn = false;
   for (const path of ['/mobile', '/mobile/login', '/mobile/signup', '/mobile/recover']) {
     await page.goto(path);
-    await expect(page.locator('h1')).toBeVisible();
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     await expect(page.locator('.loading')).toHaveCount(0);
     expect(
       await page.locator('.uw-main').evaluate((el) => el.scrollHeight <= el.clientHeight + 1),
@@ -534,7 +544,7 @@ test('rental and history lists scroll independently, with enlarged text still re
   );
 });
 
-test('catalog sheet traps focus, closes with Escape and keeps filters; desktop uses a panel', async ({
+test('catalog detail page keeps filters and restores focus after Escape on mobile and desktop', async ({
   page,
 }) => {
   await fixture(page);
@@ -542,13 +552,10 @@ test('catalog sheet traps focus, closes with Escape and keeps filters; desktop u
   await page.goto('/mobile/items?q=계산기');
   const card = page.locator('.uw-product').first();
   await card.click();
-  const sheet = page.getByRole('dialog', { name: '물품 상세', exact: true });
+  const sheet = page.getByRole('region', { name: '물품 상세', exact: true });
   await expect(sheet).toBeVisible();
-  await expect(page.locator('.uw-products')).toBeVisible();
-  for (let i = 0; i < 8; i++) {
-    await page.keyboard.press('Tab');
-    expect(await sheet.evaluate((el) => el.contains(document.activeElement))).toBe(true);
-  }
+  await expect(page.locator('.uw-products')).toBeHidden();
+  await expect(page.getByRole('button', { name: '물품 상세 닫기' })).toBeFocused();
   await page.screenshot({ path: 'test-results/catalog-mobile-sheet.png', animations: 'disabled' });
   await page.keyboard.press('Escape');
   await expect(sheet).toHaveCount(0);
@@ -561,9 +568,9 @@ test('catalog sheet traps focus, closes with Escape and keeps filters; desktop u
   expect(new URL(page.url()).searchParams.has('item')).toBe(false);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await card.click();
-  await expect(page.getByRole('complementary', { name: '물품 상세' })).toBeVisible();
-  await expect(sheet).toHaveCount(0);
-  await page.screenshot({ path: 'test-results/catalog-desktop-panel.png' });
+  await expect(page.getByRole('region', { name: '물품 상세' })).toBeVisible();
+  await expect(page.locator('.uw-products')).toBeHidden();
+  await page.screenshot({ path: 'test-results/catalog-desktop-page.png' });
 });
 
 test('background catalog refresh preserves the open sheet and recovers without replacing the list', async ({
@@ -573,7 +580,7 @@ test('background catalog refresh preserves the open sheet and recovers without r
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/mobile/items');
   await page.locator('.uw-product').first().click();
-  const sheet = page.getByRole('dialog', { name: '물품 상세', exact: true });
+  const sheet = page.getByRole('region', { name: '물품 상세', exact: true });
   await expect(sheet).toBeVisible();
   await sheet.evaluate((el) => el.setAttribute('data-original', 'yes'));
   let release!: () => void;

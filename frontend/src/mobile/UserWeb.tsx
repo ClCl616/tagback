@@ -39,10 +39,13 @@ import {
   ScanLine,
   Search,
   Tag,
+  Ticket,
+  Copy,
   UserRound,
   WifiOff,
   X,
 } from 'lucide-react';
+import { ItemPicture } from '../shared/ItemPicture';
 import { api, ServiceError } from '../shared/api';
 import { authApi } from '../shared/auth';
 import { serverSession } from '../shared/httpAuth';
@@ -255,12 +258,11 @@ function CodeProvider({ children }: { children: ReactNode }) {
   );
 }
 function CodeCard({ compact = false }: { compact?: boolean }) {
+  const [copyMessage, setCopyMessage] = useState('');
   const { code, busy, error, issue } = useContext(CodeContext);
   return (
     <section className={`uw-card uw-code ${compact ? 'compact' : ''}`} aria-label="이용 코드">
-      <h2>
-        나의 이용 코드 <Info size={18} />
-      </h2>
+      {compact && <h2>나의 이용 코드</h2>}
       {error ? (
         <Failure error={error} retry={() => void issue()} title="이용 코드를 확인하지 못했어요" />
       ) : busy || !code || code.expiresAt <= Date.now() ? (
@@ -268,11 +270,25 @@ function CodeCard({ compact = false }: { compact?: boolean }) {
       ) : (
         <>
           <div className="uw-code-value">
-            <ScanLine size={32} />
             <strong className="code-number" aria-label="이용 코드 숫자">
               {code.value}
             </strong>
           </div>
+          <button
+            className="secondary uw-copy-code"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(code.value);
+                setCopyMessage('코드를 복사했어요.');
+              } catch {
+                setCopyMessage('복사하지 못했어요. 코드를 직접 입력해 주세요.');
+              }
+            }}
+          >
+            <Copy size={16} />
+            복사
+          </button>
+          <span role="status">{copyMessage}</span>
           <p className="uw-code-status">키오스크에 입력해 주세요</p>
           <p className="uw-caption">대여·반납 후에는 새 코드로 자동 변경돼요.</p>
         </>
@@ -281,17 +297,16 @@ function CodeCard({ compact = false }: { compact?: boolean }) {
   );
 }
 const menu = [
-  { to: '/mobile', label: '홈', icon: Home },
   { to: '/mobile/items', label: '물품 조회', icon: Box },
-  { to: '/mobile/rentals', label: '대여 내역', icon: ClipboardList },
+  { to: '/mobile/rentals', label: '내 대여 현황', icon: ClipboardList },
   { to: '/mobile/history', label: '이용 이력', icon: History },
-  { to: '/mobile/account', label: '내 정보', icon: UserRound },
 ];
 const savedPositions = new Map<
   string,
   { y: number; main: number; regions: number[]; focus?: string }
 >();
 function Layout() {
+  const { token } = useAuth();
   const location = useLocation();
   const navigationType = useNavigationType();
   const authScreen = /^\/mobile\/(login|signup|recover|change-phone)/.test(location.pathname);
@@ -370,28 +385,20 @@ function Layout() {
       <a className="uw-skip" href="#user-main">
         본문 바로가기
       </a>
-      {!authScreen && (
-        <aside className="uw-sidebar">
-          <Link to="/mobile" aria-label="TagBack 홈">
-            <UserBrand />
-          </Link>
-          <nav aria-label="사용자 메뉴">
-            {menu.map(({ to, label, icon: Icon }) => (
-              <NavLink key={to} to={to} end={to === '/mobile'}>
-                <Icon size={22} aria-hidden="true" />
-                {label}
-              </NavLink>
-            ))}
-          </nav>
-        </aside>
-      )}
       <div className="uw-workspace">
         {!authScreen && (
           <header className="uw-header">
             <Link to="/mobile" aria-label="TagBack 홈" className="uw-mobile-brand">
               <UserBrand />
             </Link>
-            <span className="uw-desktop-title">내 물품 관리</span>
+            <nav className="uw-top-nav" aria-label="사용자 메뉴">
+              {menu.map(({ to, label, icon: Icon }) => (
+                <NavLink key={to} to={to}>
+                  <Icon size={20} aria-hidden="true" />
+                  {label}
+                </NavLink>
+              ))}
+            </nav>
             <Link className="uw-account-link" to="/mobile/account" aria-label="내 계정">
               <UserRound size={22} />
               <span>내 정보</span>
@@ -411,16 +418,15 @@ function Layout() {
           <Outlet />
         </main>
       </div>
-      {!authScreen && (
+      {!authScreen && token && (
         <nav className="uw-bottom-nav" aria-label="모바일 메뉴">
           {menu
-            .filter((x) => x.to !== '/mobile/history')
+            .filter(() => true)
             .map(({ to, label, icon: Icon }) => {
               const active =
                 to === '/mobile'
                   ? location.pathname === to || location.pathname === to + '/'
-                  : location.pathname.startsWith(to) ||
-                    (to === '/mobile/rentals' && location.pathname.startsWith('/mobile/history'));
+                  : location.pathname.startsWith(to);
               return (
                 <Link
                   key={to}
@@ -429,7 +435,7 @@ function Layout() {
                   aria-current={active ? 'page' : undefined}
                 >
                   <Icon size={24} aria-hidden="true" />
-                  <span>{label === '물품 조회' ? '물품' : label}</span>
+                  <span>{label}</span>
                 </Link>
               );
             })}
@@ -452,9 +458,6 @@ function GuestHome() {
       <Link className="primary full" to="/mobile/login">
         로그인
       </Link>
-      <Link className="secondary full" to="/mobile/signup">
-        회원가입
-      </Link>
       <Link className="uw-text-link" to="/mobile/items">
         물품 둘러보기 <ArrowRight size={18} />
       </Link>
@@ -471,14 +474,14 @@ function MemberHome() {
   const rows = rentals.data?.filter((x) => !x.returnedAt);
   return (
     <div className="uw-depot-home">
-      <Heading title="홈" description="캠퍼스 물품 보관소" />
+      <h1 className="uw-sr-only">홈</h1>
       <div className="uw-depot-grid">
         <div className="uw-ticket">
           <CodeCard compact />
         </div>
         <section className="uw-card uw-home-rentals uw-depot-rentals">
           <div className="uw-section-title">
-            <h2>대여 중</h2>
+            <h2>대여 중인 물품</h2>
             {rows && <span>{rows.length}개</span>}
             <Link className="uw-text-link" to="/mobile/rentals">
               전체 보기 <ChevronRight size={18} aria-hidden="true" />
@@ -513,89 +516,36 @@ function MemberHome() {
   );
 }
 function CatalogDetails({ children, close }: { children: ReactNode; close: () => void }) {
-  const [sheet, setSheet] = useState(() => window.matchMedia('(max-width: 1023px)').matches);
-  const dialog = useRef<HTMLDialogElement>(null);
   const panel = useRef<HTMLElement>(null);
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 1023px)');
-    const change = () => setSheet(media.matches);
-    media.addEventListener('change', change);
-    return () => media.removeEventListener('change', change);
-  }, []);
-  useEffect(() => {
     const origin = document.querySelector<HTMLElement>('.uw-product.selected');
-    const restoreFocus = () => {
-      requestAnimationFrame(() => {
-        if (origin?.isConnected && !document.querySelector('.uw-catalog-layout .uw-detail-panel'))
-          origin.focus({ preventScroll: true });
-      });
-    };
-    if (!sheet) {
-      panel.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
-      return restoreFocus;
-    }
-    const node = dialog.current;
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    node?.showModal();
+    panel.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
     return () => {
-      node?.close();
-      document.body.style.overflow = overflow;
-      restoreFocus();
+      requestAnimationFrame(() => origin?.isConnected && origin.focus({ preventScroll: true }));
     };
-  }, [sheet]);
-  const content = (
-    <>
-      <button type="button" className="uw-panel-close" aria-label="물품 상세 닫기" onClick={close}>
-        <X size={20} aria-hidden="true" />
-      </button>
-      {children}
-    </>
-  );
-  return sheet ? (
-    <dialog
-      ref={dialog}
-      className="uw-detail-panel uw-detail-sheet"
+  }, []);
+  return (
+    <section
+      ref={panel}
+      className="uw-detail-panel uw-detail-page"
       aria-label="물품 상세"
       onKeyDown={(event) => {
-        if (event.key !== 'Tab') return;
-        const targets = Array.from(
-          event.currentTarget.querySelectorAll<HTMLElement>(
-            'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), [tabindex="0"]',
-          ),
-        ).filter((element) => element.getClientRects().length > 0);
-        const first = targets[0];
-        const last = targets[targets.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last?.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first?.focus();
-        }
-      }}
-      onCancel={(event) => {
-        event.preventDefault();
-        close();
-      }}
-      onClick={(event) => {
-        if (event.target !== event.currentTarget) return;
-        const rect = event.currentTarget.getBoundingClientRect();
-        if (
-          event.clientX < rect.left ||
-          event.clientX > rect.right ||
-          event.clientY < rect.top ||
-          event.clientY > rect.bottom
-        )
-          close();
+        if (event.key === 'Escape') close();
       }}
     >
-      {content}
-    </dialog>
-  ) : (
-    <aside ref={panel} className="uw-detail-panel" aria-label="물품 상세">
-      {content}
-    </aside>
+      <header className="uw-detail-heading">
+        <h1 tabIndex={-1}>물품 상세</h1>
+        <button
+          type="button"
+          className="secondary uw-detail-back"
+          aria-label="물품 상세 닫기"
+          onClick={close}
+        >
+          <ArrowLeft size={18} /> 목록으로
+        </button>
+      </header>
+      {children}
+    </section>
   );
 }
 const itemState: Record<string, string> = {
@@ -637,53 +587,60 @@ function CatalogPage() {
   }
   return (
     <>
-      <Heading title="물품 조회">
-        <button className="secondary" onClick={r.reload} disabled={r.loading}>
-          <RefreshCw size={18} />
-          새로고침
-        </button>
-      </Heading>
-      <div className="uw-catalog-controls">
-        <label className="uw-search">
-          <Search size={20} aria-hidden="true" />
-          <input
-            aria-label="물품명 검색"
-            placeholder="물품명 검색"
-            value={query}
-            onChange={(e) => update('q', e.target.value)}
-          />
-          {query && (
-            <button onClick={() => update('q', '')} aria-label="검색어 지우기">
-              <X size={18} />
-            </button>
-          )}
-        </label>
-        <p className="uw-station">
-          <MapPin size={18} />
-          {r.data?.stations[0]?.name || '대여소 확인 중'}
-        </p>
-        <label className="uw-available-filter">
-          <input
-            type="checkbox"
-            checked={params.get('available') === 'true'}
-            onChange={(e) => update('available', e.target.checked ? 'true' : '')}
-          />{' '}
-          대여 가능만
-        </label>
-        <div className="uw-filters" aria-label="물품 분류">
-          {categories.map((c) => (
-            <button
-              key={c}
-              aria-pressed={category === c}
-              className={category === c ? 'selected' : ''}
-              onClick={() => update('category', c)}
-            >
-              {c}
-            </button>
-          ))}
+      <div className="uw-catalog-heading-controls" hidden={!!selected}>
+        <Heading title="물품 조회">
+          <button className="secondary" onClick={r.reload} disabled={r.loading}>
+            <RefreshCw size={18} />
+            새로고침
+          </button>
+        </Heading>
+        <div className="uw-catalog-controls">
+          <label className="uw-search">
+            <Search size={20} aria-hidden="true" />
+            <input
+              aria-label="물품명 검색"
+              placeholder="물품명 검색"
+              value={query}
+              onChange={(e) => update('q', e.target.value)}
+            />
+            {query && (
+              <button onClick={() => update('q', '')} aria-label="검색어 지우기">
+                <X size={18} />
+              </button>
+            )}
+          </label>
+          <Link className="primary uw-catalog-code" to="/mobile/code">
+            <Ticket size={20} />
+            이용 코드 보기
+          </Link>
+          <p className="uw-station">
+            <MapPin size={18} />
+            {r.data?.stations[0]?.name || '대여소 확인 중'}
+          </p>
+          <label className="uw-available-filter">
+            <input
+              type="checkbox"
+              checked={params.get('available') === 'true'}
+              onChange={(e) => update('available', e.target.checked ? 'true' : '')}
+            />{' '}
+            대여 가능만
+          </label>
+          <div className="uw-filters" aria-label="물품 분류">
+            {categories.map((c) => (
+              <button
+                key={c}
+                aria-pressed={category === c}
+                className={category === c ? 'selected' : ''}
+                onClick={() => update('category', c)}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       {!selected && <RefreshStatus resource={r} />}
+      {kinds && !selected && <p className="uw-result-count">전체 {kinds.length}개 물품</p>}
       {r.loading ? (
         <Loading />
       ) : r.error ? (
@@ -706,7 +663,8 @@ function CatalogPage() {
           className={`uw-master-detail uw-catalog-layout ${selectedKind ? 'has-selection' : ''}`}
         >
           <div
-            className="uw-products uw-lockers"
+            className="uw-products uw-individual-items"
+            hidden={!!selected}
             data-scroll-region
             tabIndex={0}
             aria-label="물품 목록"
@@ -729,10 +687,15 @@ function CatalogPage() {
                       <ItemIcon name={k.name || k.label} />
                     )}
                   </div>
+                  <span className="uw-category">
+                    {r.data?.kinds.find((kind) => kind.id === k.kindId)?.category || '물품'}
+                  </span>
                   <span className="uw-caption">#{k.id}</span>
                   <h2>{k.name}</h2>
                   <Pill tone={available ? 'green' : 'gray'}>{itemState[k.status]}</Pill>
-                  <ChevronRight className="uw-product-arrow" size={20} />
+                  <span className="uw-product-detail">
+                    상세 보기 <ChevronRight size={16} />
+                  </span>
                 </Link>
               );
             })}
@@ -766,23 +729,31 @@ function ItemDetails({
       <div className="uw-product-art">
         {item.image ? <img src={item.image} alt={item.label} /> : <ItemIcon name={item.label} />}
       </div>
-      <h2>{item.label}</h2>
-      <Pill tone={item.status === 'available' ? 'green' : 'gray'}>{itemState[item.status]}</Pill>
-      <dl className="uw-facts">
-        <div>
-          <dt>식별번호</dt>
-          <dd>#{item.id}</dd>
-        </div>
-        <div>
-          <dt>종류</dt>
-          <dd>{kind?.name}</dd>
-        </div>
-        <div>
-          <dt>대여소</dt>
-          <dd>{catalog.stations[0]?.name}</dd>
-        </div>
-      </dl>
-      <Notice>대여와 반납은 키오스크에서 진행해요.</Notice>
+      <div className="uw-detail-information">
+        <span className="uw-category">{kind?.category || '물품'}</span>
+        <h2>{item.label}</h2>
+        <Pill tone={item.status === 'available' ? 'green' : 'gray'}>{itemState[item.status]}</Pill>
+        {kind?.description && <p className="uw-detail-description">{kind.description}</p>}
+        <dl className="uw-facts">
+          <div>
+            <dt>식별번호</dt>
+            <dd>#{item.id}</dd>
+          </div>
+          <div>
+            <dt>종류</dt>
+            <dd>{kind?.name}</dd>
+          </div>
+          <div>
+            <dt>대여소</dt>
+            <dd>{catalog.stations[0]?.name}</dd>
+          </div>
+        </dl>
+        <Notice>대여와 반납은 키오스크에서 진행해요.</Notice>
+        <Link className="primary" to="/mobile/code">
+          <Ticket size={20} />
+          이용 코드 보기
+        </Link>
+      </div>
     </div>
   );
 }
@@ -824,7 +795,7 @@ function CodePage() {
   }, []);
   return (
     <div className="uw-code-page">
-      <Heading title="나의 이용 코드" description="대여·반납할 때 현장 키오스크에 입력해 주세요." />
+      <Heading title="나의 이용 코드" />
       <CodeCard />
       <details className="uw-card uw-code-help" ref={instructions}>
         <summary>대여·반납 이용 방법</summary>
@@ -832,11 +803,11 @@ function CodePage() {
           <h2>이렇게 대여하세요</h2>
           <ol>
             <li>키오스크에서 이용 코드를 입력해요.</li>
-            <li>대여할 물품 종류를 선택해요.</li>
-            <li>NFC 인식 후 대여를 확정해요.</li>
+            <li>대여할 물품의 NFC 태그를 인식해요.</li>
+            <li>물품 정보를 확인하고 대여를 확정해요.</li>
           </ol>
           <h2>반납할 때는</h2>
-          <p>NFC 인식 → 정상·손상 상태 선택 → 본인의 이용 코드 입력 → 반납 확정</p>
+          <p>NFC 인식 → 정상·손상 상태 선택 → 이용 코드 입력 → 반납 확정</p>
           <Link className="uw-text-link" to="/mobile/rentals">
             대여 내역 확인 <ArrowRight size={18} />
           </Link>
@@ -859,7 +830,9 @@ function RentalRow({
   if (compact)
     return (
       <Link className="uw-depot-item" to={`/mobile/rentals/${row.id}`}>
-        <ItemIcon name={row.itemTypeName || '물품'} />
+        <span className="uw-rental-art">
+          <ItemPicture src={row.image} alt={row.itemName || row.itemTypeName} />
+        </span>
         <div>
           <strong>{row.itemTypeName || '물품'}</strong>
           <span className="uw-depot-item-label">{row.itemName}</span>
@@ -885,15 +858,27 @@ function RentalRow({
       className={`uw-rental-row ${history ? 'uw-history-entry' : 'uw-loan-tag'} ${overdue ? 'is-overdue' : ''}`}
       to={`/mobile/${history ? 'history' : 'rentals'}/${row.id}${location.search}`}
     >
-      <ItemIcon name={row.itemTypeName || '물품'} />
+      <span className="uw-rental-art">
+        <ItemPicture src={row.image} alt={row.itemName || row.itemTypeName} />
+      </span>
       <div className="uw-record-name">
         <strong>{row.itemTypeName || '물품'}</strong>
         <span>{row.itemName}</span>
       </div>
       {history ? (
         <div className="uw-record-date">
-          <span>반납 완료</span>
-          <time dateTime={new Date(row.returnedAt!).toISOString()}>{stamp(row.returnedAt!)}</time>
+          <span className="uw-history-status">{row.overdue ? '지연 반납' : '반납 완료'}</span>
+          <span>
+            대여일{' '}
+            <time dateTime={new Date(row.rentedAt).toISOString()}>{stamp(row.rentedAt)}</time>
+          </span>
+          <span>
+            반납 기한 <time dateTime={new Date(row.dueAt).toISOString()}>{stamp(row.dueAt)}</time>
+          </span>
+          <span>
+            반납일{' '}
+            <time dateTime={new Date(row.returnedAt!).toISOString()}>{stamp(row.returnedAt!)}</time>
+          </span>
         </div>
       ) : (
         <>
@@ -923,21 +908,39 @@ function RentalsPage({ history = false }: { history?: boolean }) {
       year: 'numeric',
       month: '2-digit',
     }).format(value);
-  const rows = all?.filter(
-    (row) =>
-      `${row.itemTypeName} ${row.itemName}`.toLowerCase().includes(query.trim().toLowerCase()) &&
-      (!month || monthKey(row.returnedAt!) === month),
-  );
+  const rows = all
+    ?.filter(
+      (row) =>
+        `${row.itemTypeName} ${row.itemName}`.toLowerCase().includes(query.trim().toLowerCase()) &&
+        (!month || monthKey(row.returnedAt!) === month),
+    )
+    .sort((a, b) =>
+      history
+        ? b.returnedAt! - a.returnedAt!
+        : Number(!!b.overdue) - Number(!!a.overdue) || a.dueAt - b.dueAt,
+    );
   const selected = r.data?.find((row) => row.id === id);
   const base = `/mobile/${history ? 'history' : 'rentals'}${params.size ? '?' + params.toString() : ''}`;
   return (
     <>
-      <Heading title={history ? '이용 이력' : '대여 내역'}>
+      <Heading title={history ? '이용 이력' : '내 대여 현황'}>
         <button className="secondary" disabled={r.loading} onClick={r.reload}>
           <RefreshCw size={18} />
           새로고침
         </button>
       </Heading>
+      {!history && all && (
+        <div className="uw-rental-summary" aria-label="내 대여 요약">
+          <div>
+            <span>미반납 (연체 포함)</span>
+            <strong>{all.length}개</strong>
+          </div>
+          <div>
+            <span>연체</span>
+            <strong>{all.filter((row) => row.overdue).length}개</strong>
+          </div>
+        </div>
+      )}
       {!history && (
         <Link className="uw-text-link uw-history-link" to="/mobile/history">
           <History size={18} />
@@ -1048,7 +1051,9 @@ function RentalDetails({ row }: { row: Rental }) {
   return (
     <div className="uw-item-detail">
       <h2>대여 상세</h2>
-      <ItemIcon name={row.itemTypeName || '물품'} />
+      <span className="uw-rental-art">
+        <ItemPicture src={row.image} alt={row.itemName || row.itemTypeName} />
+      </span>
       <h3>{row.itemTypeName || '물품'}</h3>
       <p>{row.itemName}</p>
       <Pill tone={row.returnedAt ? 'green' : overdue ? 'red' : 'blue'}>
@@ -1084,10 +1089,10 @@ function RentalDetails({ row }: { row: Rental }) {
         <>
           <Notice>
             <strong>반납은 키오스크에서 진행해 주세요.</strong>
-            <p>NFC 인식 → 상태 선택 → 본인 코드 입력 → 반납 확정</p>
+            <p>이용 코드 입력 → NFC 인식 → 상태 선택 → 반납 확정</p>
           </Notice>
           <Link to="/mobile/code" className="primary full">
-            이용 코드 발급
+            이용 코드 보기
           </Link>
         </>
       )}

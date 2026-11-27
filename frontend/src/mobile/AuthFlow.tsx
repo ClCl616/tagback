@@ -100,10 +100,6 @@ export default function AuthFlow({
   if (loading) return <Loading />;
   return (
     <section className="auth-flow uw-access-pass">
-      <div className="uw-auth-caption">
-        <span>캠퍼스 이용증</span>
-        <span>{profile ? '가입 정보' : '카카오 로그인'}</span>
-      </div>
       <h1>
         {existing
           ? '로그인을 이어가세요'

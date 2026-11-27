@@ -1,11 +1,12 @@
-import {Radio} from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { Radio } from 'lucide-react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { kioskRequest } from '../kiosk-host/transport';
 import { getKioskRuntime } from '../kiosk-host/runtime';
 import { useKioskAdmin } from './KioskAdminContext';
 import type { Item, NfcScanProof } from '../shared/types';
 export function TagRegistration({ item, saved }: { item: Item; saved: () => void }) {
   const admin = useKioskAdmin();
+  const titleId = useId();
   const [opened, setOpened] = useState(false),
     [proof, setProof] = useState<NfcScanProof>(),
     [ready, setReady] = useState(false),
@@ -95,17 +96,21 @@ export function TagRegistration({ item, saved }: { item: Item; saved: () => void
       <dialog
         ref={dialog}
         className="aw-dialog aw-tag-dialog"
+        aria-labelledby={titleId}
         onCancel={(e) => {
           e.preventDefault();
           if (!busy && !pending) setOpened(false);
         }}
       >
-        <h2>{item.label} · 태그 등록</h2>
+        <h2 id={titleId}>{item.label} · 태그 등록</h2>
         <p>
           물품 #{item.id} · 현재 태그 {item.tag || '없음'}
         </p>
         <p>{ready ? '물품의 태그를 리더기에 대 주세요.' : '리더기 연결을 확인해 주세요.'}</p>
-        <div className="aw-tag-scan"><Radio size={96}/><span>NFC 태그 인식</span></div>
+        <div className="aw-tag-scan">
+          <Radio size={96} />
+          <span>NFC 태그 인식</span>
+        </div>
         <p>새 태그: {proof?.uid || '인식 대기'}</p>
         {error && <p role="alert">{error}</p>}
         {pending && <p>결과가 확인될 때까지 다른 작업을 진행할 수 없습니다.</p>}

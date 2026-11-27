@@ -8,6 +8,8 @@ import './kiosk/installed.css';
 // The native preload must install its bridge before this module executes.
 requireInstalledHost();
 document.documentElement.classList.add('kiosk-installed');
+import './forest-gallery.css';
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <KioskEntry />

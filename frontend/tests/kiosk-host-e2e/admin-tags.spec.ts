@@ -126,12 +126,36 @@ async function login(page: Page) {
   await page.getByLabel('관리자 번호').fill('000');
   await page.getByLabel('비밀번호', { exact: true }).fill('test-admin-password');
   await page.getByRole('button', { name: '관리자 로그인', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '물품 대시보드' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '운영 현황', exact: true })).toBeVisible();
   await page
     .getByRole('navigation', { name: '관리자 메뉴' })
     .getByRole('link', { name: '물품 관리', exact: true })
     .click();
 }
+test('embedded admin controls and pending badge remain readable in the dark theme', async ({ page }) => {
+  await host(page);
+  await login(page);
+  await expect(page.getByRole('button', { name: /새 우산/ })).toBeVisible();
+  const contrast = async (selector: string) => page.locator(selector).first().evaluate((el) => {
+    const style = getComputedStyle(el);
+    const luminance = (color: string) => {
+      const rgb = color.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(n => {
+        const v = n / 255;
+        return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+      });
+      return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+    };
+    const a = luminance(style.color), b = luminance(style.backgroundColor);
+    return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+  });
+  expect(await contrast('.aw-search input')).toBeGreaterThanOrEqual(4.5);
+  await page.getByRole('button', { name: /새 우산/ }).click();
+  await expect(page.getByLabel('물품 상세', { exact: true })).toBeVisible();
+  expect(await contrast('.aw-detail .aw-badge')).toBeGreaterThanOrEqual(4.5);
+  await page.getByRole('button', { name: 'NFC 태그 등록', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '새 우산 · 태그 등록' })).toBeVisible();
+});
+
 test('kiosk authenticates separately and only physical scan enables tag connection', async ({
   page,
 }) => {

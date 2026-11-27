@@ -617,3 +617,111 @@
   border-radius: 14px;
   z-index: 20;
 }
+.welcome-main .kiosk-actions {
+  flex: 1;
+  min-height: 48vh;
+}
+.welcome-main .kiosk-actions > button {
+  min-height: 40vh;
+}
+.kiosk-v2 .welcome-main {
+  padding: 24px 4vw;
+  gap: 20px;
+}
+.kiosk-v2 .welcome-heading {
+  margin: 0;
+}
+
+/* Large, illustrated touch targets from the approved kiosk concept. */
+.kiosk-v2 .welcome-main {
+  display: flex;
+  flex-direction: column;
+}
+.kiosk-v2 .welcome-main .kiosk-actions {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  gap: 24px;
+}
+.kiosk-v2 .welcome-main .kiosk-actions > button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  padding: 32px;
+  border: 1px solid #a6c6b3;
+  border-radius: 28px;
+  overflow: hidden;
+  color: #214f3f;
+}
+.kiosk-v2 .welcome-main .rent-action {
+  background: linear-gradient(135deg, #ccebd9, #a7dbc0);
+}
+.kiosk-v2 .welcome-main .return-action {
+  background: linear-gradient(135deg, #fffdf3, #eeeacf);
+}
+.kiosk-v2 .action-illustration {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  min-height: 120px;
+  flex: 1;
+  padding: 16px;
+}
+.kiosk-v2 .action-illustration svg {
+  width: clamp(72px, 10vw, 160px);
+  height: clamp(72px, 10vw, 160px);
+  stroke-width: 1.2;
+  fill: #ffffff55;
+  filter: drop-shadow(0 10px 0 #2454430b);
+  transform: rotate(-9deg);
+}
+.kiosk-v2 .action-illustration svg + svg {
+  transform: rotate(9deg);
+  margin-left: -28px;
+  margin-top: 24px;
+}
+.kiosk-v2 .welcome-main .kiosk-actions h2 {
+  margin: 8px 0;
+}
+.kiosk-v2 .welcome-main .action-footer {
+  position: static;
+  width: 100%;
+  margin-top: 18px;
+  border-top: 1px solid #24544333;
+  padding-top: 18px;
+  color: #245443;
+}
+.kiosk-v2 .welcome-tip {
+  margin: 0;
+  padding: 8px;
+}
+.kiosk-warning > button {
+  display: grid;
+  place-items: center;
+  color: #975b18;
+}
+.kiosk-warning > div {
+  color: #604316;
+  max-width: min(360px, 85vw);
+}
+@media (max-height: 760px) {
+  .kiosk-v2 .welcome-main {
+    gap: 12px;
+    padding: 16px 4vw;
+  }
+  .kiosk-v2 .welcome-main .kiosk-actions > button {
+    padding: 24px;
+  }
+  .kiosk-v2 .action-illustration {
+    min-height: 80px;
+    padding: 0;
+  }
+  .kiosk-v2 .action-illustration svg {
+    width: 90px;
+    height: 90px;
+  }
+}

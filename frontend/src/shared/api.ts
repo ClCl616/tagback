@@ -53,6 +53,7 @@ export const api: ServiceApi = {
         rentedAt: timestamp(r.rentedAt),
         dueAt: timestamp(r.dueAt),
         returnedAt: r.returnedAt === null ? undefined : timestamp(r.returnedAt),
+        image: r.imageUrl || undefined,
         itemName: r.itemName,
         itemTypeName: r.itemTypeName,
         overdue: r.overdue,

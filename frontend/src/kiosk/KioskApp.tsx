@@ -1,6 +1,8 @@
 import { ItemPicture } from '../shared/ItemPicture';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Inbox,
+  TriangleAlert,
   ArrowLeft,
   ArrowRight,
   Check,
@@ -300,7 +302,7 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
     reset();
     setMode(next);
     setRemaining(KIOSK.sessionSeconds);
-    setStage('code');
+    setStage(next === 'return' ? 'scan' : 'code');
   }
   function back() {
     if (busy || unknown || pendingWrite.current) return;
@@ -308,17 +310,17 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
     if (stage === 'code') {
       setCode('');
       setGrant(undefined);
-      setStage('start');
+      setStage(mode === 'return' ? 'condition' : 'start');
     } else if (stage === 'scan') {
       setGrant(undefined);
       setCode('');
-      setStage('code');
+      setStage(mode === 'return' ? 'start' : 'code');
     } else if (stage === 'condition') {
       setItem(undefined);
       setCondition(undefined);
       setStage('scan');
     } else if (stage === 'confirm') {
-      setStage(mode === 'return' ? 'condition' : 'scan');
+      setStage(mode === 'return' ? 'code' : 'scan');
     }
   }
 
@@ -375,10 +377,10 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
   const names =
     mode === 'rent'
       ? ['코드 입력', 'NFC 인식', '최종 확인']
-      : ['코드 입력', 'NFC 인식', '상태 확인', '최종 확인'];
+      : ['NFC 인식', '상태 확인', '코드 입력', '최종 확인'];
   const steps: Partial<Record<Stage, number>> =
     mode === 'return'
-      ? { code: 0, scan: 1, condition: 2, confirm: 3 }
+      ? { scan: 0, condition: 1, code: 2, confirm: 3 }
       : { code: 0, scan: 1, confirm: 2 };
   const step = steps[stage];
   const kind = catalog.data?.kinds.find((k) => k.id === (item?.kindId || kindId));
@@ -438,14 +440,19 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
             <button
               aria-label="연결 문제 확인"
               aria-expanded={warning}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setWarning(false);
+              }}
               onClick={() => setWarning((v) => !v)}
             >
-              ⚠
+              <TriangleAlert aria-hidden="true" />
             </button>
             {warning && (
               <div role="status">
+                <strong>연결 문제</strong>
                 {!serviceReady && <p>서버에 연결할 수 없습니다.</p>}
                 {!readerReady && <p>NFC 리더기에 연결할 수 없습니다.</p>}
+                <small>복구는 관리자 인증 후 가능합니다.</small>
               </div>
             )}
           </div>
@@ -455,7 +462,6 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
         {stage === 'start' ? (
           <>
             <div className="welcome-heading">
-              <div className="eyebrow">캠퍼스 물품 보관소</div>
               <h1>대여 또는 반납을 선택해 주세요</h1>
             </div>
             {banner && (
@@ -470,8 +476,8 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
                 onClick={() => start('rent')}
                 disabled={!readerReady || !serviceReady}
               >
-                <div className="action-symbol">
-                  <ArrowRight size={45} />
+                <div className="action-illustration" aria-hidden="true">
+                  <PackageCheck />
                 </div>
                 <h2>대여하기</h2>
                 <p>사용자 웹의 이용 코드를 준비해 주세요.</p>
@@ -485,13 +491,13 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
                 onClick={() => start('return')}
                 disabled={!readerReady || !serviceReady}
               >
-                <div className="action-symbol">
-                  <RotateCcw size={42} />
+                <div className="action-illustration return-illustration" aria-hidden="true">
+                  <Inbox />
                 </div>
                 <h2>반납하기</h2>
-                <p>반납할 물품을 준비해 주세요.</p>
+                <p>이용 코드와 반납할 물품을 준비해 주세요.</p>
                 <span className="action-footer">
-                  {'실물 태그를 인식해 반납해요'}
+                  {'NFC 인식부터 시작해요'}
                   <ArrowRight />
                 </span>
               </button>
@@ -506,9 +512,6 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
             <div className="success-circle">
               <Check size={58} />
             </div>
-            <div className="eyebrow">
-              {completion?.type === 'rent' ? 'READY TO GO' : 'THANK YOU FOR SHARING'}
-            </div>
             <h1>
               {completion?.type === 'rent'
                 ? '대여가 완료되었습니다'
@@ -518,11 +521,6 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
                     ? '반납 · 점검 접수가 완료되었습니다'
                     : '반납이 완료되었습니다'}
             </h1>
-            <p>
-              {completion?.type === 'rent'
-                ? '잘 사용하고, 다음 사람을 위해 돌려주세요.'
-                : '함께 쓰는 물품을 돌려주셔서 감사합니다.'}
-            </p>
             <div className="completion-detail">
               <PackageCheck size={30} />
               <strong>{completion?.label}</strong>
@@ -544,7 +542,7 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
               <Home size={21} />
               처음으로
             </button>
-            <p className="auto-return">잠시 후 자동으로 처음 화면으로 돌아갑니다.</p>
+            <p className="auto-return">5초 후 자동으로 처음 화면으로 돌아갑니다.</p>
           </section>
         ) : (
           <>
@@ -566,24 +564,12 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
             {stage === 'code' && (
               <div className="code-stage">
                 <div>
-                  <div className="eyebrow">이용 코드</div>
-                  <h1>
-                    {mode === 'return' ? '반납 코드를 ' : '대여 코드를 '}
-                    <br />
-                    입력해 주세요.
-                  </h1>
-                  <p>
-                    모바일 웹에 로그인한 뒤<br />
-                    <strong>‘이용 코드’</strong>에서 확인할 수 있어요.
-                  </p>
-                  {mode === 'rent' && <p>코드를 확인한 뒤 물품의 NFC 태그를 인식해 주세요.</p>}
-                  <div className="note">
-                    <ShieldCheck size={20} />
-                    <p>코드는 본인만 사용해 주세요.</p>
-                  </div>
+                  <h1>이용 코드를 입력하세요</h1>
+                  <p>사용자 웹의 현재 이용 코드를 입력한 뒤 확인을 눌러주세요.</p>
                 </div>
                 <form
                   className="keypad-panel"
+                  id="kiosk-code-form"
                   onSubmit={(e) => {
                     e.preventDefault();
                     if (code.length !== KIOSK.codeLength || unknown) return;
@@ -592,51 +578,63 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
                       () => api.verifyCode(code),
                       (g) => {
                         setGrant(g);
-                        setStage('scan');
+                        setStage(mode === 'return' ? 'confirm' : 'scan');
                       },
                     );
                   }}
                 >
-                  <label htmlFor="rental-code">
-                    일회성 {mode === 'return' ? '반납' : '대여'} 코드
-                  </label>
-                  <input
-                    id="rental-code"
-                    className="kiosk-code-input"
-                    inputMode={platform.tablet ? 'none' : 'numeric'}
-                    autoComplete="off"
-                    value={code}
-                    maxLength={KIOSK.codeLength}
-                    onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                    placeholder="000000"
-                    disabled={busy || unknown}
-                  />
+                  <div className="kw-code-entry">
+                    <label htmlFor="rental-code">이용 코드</label>
+                    <input
+                      id="rental-code"
+                      className="kiosk-code-input"
+                      inputMode={platform.tablet ? 'none' : 'numeric'}
+                      autoComplete="off"
+                      value={code}
+                      maxLength={KIOSK.codeLength}
+                      onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                      placeholder="000000"
+                      disabled={busy || unknown}
+                    />
+                    <p className="kw-code-guidance">
+                      코드가 없다면 사용자 웹에 로그인해 이용 코드를 확인해 주세요.
+                      <br />
+                      코드는 본인만 사용해 주세요.
+                    </p>
+                  </div>
                   <div className="keypad">
-                    {['1', '2', '3', '4', '5', '6', '7', '8', '9', '지우기', '0', '확인'].map(
-                      (key) => (
-                        <button
-                          type={key === '확인' ? 'submit' : 'button'}
-                          key={key}
-                          disabled={
-                            busy ||
-                            unknown ||
-                            (key === '확인' && (code.length !== KIOSK.codeLength || rateLimited))
-                          }
-                          aria-label={key}
-                          onClick={() =>
-                            setCode((c) =>
-                              key === '지우기'
+                    {[
+                      '1',
+                      '2',
+                      '3',
+                      '4',
+                      '5',
+                      '6',
+                      '7',
+                      '8',
+                      '9',
+                      '전체 지우기',
+                      '0',
+                      '지우기',
+                    ].map((key) => (
+                      <button
+                        type="button"
+                        key={key}
+                        disabled={busy || unknown}
+                        aria-label={key}
+                        onClick={() =>
+                          setCode((c) =>
+                            key === '전체 지우기'
+                              ? ''
+                              : key === '지우기'
                                 ? c.slice(0, -1)
-                                : key === '확인'
-                                  ? c
-                                  : (c + key).slice(0, KIOSK.codeLength),
-                            )
-                          }
-                        >
-                          {key}
-                        </button>
-                      ),
-                    )}
+                                : (c + key).slice(0, KIOSK.codeLength),
+                          )
+                        }
+                      >
+                        {key}
+                      </button>
+                    ))}
                   </div>
                   <InlineError error={error} />
                   {rateLimited && <p role="status">잠시 후 코드를 다시 확인해 주세요.</p>}
@@ -710,34 +708,36 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
                   <h1>물품 상태를 확인해 주세요</h1>
                   <p>사용하신 물품의 상태를 직접 확인하고 선택해 주세요.</p>
                 </div>
-                <div className="condition-item">
-                  <div className="product-art">
-                    <ItemPicture src={item?.image} alt={item?.label} />
+                <div className="kw-condition-layout">
+                  <div className="condition-item">
+                    <div className="product-art">
+                      <ItemPicture src={item?.image} alt={item?.label} />
+                    </div>
+                    <div>
+                      <h2>{kind?.name}</h2>
+                      <p>{item?.label} · 대전대 융합과학관</p>
+                    </div>
                   </div>
-                  <div>
-                    <h2>{kind?.name}</h2>
-                    <p>{item?.label} · 대전대 융합과학관</p>
+                  <div className="condition-options">
+                    <button
+                      className={condition === 'normal' ? 'selected' : ''}
+                      onClick={() => setCondition('normal')}
+                      aria-pressed={condition === 'normal'}
+                    >
+                      <CircleCheck size={34} />
+                      <h2>정상이에요</h2>
+                      <p>손상이 없고 잘 작동해요.</p>
+                    </button>
+                    <button
+                      className={condition === 'damaged' ? 'selected damaged' : ''}
+                      onClick={() => setCondition('damaged')}
+                      aria-pressed={condition === 'damaged'}
+                    >
+                      <ShieldCheck size={34} />
+                      <h2>손상이 있어요</h2>
+                      <p>파손되었거나 작동에 문제가 있어요.</p>
+                    </button>
                   </div>
-                </div>
-                <div className="condition-options">
-                  <button
-                    className={condition === 'normal' ? 'selected' : ''}
-                    onClick={() => setCondition('normal')}
-                    aria-pressed={condition === 'normal'}
-                  >
-                    <CircleCheck size={34} />
-                    <h2>정상이에요</h2>
-                    <p>손상이 없고 잘 작동해요.</p>
-                  </button>
-                  <button
-                    className={condition === 'damaged' ? 'selected damaged' : ''}
-                    onClick={() => setCondition('damaged')}
-                    aria-pressed={condition === 'damaged'}
-                  >
-                    <ShieldCheck size={34} />
-                    <h2>손상이 있어요</h2>
-                    <p>파손되었거나 작동에 문제가 있어요.</p>
-                  </button>
                 </div>
                 <p className="condition-note">
                   {condition === 'damaged'
@@ -747,7 +747,7 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
                 <button
                   className="primary centered"
                   disabled={!condition}
-                  onClick={() => setStage('confirm')}
+                  onClick={() => setStage('code')}
                 >
                   선택한 상태로 계속
                   <ArrowRight size={22} />
@@ -882,10 +882,20 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
               <X size={19} />
               이용 취소
             </button>
+            {stage === 'code' && (
+              <button
+                className="primary kw-code-confirm"
+                type="submit"
+                form="kiosk-code-form"
+                disabled={busy || unknown || rateLimited || code.length !== KIOSK.codeLength}
+              >
+                확인
+              </button>
+            )}
           </>
         ) : (
           <>
-            <span>TagBack · 함께 쓰고, 다시 연결하다.</span>
+            <span>TagBack</span>
           </>
         )}
       </footer>

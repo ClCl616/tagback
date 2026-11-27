@@ -76,6 +76,8 @@ export function AdminLogin({ onLogin }: { onLogin: () => void }) {
             maxLength={3}
             required
             value={number}
+            disabled={busy}
+            autoFocus
             onChange={(e) => setNumber(e.target.value.replace(/\D/g, ''))}
           />
         </label>
@@ -91,7 +93,6 @@ export function AdminLogin({ onLogin }: { onLogin: () => void }) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           disabled={busy}
-          autoFocus
         />
       </label>
       {change && (
@@ -104,6 +105,7 @@ export function AdminLogin({ onLogin }: { onLogin: () => void }) {
             maxLength={128}
             required
             value={next}
+            disabled={busy}
             onChange={(e) => setNext(e.target.value)}
           />
         </label>

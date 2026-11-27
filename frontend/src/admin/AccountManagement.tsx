@@ -34,8 +34,8 @@ export function AccountManagement() {
     }
   }
   return (
-    <section className="aw-card">
-      <h2>관리자 계정</h2>
+    <section className="aw-card aw-account-management">
+      <h2>관리자 추가</h2>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -65,7 +65,9 @@ export function AccountManagement() {
           이름
           <input value={name} onChange={(e) => setName(e.target.value)} maxLength={80} required />
         </label>
-        <button disabled={busy}>관리자 추가</button>
+        <button className="aw-primary" disabled={busy}>
+          관리자 추가
+        </button>
       </form>
       {temporary && (
         <div role="status">
@@ -107,7 +109,7 @@ export function AccountManagement() {
       {logs.map((row, i) => (
         <p key={i}>
           {row.adminNumber} · {row.name} · {row.channel === 'KIOSK' ? '키오스크' : '웹'} ·{' '}
-          {new Date(row.createdAt).toLocaleString('ko-KR')}
+          {new Date(row.createdAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}
         </p>
       ))}
     </section>

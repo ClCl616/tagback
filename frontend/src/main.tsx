@@ -6,6 +6,8 @@ import KioskEntry from './kiosk/KioskEntry';
 import AdminApp from './admin/AdminApp';
 import './web-fonts.css';
 import './styles.css';
+import './forest-gallery.css';
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>

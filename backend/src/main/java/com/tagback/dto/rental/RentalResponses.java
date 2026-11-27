@@ -42,7 +42,7 @@ public final class RentalResponses {
 
     public record Summary(String rentalId, String itemId, String itemName,
                           String itemTypeId, String itemTypeName, RentalStatus rentalStatus,
-                          Instant rentedAt, Instant dueAt, Instant returnedAt, boolean overdue) {
+                          Instant rentedAt, Instant dueAt, Instant returnedAt, boolean overdue, String imageUrl) {
         public static Summary from(Rental rental, Instant evaluatedAt) {
             var item = rental.getItem();
             var status = rental.getReturnedAt() != null ? RentalStatus.RETURNED
@@ -50,7 +50,8 @@ public final class RentalResponses {
             return new Summary(rental.getId().toString(), item.getId().toString(), item.getItemName(),
                     item.getItemType().getId().toString(), item.getItemType().getName(), status,
                     rental.getRentedAt(), rental.getDueAt(), rental.getReturnedAt(),
-                    (rental.getReturnedAt() != null ? rental.getReturnedAt() : evaluatedAt).isAfter(rental.getDueAt()));
+                    (rental.getReturnedAt() != null ? rental.getReturnedAt() : evaluatedAt).isAfter(rental.getDueAt()),
+                    item.getImageUrl() != null ? item.getImageUrl() : item.getItemType().getImageUrl());
         }
     }
 

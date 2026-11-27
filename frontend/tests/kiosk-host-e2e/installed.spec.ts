@@ -181,16 +181,16 @@ for (const platform of ['windows', 'android'] as const)
     page.on('pageerror', (e) => errors.push(e.message));
     await page.goto('/kiosk-app.html');
     await page.getByRole('button', { name: /대여하기/ }).click();
-    await enterCode(page, '일회성 대여 코드');
+    await enterCode(page, '이용 코드');
     await page.evaluate(() => (window as any).fixtureScan());
     await page.getByRole('button', { name: '대여 확정', exact: true }).click();
     await expect(page.getByRole('heading', { name: '대여가 완료되었습니다' })).toBeVisible();
     await page.getByRole('button', { name: '처음으로', exact: true }).click();
     await page.getByRole('button', { name: /반납하기/ }).click();
-    await enterCode(page, '일회성 반납 코드');
     await page.evaluate(() => (window as any).fixtureScan());
     await page.getByRole('button', { name: /손상이 있어요/ }).click();
     await page.getByRole('button', { name: '선택한 상태로 계속' }).click();
+    await enterCode(page, '이용 코드');
     expect(
       await page.evaluate(
         () => (window as any).fixtureCalls.filter((r: any) => r.command.action === 'return').length,
@@ -217,7 +217,7 @@ test('bundled host response loss replays the same operation and never uses brows
   await installHost(page, 'windows', true);
   await page.goto('/kiosk-app.html');
   await page.getByRole('button', { name: /대여하기/ }).click();
-  await enterCode(page, '일회성 대여 코드');
+  await enterCode(page, '이용 코드');
   await page.evaluate(() => (window as any).fixtureScan());
   await page.getByRole('button', { name: '대여 확정', exact: true }).click();
   await expect(page.getByRole('button', { name: '이용 취소' })).toBeDisabled();
@@ -254,9 +254,10 @@ for (const viewport of [
       expect(footer!.y + footer!.height).toBeLessThanOrEqual(viewport.height + 1);
     };
     await fits('start');
+    await page.screenshot({ path: `test-results/kiosk-home-${viewport.width}.png` });
     await page.getByRole('button', { name: /대여하기/ }).click();
     await fits('rental code');
-    await enterCode(page, '일회성 대여 코드');
+    await enterCode(page, '이용 코드');
     await fits('catalog');
     await fits('scan');
     await page.evaluate(() => (window as any).fixtureScan());
@@ -267,11 +268,11 @@ for (const viewport of [
     await fits('rental done');
     await page.getByRole('button', { name: '처음으로', exact: true }).click();
     await page.getByRole('button', { name: /반납하기/ }).click();
-    await enterCode(page, '일회성 반납 코드');
     await page.evaluate(() => (window as any).fixtureScan());
     await fits('condition');
     await page.getByRole('button', { name: /손상이 있어요/ }).click();
     await page.getByRole('button', { name: '선택한 상태로 계속' }).click();
+    await enterCode(page, '이용 코드');
 
     await fits('return confirm');
     await page.getByRole('button', { name: '반납 확정', exact: true }).click();
@@ -281,3 +282,45 @@ for (const viewport of [
     await fits('return done');
   });
 }
+
+// Return starts with physical proof; going back never loses the chosen item's identity.
+test('return scan precedes code verification and back preserves condition without writing', async ({
+  page,
+}) => {
+  await installHost(page, 'windows');
+  await page.goto('/kiosk-app.html');
+  await page.getByRole('button', { name: /반납하기/ }).click();
+  await expect(page.getByLabel('이용 코드', { exact: true })).toHaveCount(0);
+  await page.evaluate(() => (window as any).fixtureScan());
+  await expect(page.getByRole('button', { name: '선택한 상태로 계속' })).toBeDisabled();
+  await page.getByRole('button', { name: /정상이에요/ }).click();
+  await page.getByRole('button', { name: '선택한 상태로 계속' }).click();
+  await page.getByRole('button', { name: '이전', exact: true }).click();
+  await expect(page.getByRole('button', { name: /정상이에요/ })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await page.getByRole('button', { name: '선택한 상태로 계속' }).click();
+  await enterCode(page, '이용 코드');
+  await expect(page.getByRole('button', { name: '반납 확정', exact: true })).toBeVisible();
+  const calls = await page.evaluate(() =>
+    (window as any).fixtureCalls.map((r: any) => r.command.action),
+  );
+  expect(calls.indexOf('return-scan')).toBeLessThan(calls.indexOf('verify'));
+  expect(calls).not.toContain('return');
+  await page.getByRole('button', { name: '이전', exact: true }).click();
+  await expect(page.getByLabel('이용 코드', { exact: true })).toBeVisible();
+});
+
+test('code keypad clears all digits and confirms only a complete code', async ({ page }) => {
+  await installHost(page, 'windows');
+  await page.goto('/kiosk-app.html');
+  await page.getByRole('button', { name: /대여하기/ }).click();
+  await page.getByLabel('이용 코드', { exact: true }).fill('123456');
+  await page.getByRole('button', { name: '전체 지우기', exact: true }).click();
+  await expect(page.getByLabel('이용 코드', { exact: true })).toHaveValue('');
+  await expect(page.getByRole('button', { name: '확인', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: '1', exact: true }).click();
+  await page.getByRole('button', { name: '지우기', exact: true }).click();
+  await expect(page.getByLabel('이용 코드', { exact: true })).toHaveValue('');
+});

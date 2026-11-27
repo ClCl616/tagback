@@ -38,7 +38,8 @@ test('initial connection failure remains recoverable after closing popup', async
   await expect(page.getByRole('heading', { name: '서비스에 연결하지 못했어요' })).toBeVisible();
   await page.unroute('**/api/v1/auth/session');
   await page.getByRole('button', { name: '다시 시도', exact: true }).click();
-  await expect(page.getByRole('navigation', { name: '모바일 메뉴' })).toBeVisible();
+  await expect(page.getByRole('link', { name: '로그인', exact: true })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: '모바일 메뉴' })).toHaveCount(0);
 });
 
 test.beforeEach(async ({ page }) => {

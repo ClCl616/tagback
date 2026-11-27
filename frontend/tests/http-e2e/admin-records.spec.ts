@@ -91,14 +91,14 @@ test('global search includes later server pages, filters reset pagination, and c
   await expect(page.getByText('조건에 맞는 물품이 없어요')).toBeVisible();
   await page
     .getByRole('navigation', { name: '관리자 메뉴' })
-    .getByRole('link', { name: '대여 현황', exact: true })
+    .getByRole('link', { name: '대여·반납 관리', exact: true })
     .click();
   await expect(page.getByText('검색 결과 2건 / 전체 3건')).toBeVisible();
   await page.getByLabel('상태', { exact: true }).selectOption('RETURNED');
   await expect(page.getByText('연체 반납', { exact: true })).toBeVisible();
   await page
     .getByRole('navigation', { name: '관리자 메뉴' })
-    .getByRole('link', { name: '사용자', exact: true })
+    .getByRole('link', { name: '사용자 관리', exact: true })
     .click();
   await expect(
     page.getByRole('button', { name: '테스트 사용자 상세 보기', exact: true }),
@@ -115,7 +115,7 @@ test('expired session clears displayed data and retry recovers', async ({ page }
   await page.goto('/admin');
   await page
     .getByRole('navigation', { name: '관리자 메뉴' })
-    .getByRole('link', { name: '사용자', exact: true })
+    .getByRole('link', { name: '사용자 관리', exact: true })
     .click();
   await expect(page.getByText('검색 결과 1건 / 전체 1건')).toBeVisible();
   await page.route('**/api/v1/admin/users?**', (route) => route.fulfill({ status: 401, json: {} }));
@@ -133,7 +133,7 @@ test('partial responses are rejected and narrow layout stays within viewport', a
   await page.getByRole('button', { name: '관리자 메뉴 열기' }).click();
   await page
     .getByRole('navigation', { name: '관리자 메뉴' })
-    .getByRole('link', { name: '사용자', exact: true })
+    .getByRole('link', { name: '사용자 관리', exact: true })
     .click();
   await expect(page.getByRole('table')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

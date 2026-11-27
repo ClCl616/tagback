@@ -32,6 +32,7 @@ export type Rental = {
   dueAt: number;
   returnedAt?: number;
   condition?: 'normal' | 'damaged';
+  image?: string;
   itemName?: string;
   itemTypeName?: string;
   overdue?: boolean;

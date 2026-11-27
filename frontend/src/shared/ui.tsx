@@ -1,4 +1,4 @@
-import { ArrowUpRight, Box, Check, CircleAlert, Info, LoaderCircle, Radio } from 'lucide-react';
+import { Tag, Box, Check, CircleAlert, Info, LoaderCircle, Radio } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { ServiceError } from './serviceError';
 export const date = (n: number) =>
@@ -13,9 +13,9 @@ export function Brand() {
   return (
     <span className="brand">
       <span className="brand-mark">
-        <ArrowUpRight size={24} />
+        <Tag size={30} fill="currentColor" strokeWidth={1.5} />
       </span>
-      TagBack<span className="brand-dot">.</span>
+      TagBack
     </span>
   );
 }
@@ -33,11 +33,17 @@ export function MessagePopup({
   action?: { label: string; onClick: () => void };
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const opener = useRef<HTMLElement | null>(null);
   const titleId = useId();
   const descriptionId = useId();
   useEffect(() => {
-    dialog.current?.showModal();
-    return () => dialog.current?.close();
+    opener.current = document.activeElement as HTMLElement;
+    const element = dialog.current;
+    element?.showModal();
+    return () => {
+      element?.close();
+      if (opener.current?.isConnected) opener.current.focus();
+    };
   }, []);
   return (
     <dialog
