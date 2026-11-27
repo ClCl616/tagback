@@ -509,15 +509,6 @@ function Workspace({
         <header className="aw-heading">
           <div>
             <h1 tabIndex={-1}>{title}</h1>
-            <p>
-              {section === 'overview'
-                ? '물품 이용 현황과 확인이 필요한 내역을 한눈에 살펴보세요.'
-                : itemView
-                  ? '대여소의 물품과 태그를 확인하고 관리하세요.'
-                  : userView
-                    ? '사용자 정보와 관련 이용 내역을 확인하세요.'
-                    : '대여부터 반납까지 이용 내역을 확인하세요.'}
-            </p>
           </div>
           <div className="aw-actions">
             <button aria-label="새로고침" onClick={() => reload()}>
@@ -870,18 +861,17 @@ function Workspace({
 }
 function Overview({ data }: { data: AdminData }) {
   const cards = [
-    { name: '등록 물품', value: data.items.length, href: '/admin/items', Icon: Box },
-    {
-      name: '대여 중',
-      value: data.rentals.filter((r) => r.status !== 'RETURNED').length,
-      href: '/admin/rentals',
-      Icon: ClipboardList,
-    },
     {
       name: '연체',
       value: data.rentals.filter((r) => r.status === 'OVERDUE').length,
       href: '/admin/overdue',
       Icon: CircleAlert,
+    },
+    {
+      name: '태그 등록 대기',
+      value: data.items.filter((r) => r.status === 'TAG_PENDING').length,
+      href: '/admin/tags',
+      Icon: Radio,
     },
     {
       name: '점검·수리',
@@ -899,7 +889,8 @@ function Overview({ data }: { data: AdminData }) {
     .slice(0, 6);
   return (
     <>
-      <section className="aw-stats" aria-label="전체 현황">
+      <h2 className="aw-priority-heading">확인이 필요한 항목</h2>
+      <section className="aw-stats aw-priority-stats" aria-label="확인이 필요한 항목">
         {cards.map(({ name, value, href, Icon }) => (
           <Link key={name} to={href}>
             <span className={'aw-stat-icon ' + (name === '연체' ? 'warning' : '')}>
@@ -909,7 +900,7 @@ function Overview({ data }: { data: AdminData }) {
               <span>{name}</span>
               <strong>
                 {value}
-                <small>{name === '등록 물품' || name === '점검·수리' ? '개' : '건'}</small>
+                <small>{name !== '연체' ? '개' : '건'}</small>
               </strong>
             </div>
             <ArrowRight size={17} />
@@ -920,20 +911,7 @@ function Overview({ data }: { data: AdminData }) {
         <section className="aw-card">
           <div className="aw-section-heading">
             <div>
-              <h2>최근 대여 내역</h2>
-              <p>최근에 시작된 이용 내역을 확인하세요.</p>
-            </div>
-            <Link to="/admin/rentals">
-              전체 보기 <ArrowRight size={16} />
-            </Link>
-          </div>
-          <RecordLinks rows={recent} />
-        </section>
-        <section className="aw-card">
-          <div className="aw-section-heading">
-            <div>
               <h2>연체 목록</h2>
-              <p>반납 기한이 지난 이용 내역이에요.</p>
             </div>
             <Link to="/admin/overdue">
               전체 보기 <ArrowRight size={16} />
@@ -941,17 +919,28 @@ function Overview({ data }: { data: AdminData }) {
           </div>
           <RecordLinks rows={overdue} empty="현재 연체 내역이 없어요" />
         </section>
+        <section className="aw-card">
+          <div className="aw-section-heading">
+            <div>
+              <h2>최근 대여 내역</h2>
+            </div>
+            <Link to="/admin/rentals">
+              전체 보기 <ArrowRight size={16} />
+            </Link>
+          </div>
+          <RecordLinks rows={recent} />
+        </section>
       </div>
-      <div className="aw-guide">
-        <Radio size={25} />
-        <div>
-          <h2>새 물품을 등록하셨나요?</h2>
-          <p>NFC 태그를 연결하면 키오스크에서 실물을 식별할 수 있어요.</p>
-        </div>
-        <Link className="aw-secondary" to="/admin/tags">
-          태그 연결하기 <ArrowRight size={17} />
+      <section className="aw-overview-totals" aria-label="전체 현황">
+        <Link to="/admin/items">
+          등록 물품 <strong>{data.items.length}개</strong>
+          <ArrowRight size={16} />
         </Link>
-      </div>
+        <Link to="/admin/rentals">
+          대여 중 <strong>{data.rentals.filter((r) => r.status !== 'RETURNED').length}건</strong>
+          <ArrowRight size={16} />
+        </Link>
+      </section>
     </>
   );
 }

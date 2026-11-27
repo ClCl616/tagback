@@ -1,0 +1,29 @@
+name: tagback
+services:
+  web:
+    image: tagback-web:uiux-20261119
+    build:
+      context: ../..
+      dockerfile: deploy/compose/web.Dockerfile
+    ports:
+      - "127.0.0.1:8443:443"
+    volumes:
+      - type: bind
+        source: ./local/tls
+        target: /etc/nginx/tls
+        read_only: true
+        bind:
+          create_host_path: false
+    networks:
+      - existing
+    healthcheck:
+      test: [CMD-SHELL, 'wget -q -O /dev/null http://127.0.0.1:8081/healthz']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+    stop_grace_period: 15s
+networks:
+  existing:
+    external: true
+    name: tagback_default

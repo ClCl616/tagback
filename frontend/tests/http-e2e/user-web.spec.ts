@@ -174,12 +174,12 @@ test('code is explicitly issued, shared across routes and never reissued by focu
   const state = await fixture(page);
   state.codeSeconds = 4;
   await page.goto('/mobile');
-  await expect(page.getByRole('heading', { name: '안녕하세요, 김민준님!' })).toBeVisible();
-  expect(state.codes).toBe(0);
-  await page.getByRole('link', { name: '이용 코드 발급하기' }).click();
+  await expect(page.getByRole('heading', { name: '홈', exact: true })).toBeVisible();
   expect(state.codes).toBe(0);
   await page.getByRole('button', { name: '이용 코드 발급', exact: true }).click();
   await expect(page.locator('.code-number')).toHaveText('482193');
+  await expect(page.getByRole('button', { name: '코드 다시 확인', exact: true })).toBeVisible();
+  await page.locator('.uw-sidebar').getByRole('link', { name: '대여 내역', exact: true }).click();
   await page.locator('.uw-sidebar').getByRole('link', { name: '홈', exact: true }).click();
   await expect(page.locator('.code-number')).toHaveText('482193');
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
@@ -227,6 +227,7 @@ test('guest login returns to the requested code screen and polling preserves typ
   await expect(page.getByLabel('전화번호', { exact: true })).toHaveValue('01012345678');
   await page.getByRole('button', { name: '다음', exact: true }).click();
   await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
+  await page.getByRole('button', { name: '로그인', exact: true }).click();
   await expect(page).toHaveURL(/\/mobile\/code$/);
   expect(state.codes).toBe(0);
 });
@@ -240,22 +241,16 @@ test('catalog keeps search, distinguishes unavailable stock from request failure
   await page.getByLabel('물품명 검색').fill('계산기');
   await expect(page.locator('.uw-product')).toHaveCount(1);
   await page.locator('.uw-product').click();
-  await expect(page.getByRole('complementary', { name: '물품 상세' })).toContainText(
-    '공학용 계산기',
-  );
-  await page.getByRole('link', { name: '물품 상세 닫기' }).click();
+  await expect(page.getByRole('dialog', { name: '물품 상세' })).toContainText('공학용 계산기');
+  await page.getByRole('button', { name: '물품 상세 닫기' }).click();
   await expect(page.getByLabel('물품명 검색')).toHaveValue('계산기');
   await page.getByLabel('물품명 검색').fill('없는 물품');
   await expect(page.getByRole('heading', { name: '검색 결과가 없어요' })).toBeVisible();
   await page.getByRole('button', { name: '검색 초기화' }).click();
   await page.locator('.uw-product').filter({ hasText: '보조배터리' }).click();
-  await expect(page.getByRole('complementary', { name: '물품 상세' })).toContainText(
-    '현재 대여 불가',
-  );
+  await expect(page.getByRole('dialog', { name: '물품 상세' })).toContainText('현재 대여 불가');
   await expect(
-    page
-      .getByRole('complementary', { name: '물품 상세' })
-      .getByRole('link', { name: '이용 코드 발급' }),
+    page.getByRole('dialog', { name: '물품 상세' }).getByRole('link', { name: '이용 코드 발급' }),
   ).toHaveCount(0);
   state.failItems = true;
   await page.goto('/mobile/items');
@@ -284,8 +279,17 @@ test('server overdue, direct rental history, return-month filter and logout stay
   await page.goto('/mobile/history/13');
   await expect(page.getByRole('complementary', { name: '대여 상세' })).toContainText('반납 완료');
   await page.getByRole('link', { name: '대여 상세 닫기' }).click();
+  await expect(page).toHaveURL(/\/mobile\/history$/);
   await page.getByLabel('반납 월').selectOption('2026-11');
   await expect(page.locator('.uw-rental-row')).toHaveCount(1);
+  await page.getByLabel('물품 검색', { exact: true }).fill('계산기');
+  await page.locator('.uw-rental-row').click();
+  await expect(page.getByRole('complementary', { name: '대여 상세' })).toBeVisible();
+  await page.getByRole('link', { name: '대여 상세 닫기' }).click();
+  await expect(page).toHaveURL(/\/mobile\/history\?/);
+  await expect(page.getByRole('complementary', { name: '대여 상세' })).toHaveCount(0);
+  await expect(page.getByLabel('물품 검색', { exact: true })).toHaveValue('계산기');
+  await expect(page.getByLabel('반납 월')).toHaveValue('2026-11');
   await page.getByLabel('물품 검색', { exact: true }).fill('없음');
   await expect(page.getByRole('heading', { name: '조건에 맞는 기록이 없어요' })).toBeVisible();
   await page.goto('/mobile/account');
@@ -307,6 +311,7 @@ test('approved screens and signup reflow without horizontal overflow from 320 to
       '/mobile',
       '/mobile/items',
       '/mobile/items?item=1',
+      '/mobile/rentals',
       '/mobile/rentals/11',
       '/mobile/history',
       '/mobile/account',
@@ -321,7 +326,14 @@ test('approved screens and signup reflow without horizontal overflow from 320 to
       ).toBe(true);
       if (
         (width === 390 || width === 1440) &&
-        ['/mobile', '/mobile/items', '/mobile/rentals/11', '/mobile/account'].includes(path)
+        [
+          '/mobile',
+          '/mobile/items',
+          '/mobile/rentals',
+          '/mobile/rentals/11',
+          '/mobile/history',
+          '/mobile/account',
+        ].includes(path)
       ) {
         await page.screenshot({
           path: `test-results/user-web-${width}-${path.replaceAll('/', '-')}.png`,
@@ -509,4 +521,77 @@ test('rental and history lists scroll independently, with enlarged text still re
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
     true,
   );
+});
+
+test('catalog sheet traps focus, closes with Escape and keeps filters; desktop uses a panel', async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/mobile/items?q=계산기');
+  const card = page.locator('.uw-product').first();
+  await card.click();
+  const sheet = page.getByRole('dialog', { name: '물품 상세', exact: true });
+  await expect(sheet).toBeVisible();
+  await expect(page.locator('.uw-products')).toBeVisible();
+  for (let i = 0; i < 8; i++) {
+    await page.keyboard.press('Tab');
+    expect(await sheet.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+  }
+  await page.screenshot({ path: 'test-results/catalog-mobile-sheet.png', animations: 'disabled' });
+  await page.keyboard.press('Escape');
+  await expect(sheet).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: '물품명 검색' })).toHaveValue('계산기');
+  await expect(card).toBeFocused();
+  await page.goto('/mobile/items?q=계산기&item=1');
+  await expect(sheet).toBeVisible();
+  await page.getByRole('button', { name: '물품 상세 닫기' }).click();
+  await expect(page).toHaveURL(/\/mobile\/items\?q=/);
+  expect(new URL(page.url()).searchParams.has('item')).toBe(false);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await card.click();
+  await expect(page.getByRole('complementary', { name: '물품 상세' })).toBeVisible();
+  await expect(sheet).toHaveCount(0);
+  await page.screenshot({ path: 'test-results/catalog-desktop-panel.png' });
+});
+
+test('background catalog refresh preserves the open sheet and recovers without replacing the list', async ({
+  page,
+}) => {
+  const state = await fixture(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/mobile/items');
+  await page.locator('.uw-product').first().click();
+  const sheet = page.getByRole('dialog', { name: '물품 상세', exact: true });
+  await expect(sheet).toBeVisible();
+  await sheet.evaluate((el) => el.setAttribute('data-original', 'yes'));
+  let release!: () => void;
+  const barrier = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let started = false;
+  await page.route('**/api/v1/catalog/item-types?**', async (route) => {
+    started = true;
+    await barrier;
+    await route.fallback();
+  });
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect.poll(() => started).toBe(true);
+  await expect(sheet).toHaveAttribute('data-original', 'yes');
+  await expect(page.locator('.uw-product')).toHaveCount(3);
+  release();
+  await expect(page.getByText('최신 정보를 확인하고 있어요.', { exact: true })).toHaveCount(0);
+  await expect(sheet).toHaveAttribute('data-original', 'yes');
+  await page.getByRole('button', { name: '물품 상세 닫기' }).click();
+  await expect(sheet).toHaveCount(0);
+  state.failItems = true;
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(page.getByText(/이전 조회 내용을 표시하고 있어요/)).toBeVisible();
+  await expect(page.locator('.uw-product')).toHaveCount(3);
+  state.failItems = false;
+  await page.getByRole('button', { name: '다시 시도', exact: true }).click();
+  await expect(page.getByText(/이전 조회 내용을 표시하고 있어요/)).toHaveCount(0);
+  await page.getByLabel('물품명 검색', { exact: true }).fill('없는물품');
+  await expect(page.getByRole('heading', { name: '검색 결과가 없어요' })).toBeVisible();
+  await expect(page.locator('.uw-product')).toHaveCount(0);
 });

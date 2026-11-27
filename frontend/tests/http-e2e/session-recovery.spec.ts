@@ -57,6 +57,7 @@ test('a delayed pre-login session response cannot erase successful login', async
   await page.evaluate(() => window.dispatchEvent(new Event('tagback-session')));
   await expect.poll(() => !!captured).toBe(true);
   await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
+  await page.getByRole('button', { name: '로그인', exact: true }).click();
   await expect(page).toHaveURL(/\/mobile$/);
   await captured!.fulfill({
     status: 401,
@@ -75,6 +76,7 @@ test('an existing session does not prove a lost PIN reset completed after reload
   await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
   await page.getByRole('button', { name: '다음', exact: true }).click();
   await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
+  await page.getByRole('button', { name: '로그인', exact: true }).click();
   await expect(page).toHaveURL(/\/mobile$/);
   await page.evaluate(() =>
     sessionStorage.setItem(

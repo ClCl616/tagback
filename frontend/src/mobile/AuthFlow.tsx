@@ -325,7 +325,7 @@ export default function AuthFlow({
   async function send() {
     if (busy || wait > 0 || resend > 0) return;
     if (!phoneValid(phone)) {
-      setError(new Error('010으로 시작하는 11자리 전화번호를 입력해 주세요.'));
+      setError(new ServiceError('INPUT', '010으로 시작하는 11자리 전화번호를 입력해 주세요.'));
       return;
     }
     await task(async () => {
@@ -360,14 +360,14 @@ export default function AuthFlow({
     if (busy || unknown || wait || locked) return;
     if (!/^\d{6}$/.test(pin)) {
       setPin('');
-      setError(new Error('숫자 6자리를 입력해 주세요.'));
+      setError(new ServiceError('INPUT', '숫자 6자리를 입력해 주세요.'));
       return;
     }
     if (step === 'setup') {
       const problem = pinError(pin);
       if (problem) {
         setPin('');
-        setError(new Error(problem));
+        setError(new ServiceError('INPUT', problem));
         return;
       }
       setFirstPin(pin);
@@ -378,7 +378,9 @@ export default function AuthFlow({
     }
     if (step === 'confirm' && pin !== firstPin) {
       setPin('');
-      setError(new Error('처음 입력한 PIN과 일치하지 않습니다. 다시 입력해 주세요.'));
+      setError(
+        new ServiceError('INPUT', '처음 입력한 PIN과 일치하지 않습니다. 다시 입력해 주세요.'),
+      );
       return;
     }
     await task(async () => {
@@ -411,12 +413,14 @@ export default function AuthFlow({
     });
   }
   function editPin(value: string) {
+    if (
+      error instanceof ServiceError &&
+      ['INPUT', 'PIN', 'PIN_INVALID', 'PIN_MISMATCH'].includes(error.code)
+    )
+      setError(undefined);
     setPin(value.replace(/\D/g, '').slice(0, 6));
     operationId.current = '';
   }
-  useEffect(() => {
-    if (mode === 'access' && step === 'pin' && pin.length === 6) void submitPin();
-  }, [pin, step, mode]);
   function previousSignupStep() {
     setError(undefined);
     if (step === 'confirm') {
@@ -437,10 +441,18 @@ export default function AuthFlow({
       </div>
     );
   const isPin = ['pin', 'setup', 'confirm'].includes(step);
-  const fieldError =
-    error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+  const inlineError =
+    error instanceof ServiceError &&
+    ['INPUT', 'PIN', 'PIN_INVALID', 'PIN_MISMATCH'].includes(error.code) &&
+    !unknown &&
+    !locked &&
+    (isPin || step === 'phone');
+  const fieldError = inlineError ? error.message : '';
+
   return (
-    <div className="page-content auth-flow">
+    <div
+      className={`page-content auth-flow ${(mode === 'access' || mode === 'signup') && !adminDestination ? 'uw-access-pass' : ''}`}
+    >
       <div className="auth-topline">
         {mode !== 'signup' && (
           <button
@@ -465,14 +477,19 @@ export default function AuthFlow({
         )}
         <span>{mode === 'reset' ? 'PIN 재설정' : mode === 'signup' ? '회원가입' : '로그인'}</span>
       </div>
-      {mode === 'signup' && !unknown && ['phone', 'setup', 'confirm'].includes(step) && (
-        <p className="signup-progress">
-          {step === 'phone'
-            ? '2 / 4 · 본인 인증'
-            : step === 'setup'
-              ? '3 / 4 · PIN 설정'
-              : '4 / 4 · PIN 확인'}
-        </p>
+      {mode === 'signup' && !unknown && ['profile', 'phone', 'setup', 'confirm'].includes(step) && (
+        <div className="uw-pass-step" aria-label="회원가입 진행 단계">
+          <span>캠퍼스 이용증</span>
+          <span aria-current="step">
+            {step === 'profile'
+              ? '1 / 4 · 개인정보'
+              : step === 'phone'
+                ? '2 / 4 · 본인 인증'
+                : step === 'setup'
+                  ? '3 / 4 · PIN 설정'
+                  : '4 / 4 · PIN 확인'}
+          </span>
+        </div>
       )}
       {unknown ? (
         <>
@@ -520,7 +537,6 @@ export default function AuthFlow({
         <Loading text="로그인 방법을 확인하고 있어요" />
       ) : step === 'profile' ? (
         <>
-          <p className="signup-progress">1 / 4 · 개인정보</p>
           <h1>
             반가워요!
             <br />
@@ -627,7 +643,14 @@ export default function AuthFlow({
       ) : isPin ? (
         <>
           <section className="auth-login-card">
-            <LockKeyhole className="auth-symbol" />
+            {mode === 'access' && !adminDestination ? (
+              <div className="uw-pass-step" aria-label="2단계 중 2단계: PIN 확인">
+                <span>캠퍼스 이용증</span>
+                <span>2 / 2 · PIN 확인</span>
+              </div>
+            ) : mode !== 'signup' ? (
+              <LockKeyhole className="auth-symbol" />
+            ) : null}
             <h1>
               {step === 'setup'
                 ? mode === 'reset'
@@ -659,7 +682,7 @@ export default function AuthFlow({
                 />
               </div>
               {fieldError && (
-                <p className="uw-field-error" id="user-pin-error">
+                <p className="uw-field-error" id="user-pin-error" role="alert">
                   {fieldError}
                 </p>
               )}
@@ -737,7 +760,14 @@ export default function AuthFlow({
       ) : (
         <>
           <section className="auth-login-card">
-            <Smartphone className="auth-symbol" />
+            {mode === 'access' && !adminDestination ? (
+              <div className="uw-pass-step" aria-label="2단계 중 1단계: 전화번호">
+                <span>캠퍼스 이용증</span>
+                <span>1 / 2 · 전화번호</span>
+              </div>
+            ) : mode !== 'signup' ? (
+              <Smartphone className="auth-symbol" />
+            ) : null}
             <h1>
               {mode === 'reset' ? '등록된 전화번호를 확인해 주세요.' : '전화번호를 입력해 주세요.'}
             </h1>
@@ -746,7 +776,12 @@ export default function AuthFlow({
                 e.preventDefault();
                 if (mode === 'access') {
                   if (!phoneValid(phone)) {
-                    setError(new Error('010으로 시작하는 11자리 전화번호를 입력해 주세요.'));
+                    setError(
+                      new ServiceError(
+                        'INPUT',
+                        '010으로 시작하는 11자리 전화번호를 입력해 주세요.',
+                      ),
+                    );
                     return;
                   }
                   setMask('010-****-' + phone.replace(/\D/g, '').slice(-4));
@@ -781,7 +816,7 @@ export default function AuthFlow({
                 />
               </label>
               {fieldError && !challenge && (
-                <p className="uw-field-error" id="user-phone-error">
+                <p className="uw-field-error" id="user-phone-error" role="alert">
                   {fieldError}
                 </p>
               )}
@@ -890,7 +925,7 @@ export default function AuthFlow({
       )}
       <ErrorBox
         error={
-          error ||
+          (inlineError ? undefined : error) ||
           (proofExpired && !unknown
             ? '인증 결과가 만료되었습니다. 전화번호부터 다시 인증해 주세요.'
             : challenge && remaining === 0 && step === 'phone'

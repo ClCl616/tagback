@@ -115,6 +115,7 @@ test('signup profile, session reload, account and logout use HTTP without storin
   await page.getByRole('link', { name: '로그인', exact: true }).click();
   await expect(page.getByLabel('PIN 번호', { exact: true })).toBeVisible();
   await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
+  await page.getByRole('button', { name: '로그인', exact: true }).click();
 
   await expect(page).toHaveURL(/\/mobile$/);
   expect(writes.some((x) => x.path.endsWith('/login/registered'))).toBe(true);
@@ -125,6 +126,9 @@ test('phone PIN login goes to main without requesting SMS', async ({ page }) => 
   await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
   await page.getByRole('button', { name: '다음', exact: true }).click();
   await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
+  await expect(page.getByRole('button', { name: '로그인', exact: true })).toBeEnabled();
+  expect(writes.filter((x) => x.path.includes('/login/'))).toHaveLength(0);
+  await page.getByRole('button', { name: '로그인', exact: true }).click();
 
   await expect(page).toHaveURL(/\/mobile$/);
   expect(writes.some((x) => x.path.endsWith('/login/phone'))).toBe(true);
@@ -170,7 +174,7 @@ test('PIN recovery shows rules only on invalid input and mobile navigation remai
   await expect(page.locator('.pin-guidance')).toHaveCount(0);
   await page.getByLabel('PIN 번호', { exact: true }).fill('123456');
   await page.getByRole('button', { name: '계속', exact: true }).click();
-  await expect(page.getByRole('dialog')).toContainText('6자리 전체가 연속');
+  await expect(page.locator('#user-pin-error')).toContainText('6자리 전체가 연속');
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
@@ -205,16 +209,18 @@ test('a corrected PIN uses a new operation and prevents concurrent submissions',
   await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
   await page.getByRole('button', { name: '다음', exact: true }).click();
   await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
+  await page.getByRole('button', { name: '로그인', exact: true }).click();
 
   await expect(page.getByRole('button', { name: '확인 중…', exact: true })).toBeDisabled();
-  await expect(page.getByRole('dialog')).toContainText('PIN이 일치하지 않습니다.');
+  await expect(page.locator('#user-pin-error')).toContainText('PIN이 일치하지 않습니다.');
   await expect(page.getByLabel('PIN 번호', { exact: true })).toHaveAttribute(
     'aria-invalid',
     'true',
   );
   expect(attempts).toHaveLength(1);
-  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByLabel('PIN 번호', { exact: true }).fill('246802');
+  await page.getByRole('button', { name: '로그인', exact: true }).click();
 
   await expect.poll(() => attempts.length).toBe(2);
   expect(attempts[1].key).not.toBe(attempts[0].key);
@@ -457,8 +463,10 @@ test('recovery navigation, PIN confirmation correction and completion stay on a 
   await page.getByRole('button', { name: '계속', exact: true }).click();
   await page.getByLabel('PIN 번호', { exact: true }).fill('246802');
   await page.getByRole('button', { name: 'PIN 재설정', exact: true }).click();
-  await expect(page.getByRole('dialog')).toContainText('처음 입력한 PIN과 일치하지 않습니다.');
-  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
+  await expect(page.locator('#user-pin-error')).toContainText(
+    '처음 입력한 PIN과 일치하지 않습니다.',
+  );
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(
     page.getByRole('heading', { name: 'PIN 번호를 한 번 더 입력해 주세요.' }),
   ).toBeVisible();
@@ -522,7 +530,7 @@ test('a definite retry error leaves unknown-result mode instead of trapping sign
   await expect(page.getByLabel('전화번호', { exact: true })).toBeVisible();
 });
 
-test('automatic login clears failed PIN and missing account has a signup action', async ({
+test('explicit login clears failed PIN and missing account has a signup action', async ({
   page,
 }) => {
   await server(page);
@@ -546,10 +554,12 @@ test('automatic login clears failed PIN and missing account has a signup action'
   await page.getByLabel('PIN 번호', { exact: true }).fill('04825');
   expect(requests).toBe(0);
   await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
-  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('button', { name: '로그인', exact: true }).click();
+  await expect(page.locator('#user-pin-error')).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByLabel('PIN 번호', { exact: true })).toHaveValue('');
-  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
   await page.getByLabel('PIN 번호', { exact: true }).fill('246802');
+  await page.getByRole('button', { name: '로그인', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '가입되지 않은 전화번호예요' })).toBeVisible();
   expect(requests).toBe(2);
   await page.getByRole('dialog').getByRole('button', { name: '회원가입', exact: true }).click();
@@ -570,9 +580,9 @@ test('signup uses lower navigation and clears invalid PIN; authentication has it
   await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
   await page.getByLabel('PIN 번호', { exact: true }).fill('123456');
   await page.getByRole('button', { name: '다음', exact: true }).click();
-  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.locator('#user-pin-error')).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByLabel('PIN 번호', { exact: true })).toHaveValue('');
-  await page.getByRole('dialog').getByRole('button', { name: '확인', exact: true }).click();
   await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
   await page.getByRole('button', { name: '다음', exact: true }).click();
   await page.getByRole('button', { name: '이전', exact: true }).click();
@@ -594,4 +604,19 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/rentals/me?**', (route) =>
     route.fulfill({ json: { rentals: [], page: 0, size: 100, totalElements: 0, totalPages: 0 } }),
   );
+});
+
+test('phone validation stays inline and clears while editing', async ({ page }) => {
+  await server(page);
+  await page.goto('/mobile/login');
+  const phone = page.getByLabel('전화번호', { exact: true });
+  await phone.fill('01012');
+  await page.getByRole('button', { name: '다음', exact: true }).click();
+  await expect(page.locator('#user-phone-error')).toContainText('11자리');
+  await expect(phone).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await phone.fill('01012345678');
+  await expect(page.locator('#user-phone-error')).toHaveCount(0);
+  await page.getByRole('button', { name: '다음', exact: true }).click();
+  await expect(page.getByLabel('PIN 번호', { exact: true })).toBeVisible();
 });

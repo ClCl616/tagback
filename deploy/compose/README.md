@@ -99,3 +99,17 @@ docker compose logs -f --tail 50 api
 2026-11-13 검증: 웹/API 이미지 빌드, 3개 서비스 healthy, 실제 PostgreSQL Flyway 20개, 위 HTTPS 확인 스크립트, DB 컨테이너 재생성 시 cluster ID 유지, API 재생성 후 재확인에 통과했다. 검증 프로젝트는 `tagback-compose-check`, 포트는 18443이며 종료 후 볼륨·이미지를 보존했다. 기본 `tagback` 프로젝트는 시작하지 않았다.
 
 Windows 설치 파일과 향후 Android APK는 GitHub Releases에서 운영자가 수동 설치·업데이트한다. Compose는 공통 서버만 담당한다. 앱 자동 업데이트는 현재 범위에서 제외하며 Android 개발 보류를 유지한다.
+
+## UI/UX 로컬 웹 교체 실행 (2026-11-19)
+
+기존 tagback-compose 작업 폴더와 TLS 파일이 삭제되어, 실행 중인 tagback API/DB와 tagback_default 네트워크를 사용하는 웹 전용 구성을 추가했다. 기존 API/DB는 재생성하지 않았다. 이 구성은 새 환경 전체를 설치하는 용도가 아니다.
+
+```powershell
+docker compose -f deploy/compose/ui-preview.compose.yaml up -d --build --no-deps --wait web
+```
+
+실행 폴더: C:/Projects/tagback-ui-ux. 사용자 https://localhost:8443/mobile, 관리자 https://localhost:8443/admin/login, 브라우저 키오스크 https://localhost:8443/kiosk. 새 자체 서명 localhost 인증서를 deploy/compose/local/tls에 만들었으며 Git 제외 상태다. OS 신뢰 저장소는 변경하지 않았다. 설치 앱의 인증서 설정은 별도이며 이번에는 설치 앱을 업데이트하지 않았다.
+
+이미지 tagback-web:uiux-20261119, 이전 웹 이미지 보존 태그 tagback-web:before-uiux-20261119. 웹 전용 Compose 실행 시 기존 api/db가 orphan으로 표시되지만 계속 사용하므로 --remove-orphans를 사용하지 않는다. 전체 compose.yaml 재시작에는 삭제된 API/DB 비밀 파일 등의 복구가 먼저 필요하다.
+
+Docker 빌드 성공 및 3개 컨테이너 healthy 확인. 실제 HTTPS 로그인/공개 물품/관리자 로그인/키오스크 렌더·API health 200 및 브라우저 pageerror 0 확인. 관리자 인증 후 화면·실제 NFC 거래·SMS 발송은 수행하지 않았다.

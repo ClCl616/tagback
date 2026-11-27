@@ -106,6 +106,7 @@
     min-height: 120px;
     display: flex;
     flex-direction: column;
+    align-items: stretch;
     gap: 0;
   }
   .user-web .uw-products {
@@ -174,7 +175,7 @@
   .user-web .uw-history-link {
     margin: 0 0 8px;
   }
-  .user-web .uw-master-detail.has-selection > :first-child {
+  .user-web .uw-master-detail.has-selection:not(.uw-catalog-layout) > :first-child {
     display: none;
   }
   .user-web .uw-detail-panel {

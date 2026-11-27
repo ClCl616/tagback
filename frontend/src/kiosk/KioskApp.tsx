@@ -37,8 +37,12 @@ type Completion = {
   recovered?: boolean;
 };
 export default function KioskApp() {
-  const [admin,setAdmin]=useState(false);
-  return admin ? <KioskAdmin close={() => setAdmin(false)} /> : <CustomerKiosk openAdmin={() => setAdmin(true)} />;
+  const [admin, setAdmin] = useState(false);
+  return admin ? (
+    <KioskAdmin close={() => setAdmin(false)} />
+  ) : (
+    <CustomerKiosk openAdmin={() => setAdmin(true)} />
+  );
 }
 function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
   const platform = useMemo(getKioskPlatform, []);
@@ -449,13 +453,8 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
         {stage === 'start' ? (
           <>
             <div className="welcome-heading">
-              <div className="eyebrow">BORROW. USE. BRING IT BACK.</div>
-              <h1>
-                필요할 때 빌리고,
-                <br />
-                <em>다음 사람에게 이어 주세요.</em>
-              </h1>
-              <p>함께 쓰는 캠퍼스, TagBack에서 시작하세요.</p>
+              <div className="eyebrow">캠퍼스 물품 보관소</div>
+              <h1>대여 또는 반납을 선택해 주세요</h1>
             </div>
             {banner && (
               <div className="notice" role="status">
@@ -466,7 +465,8 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
             <InlineError error={error} />
             {serverStatus === 'disconnected' && (
               <p className="notice" role="alert">
-                서버에 연결할 수 없습니다. 잠시 후 코드 확인을 다시 시도해 주세요.
+                서버 연결이 복구되면 대여·반납 버튼을 사용할 수 있습니다. 연결이 계속 끊겨 있으면
+                관리자에게 문의해 주세요.
               </p>
             )}
             <div className="kiosk-actions">
@@ -478,7 +478,6 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
                 <div className="action-symbol">
                   <ArrowRight size={45} />
                 </div>
-                <span className="action-english">BORROW</span>
                 <h2>대여하기</h2>
                 <p>사용자 웹의 이용 코드를 준비해 주세요.</p>
                 <span className="action-footer">
@@ -494,7 +493,6 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
                 <div className="action-symbol">
                   <RotateCcw size={42} />
                 </div>
-                <span className="action-english">RETURN</span>
                 <h2>반납하기</h2>
                 <p>반납할 물품을 준비해 주세요.</p>
                 <span className="action-footer">
@@ -503,8 +501,17 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
                 </span>
               </button>
             </div>
-            <button className="secondary" onClick={openAdmin} disabled={busy || unknown}>관리자 태그 등록</button>
-            {window.tagbackKioskHost?.openOperatorPanel && <button className="secondary" onClick={() => void window.tagbackKioskHost?.openOperatorPanel?.().catch(setError)}>연결·설정</button>}
+            <button className="secondary" onClick={openAdmin} disabled={busy || unknown}>
+              관리자 태그 등록
+            </button>
+            {window.tagbackKioskHost?.openOperatorPanel && (
+              <button
+                className="secondary"
+                onClick={() => void window.tagbackKioskHost?.openOperatorPanel?.().catch(setError)}
+              >
+                연결·설정
+              </button>
+            )}
             <div className="welcome-tip">
               <ShieldCheck size={22} />
               <span>NFC 인식 후, 정보를 확인하고 직접 확정해 주세요.</span>
@@ -557,10 +564,11 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
           </section>
         ) : (
           <>
-            <ol className="stepper">
+            <ol className="stepper" aria-label="진행 단계">
               {names.map((name, i) => (
                 <li
                   key={name}
+                  aria-current={i === step ? 'step' : undefined}
                   className={i === step ? 'current' : i < (step || 0) ? 'finished' : ''}
                 >
                   <span>
@@ -610,7 +618,7 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
             {stage === 'code' && (
               <div className="code-stage">
                 <div>
-                  <div className="eyebrow">YOUR ONE-TIME CODE</div>
+                  <div className="eyebrow">이용 코드</div>
                   <h1>
                     {mode === 'return' ? '반납 코드를 ' : '대여 코드를 '}
                     <br />

@@ -1,14 +1,14 @@
 .user-web {
-  --green: #1458f5;
-  --mint: #eaf1ff;
-  --ink: #111827;
-  --muted: #53627a;
-  --line: #dce3ef;
+  --green: #245443;
+  --mint: #edf2e9;
+  --ink: #203c32;
+  --muted: #59665e;
+  --line: #dce0d5;
   --paper: #fff;
   --error: #b42318;
-  --uw-blue: #1458f5;
-  --uw-soft: #eaf1ff;
-  --uw-canvas: #f5f7fb;
+  --uw-blue: #245443;
+  --uw-soft: #edf2e9;
+  --uw-canvas: #f6f3eb;
   font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif;
   color: var(--ink);
   background: var(--uw-canvas);
@@ -1037,7 +1037,7 @@
   color: var(--muted);
   min-height: 120px;
 }
-.user-web .uw-master-detail.has-selection > :first-child {
+.user-web .uw-master-detail.has-selection:not(.uw-catalog-layout) > :first-child {
   display: none;
 }
 @media (max-width: 359px) {
@@ -1307,4 +1307,495 @@
     transition: none !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Campus depot: flat paper ticket, quiet borders, no decorative textures. */
+.user-web .uw-depot-home {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 16px;
+}
+.user-web .uw-depot-home > .uw-heading {
+  margin-bottom: 0;
+}
+.user-web .uw-depot-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  min-height: 0;
+}
+.user-web .uw-ticket {
+  padding: 10px;
+  border-radius: 20px;
+  background: #245443;
+  min-width: 0;
+}
+.user-web .uw-ticket .uw-code {
+  position: relative;
+  border: 0;
+  border-radius: 12px;
+  background: #fffcf5;
+  padding: 20px;
+  gap: 12px;
+}
+.user-web .uw-ticket .uw-code h2 {
+  color: #9a471f;
+  font-size: 0.875rem;
+  letter-spacing: 0.04em;
+}
+.user-web .uw-ticket .uw-code h2 svg,
+.user-web .uw-ticket .uw-code-value > svg {
+  display: none;
+}
+.user-web .uw-ticket .uw-code-value {
+  background: transparent;
+  padding: 12px 0 0;
+}
+.user-web .uw-ticket .code-number {
+  margin: 0;
+  font-size: clamp(2.5rem, 9vw, 4rem);
+  letter-spacing: 0.08em;
+  color: #245443;
+}
+.user-web .uw-ticket .uw-code-status,
+.user-web .uw-ticket .uw-countdown {
+  text-align: center;
+  justify-content: center;
+}
+.user-web .uw-ticket .uw-code > button {
+  border-top: 1px dashed #a6b5a8;
+  margin-top: 4px;
+}
+.user-web .uw-ticket .uw-caption {
+  font-size: 0.75rem;
+  text-align: center;
+}
+.user-web .uw-depot-rentals {
+  min-width: 0;
+}
+.user-web .uw-depot-rentals .uw-section-title > .uw-text-link {
+  margin-left: auto;
+  font-size: 0.875rem;
+}
+.user-web .uw-depot-rentals .uw-rental-row {
+  background: #f9faf5;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.user-web .uw-depot-rentals .uw-rental-date {
+  color: #875024;
+}
+.user-web .uw-notice {
+  color: #245443;
+}
+.user-web .uw-pill.blue {
+  color: #245443;
+}
+.user-web .uw-state > svg {
+  background: var(--uw-soft);
+}
+@media (min-width: 1024px) {
+  .user-web .uw-depot-grid {
+    grid-template-columns: minmax(280px, 0.85fr) minmax(0, 1.15fr);
+    align-items: start;
+  }
+}
+@media (max-width: 767px) {
+  .user-web .uw-main > .uw-depot-home {
+    flex: 1;
+    min-height: 0;
+    gap: 10px;
+  }
+  .user-web .uw-depot-grid {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .user-web .uw-ticket {
+    flex-shrink: 0;
+    padding: 8px;
+  }
+  .user-web .uw-ticket .uw-code {
+    padding: 14px;
+    gap: 8px;
+  }
+  .user-web .uw-depot-rentals {
+    flex: 1;
+    min-height: 120px;
+    padding: 14px;
+  }
+}
+.user-web .uw-depot-item {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f9faf5;
+  margin-bottom: 10px;
+}
+.user-web .uw-depot-item > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.user-web .uw-depot-item strong {
+  overflow-wrap: anywhere;
+}
+.user-web .uw-depot-item .uw-item-icon {
+  width: 44px;
+  height: 44px;
+  background: #edf2e9;
+}
+.user-web .uw-depot-item-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.user-web .uw-due-tag {
+  width: fit-content;
+  background: #f8ead8;
+  color: #7c4524;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 0.75rem;
+}
+.user-web .uw-due-tag.overdue {
+  color: #a32b20;
+  background: #fff0e9;
+}
+
+/* Locker doors are visual containers; the whole card opens item details. */
+.user-web .uw-products.uw-lockers {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  align-items: stretch;
+  gap: 12px;
+}
+.user-web .uw-lockers .uw-product {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #cbd5c7;
+  border-radius: 12px;
+  background: #f0f3e9;
+  box-shadow: none;
+}
+.user-web .uw-lockers .uw-product::before {
+  content: '';
+  width: 28px;
+  height: 5px;
+  border-block: 1px solid #a7b5a4;
+  align-self: center;
+}
+.user-web .uw-lockers .uw-product > .uw-product-art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 76px;
+  aspect-ratio: auto;
+  background: transparent;
+}
+.user-web .uw-lockers .uw-product > .uw-product-art::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 35%;
+  height: 22px;
+  width: 4px;
+  border-radius: 3px;
+  background: #a7b5a4;
+}
+.user-web .uw-lockers .uw-item-icon {
+  background: transparent;
+  color: #245443;
+  transform: none;
+}
+.user-web .uw-lockers .uw-product > .uw-caption {
+  display: none;
+}
+.user-web .uw-lockers .uw-product h2 {
+  font-size: 1rem;
+  line-height: 1.5;
+  margin: 0;
+  background: #fffcf5;
+  padding: 6px 8px;
+  border: 1px solid #dce0d5;
+  border-radius: 4px;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.user-web .uw-lockers .uw-product > .uw-pill {
+  margin-top: auto;
+  border-radius: 4px;
+  max-width: 100%;
+}
+.user-web .uw-lockers .uw-product-arrow {
+  display: none;
+}
+.user-web .uw-lockers .uw-product:hover,
+.user-web .uw-lockers .uw-product.selected {
+  border-color: #245443;
+  background: #e7eddf;
+  box-shadow: inset 0 0 0 1px #245443;
+}
+@media (min-width: 768px) {
+  .user-web .uw-products.uw-lockers {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  }
+  .user-web .uw-lockers .uw-product {
+    padding: 16px;
+  }
+  .user-web .uw-lockers .uw-product > .uw-product-art {
+    min-height: 110px;
+  }
+}
+@media (max-width: 359px) {
+  .user-web .uw-products.uw-lockers {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.user-web .uw-detail-sheet {
+  position: fixed;
+  inset: auto 0 0;
+  margin: 0 auto;
+  width: min(100%, 640px);
+  max-width: 100%;
+  max-height: 88dvh;
+  box-sizing: border-box;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 56px 20px max(24px, env(safe-area-inset-bottom));
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 24px 24px 0 0;
+  color: var(--ink);
+  background: var(--uw-canvas);
+  animation: uw-sheet-enter 180ms ease-out;
+}
+.user-web .uw-detail-sheet::backdrop {
+  background: rgb(20 38 30 / 42%);
+}
+.user-web .uw-detail-sheet::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  left: calc(50% - 18px);
+  width: 36px;
+  height: 4px;
+  border-radius: 4px;
+  background: #c1cbbd;
+}
+@keyframes uw-sheet-enter {
+  from {
+    transform: translateY(32px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .user-web .uw-detail-sheet {
+    animation: none;
+  }
+}
+
+/* Rental tags emphasize the deadline; returned records stay compact. */
+.user-web .uw-loan-tags {
+  gap: 12px;
+}
+.user-web .uw-rental-row.uw-loan-tag,
+.user-web .uw-rental-row.uw-history-entry {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 18px;
+  gap: 10px 12px;
+  align-items: center;
+}
+.user-web .uw-rental-row.uw-loan-tag {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--green);
+  border-radius: 12px;
+  background: #fffdf7;
+}
+.user-web .uw-rental-row.uw-loan-tag.is-overdue {
+  border-left-color: var(--error);
+}
+.user-web .uw-rental-row.uw-history-entry {
+  padding: 14px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+.user-web .uw-rental-row.uw-loan-tag > .uw-item-icon,
+.user-web .uw-rental-row.uw-history-entry > .uw-item-icon {
+  grid-column: 1;
+  grid-row: 1;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+}
+.user-web .uw-record-name {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+}
+.user-web .uw-record-name strong,
+.user-web .uw-record-name span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.user-web .uw-record-name span {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 3px;
+}
+.user-web .uw-rental-row > .uw-record-arrow {
+  grid-column: 3;
+  grid-row: 1;
+  color: var(--muted);
+}
+.user-web .uw-loan-deadline {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: baseline;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f6e9d7;
+  color: #74451b;
+}
+.user-web .uw-loan-deadline span {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.user-web .uw-loan-deadline time {
+  font-size: 0.95rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.user-web .uw-loan-deadline.overdue {
+  background: #fff0ec;
+  color: var(--error);
+}
+.user-web .uw-loan-start {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.user-web .uw-record-date {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.user-web .uw-record-date span {
+  color: var(--green);
+}
+@media (min-width: 1024px) {
+  .user-web .uw-history-entry .uw-record-date {
+    grid-column: 2;
+  }
+}
+
+.user-web .auth-flow.uw-access-pass {
+  border-top: 4px solid var(--green);
+  border-radius: 16px;
+  background: #fffdf7;
+  box-shadow: none;
+}
+.user-web .uw-pass-step {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+  border-bottom: 1px dashed #b9c5b5;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.user-web .uw-pass-step > span:first-child {
+  font-weight: 700;
+  color: var(--green);
+}
+.user-web .uw-access-pass .auth-login-card {
+  background: transparent;
+}
+.user-web .uw-access-pass .auth-mask {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--uw-soft);
+  font-size: 0.85rem;
+}
+.user-web .uw-access-pass .pin-keypad button {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.user-web .uw-access-pass .pin-keypad button:hover:not(:disabled) {
+  background: var(--uw-soft);
+}
+@media (max-width: 767px) {
+  .user-web .uw-access-pass .uw-pass-step {
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+  }
+}
+
+.user-web .uw-profile.uw-member-pass {
+  border-top: 4px solid var(--green);
+  background: #fffdf7;
+  border-radius: 14px;
+  box-shadow: none;
+  padding-block: 24px;
+}
+.user-web .uw-member-pass > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.user-web .uw-member-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--green);
+}
+.user-web .uw-member-pass h2 {
+  margin: 0;
+}
+.user-web .uw-member-pass > svg {
+  background: var(--uw-soft);
+  color: var(--green);
+}
+.user-web .uw-account .uw-settings {
+  box-shadow: none;
+  border-radius: 12px;
+}
+
+.user-web .uw-refresh-status {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 0.8rem;
 }

@@ -179,18 +179,35 @@ export function ProductArt({ kind, large = false }: { kind: string; large?: bool
     </div>
   );
 }
-export function useResource<T>(loader: () => Promise<T>, deps: unknown[] = [], live = false) {
+export function useResource<T>(
+  loader: () => Promise<T>,
+  deps: unknown[] = [],
+  live = false,
+  keepPrevious = false,
+) {
   const [data, setData] = useState<T>();
   const [error, setError] = useState<unknown>();
   const [loading, setLoading] = useState(true);
   const [version, setVersion] = useState(0);
+  const dependencyKey = JSON.stringify(deps);
+  const [dataKey, setDataKey] = useState(dependencyKey);
+  const cache = useRef<{ key: string; data: T } | undefined>(undefined);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<unknown>();
   const generation = useRef(0);
   const request = useRef<{ key: string; promise: Promise<T> } | undefined>(undefined);
   useEffect(() => {
     const seq = ++generation.current;
-    setLoading(true);
+    const preserve = keepPrevious && cache.current?.key === dependencyKey;
+    setDataKey(dependencyKey);
+    setLoading(!preserve);
+    setRefreshing(!!preserve);
     setError(undefined);
-    setData(undefined);
+    setRefreshError(undefined);
+    if (!preserve) {
+      setData(undefined);
+      cache.current = undefined;
+    }
     // Reuse the same request during StrictMode's effect replay; only explicit refresh/dependency changes refetch.
     const key = JSON.stringify([...deps, version]);
     if (!request.current || request.current.key !== key) {
@@ -198,13 +215,25 @@ export function useResource<T>(loader: () => Promise<T>, deps: unknown[] = [], l
     }
     request.current.promise
       .then((d) => {
-        if (seq === generation.current) setData(d);
+        if (seq === generation.current) {
+          cache.current = { key: dependencyKey, data: d };
+          setData(d);
+        }
       })
       .catch((e) => {
-        if (seq === generation.current) setError(e);
+        if (seq !== generation.current) return;
+        if (preserve && !(e instanceof ServiceError && e.code === 'AUTH')) setRefreshError(e);
+        else {
+          cache.current = undefined;
+          setData(undefined);
+          setError(e);
+        }
       })
       .finally(() => {
-        if (seq === generation.current) setLoading(false);
+        if (seq === generation.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       });
     return () => {
       generation.current++;
@@ -221,9 +250,11 @@ export function useResource<T>(loader: () => Promise<T>, deps: unknown[] = [], l
     };
   }, [live]);
   return {
-    data,
-    error,
-    loading,
+    data: dataKey === dependencyKey ? data : undefined,
+    error: dataKey === dependencyKey ? error : undefined,
+    loading: dataKey !== dependencyKey || loading,
+    refreshing: dataKey === dependencyKey && refreshing,
+    refreshError: dataKey === dependencyKey ? refreshError : undefined,
     reload: () => setVersion((v) => v + 1),
     authError: error instanceof ServiceError && error.code === 'AUTH',
   };
