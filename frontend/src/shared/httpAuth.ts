@@ -1,7 +1,4 @@
 import { ServiceError } from './serviceError';
-import type { AuthAdapter, AuthResult } from './authTypes';
-import { COOKIE_SESSION } from './authMode';
-import { readDraft, writeDraft, clearDraft } from './authDraft';
 
 const base = '/api/v1/auth';
 export function timestamp(value: unknown): number {
@@ -68,15 +65,7 @@ export async function authRequest(
     )
       throw new ServiceError('UNKNOWN', '처리 결과를 확인하지 못했습니다.');
     const code = data.error.code;
-    const mapped = code.startsWith('SESSION_')
-      ? 'AUTH'
-      : code === 'PIN_LOGIN_BLOCKED'
-        ? 'PIN_LOCKED'
-        : code === 'BROWSER_REGISTRATION_INVALID'
-          ? 'REGISTRATION'
-          : code.startsWith('VERIFICATION_')
-            ? 'SMS_REQUIRED'
-            : code;
+    const mapped = code.startsWith('SESSION_') ? 'AUTH' : code;
     throw new ServiceError(
       mapped,
       data.error.message,
@@ -97,172 +86,33 @@ export async function serverSession(activity = false): Promise<ServerSession> {
   timestamp(value.sessionExpiresAt);
   return value;
 }
-async function loginResult(value: any): Promise<AuthResult> {
-  if (!validUser(value.user))
-    throw new ServiceError('UNKNOWN', '로그인 응답을 확인하지 못했습니다.');
-  timestamp(value.sessionExpiresAt);
-  timestamp(value.browserRegistrationExpiresAt);
-  // A successful body is insufficient if the browser rejected Secure cookies.
-  let session: ServerSession;
-  try {
-    session = await serverSession();
-  } catch {
-    throw new ServiceError(
-      'UNKNOWN',
-      '로그인 세션을 확인하지 못했습니다. 쿠키 설정을 확인한 뒤 같은 요청으로 다시 시도해 주세요.',
-    );
-  }
-  if (session.user.userId !== value.user.userId)
-    throw new ServiceError('UNKNOWN', '로그인 세션을 확인하지 못했습니다.');
-  return { token: COOKIE_SESSION, registration: COOKIE_SESSION };
-}
-// Retry bodies live only in memory. PIN/SMS/proof never enter browser storage.
-export function createHttpAuth(): AuthAdapter {
-  const pending = new Map<string, () => Promise<AuthResult>>();
-  const smsPending = new Map<string, string>();
-  async function write(
-    id: string,
-    path: string,
-    body: unknown,
-    expected = 200,
-    reset = false,
-  ): Promise<AuthResult> {
-    let action = pending.get(id);
-    if (!action) {
-      const frozen = JSON.parse(JSON.stringify(body));
-      action = async () => {
-        const value = await authRequest(path, 'POST', frozen, id, expected);
-        if (!reset) return loginResult(value);
-        if (value.completed !== true)
-          throw new ServiceError('UNKNOWN', '변경 결과를 확인하지 못했습니다.');
-        return { completed: true };
-      };
-      pending.set(id, action);
-    }
-    try {
-      const result = await action();
-      pending.delete(id);
-      return result;
-    } catch (e) {
-      if (!(e instanceof ServiceError) || e.code !== 'UNKNOWN') pending.delete(id);
-      throw e;
-    }
-  }
-  const unsupported = async (): Promise<never> => {
-    throw new ServiceError('UNSUPPORTED', '전화번호 변경은 아직 지원하지 않습니다.');
-  };
-  return {
-    async requestSms(phone, purpose) {
-      if (purpose === 'change') return unsupported();
-      const body = {
-        phoneNumber: phone.replace(/[\s-]/g, ''),
-        purpose: purpose === 'reset' ? 'PIN_RESET' : 'SIGNUP',
-      };
-      const fingerprint = JSON.stringify(body);
-      const storageKey = 'request.' + fingerprint;
-      const saved = readDraft<{ key: string }>(storageKey);
-      const key =
-        smsPending.get(fingerprint) ||
-        (typeof saved?.key === 'string' ? saved.key : crypto.randomUUID());
-      smsPending.set(fingerprint, key);
-      writeDraft(storageKey, { key });
-      try {
-        const value = await authRequest('/sms/requests', 'POST', body, key, 202);
-        if (typeof value.requestId !== 'string' || !value.requestId)
-          throw new ServiceError('UNKNOWN', '인증 요청을 확인하지 못했습니다.');
-        const result = {
-          id: value.requestId,
-          expiresAt: timestamp(value.expiresAt),
-          resendAt: timestamp(value.resendAvailableAt),
-        };
-        smsPending.delete(fingerprint);
-        clearDraft(storageKey);
-        return result;
-      } catch (e) {
-        if (e instanceof ServiceError && e.code === 'UNKNOWN')
-          throw new ServiceError(
-            'SMS_PENDING',
-            '발송 결과가 불명확합니다. 같은 전화번호로 다시 발송을 눌러 확인해 주세요.',
-          );
-        smsPending.delete(fingerprint);
-        clearDraft(storageKey);
-        throw e;
-      }
-    },
-    async verifySms(id, _phone, code, purpose) {
-      try {
-        const value = await authRequest('/sms/verifications', 'POST', { requestId: id, code });
-        if (
-          typeof value.verificationToken !== 'string' ||
-          !value.verificationToken ||
-          typeof value.maskedPhoneNumber !== 'string' ||
-          value.purpose !== (purpose === 'reset' ? 'PIN_RESET' : 'SIGNUP')
-        )
-          throw new ServiceError('UNKNOWN', '인증 응답을 확인하지 못했습니다.');
-        return {
-          proof: value.verificationToken,
-          expiresAt: timestamp(value.expiresAt),
-          maskedPhone: value.maskedPhoneNumber,
-          existing: false,
-          canReset: true,
-          needsPin: false,
-        };
-      } catch (e) {
-        if (
-          e instanceof ServiceError &&
-          (e.code === 'UNKNOWN' || e.code === 'SMS_ALREADY_VERIFIED')
-        )
-          throw new ServiceError(
-            'SMS_RESTART',
-            '인증 결과를 받지 못했습니다. 재발송 대기 후 새 인증번호로 확인해 주세요.',
-          );
-        throw e;
-      }
-    },
-    async registration() {
-      const value = await authRequest('/browser-registration');
-      if (value.registered === false) return null;
-      if (value.registered !== true || typeof value.maskedPhoneNumber !== 'string')
-        throw new ServiceError('UNKNOWN', '브라우저 등록을 확인하지 못했습니다.');
-      if (timestamp(value.expiresAt) <= Date.now()) return null;
-      return { maskedPhone: value.maskedPhoneNumber, retryAt: 0, locked: false };
-    },
-    login: (id, _credential, pin, registered) =>
-      registered ? write(id, '/login/registered', { pin }) : unsupported(),
-    loginWithPhone: (id, phone, pin) =>
-      write(id, '/login/phone', { phoneNumber: phone.replace(/[\s-]/g, ''), pin }),
-    signup: (id, proof, pin, _source, profile) =>
-      write(id, '/signup', { verificationToken: proof, pin, profile }, 201),
-    resetPin: (id, proof, pin) =>
-      write(id, '/pin/reset', { verificationToken: proof, pin }, 200, true),
-    reauthenticate: unsupported,
-    changePhone: unsupported,
-    async result(id) {
-      const action = pending.get(id);
-      if (action) {
-        try {
-          const result = await action();
-          pending.delete(id);
-          return result;
-        } catch (e) {
-          if (e instanceof ServiceError && e.code !== 'UNKNOWN') pending.delete(id);
-          throw e;
-        }
-      }
-      // A session may predate this operation and cannot prove its outcome.
+export const httpAuthApi = {
+  async start(next: string, switchAccount = false): Promise<string> {
+    const value = await authRequest('/kakao/start', 'POST', { next, switchAccount });
+    const url = new URL(value.url);
+    if (url.origin !== 'https://kauth.kakao.com' || url.pathname !== '/oauth/authorize')
+      throw new ServiceError('UNKNOWN', '카카오 로그인 주소를 확인하지 못했습니다.');
+    return url.href;
+  },
+  async pending(): Promise<{
+    needsSignup: boolean;
+    nickname: string;
+    next: string;
+    userId: string | null;
+  }> {
+    return authRequest('/kakao/pending');
+  },
+  async complete(name: string, occupation: string) {
+    const value = await authRequest('/kakao/complete', 'POST', { name, occupation });
+    const session = await serverSession(); // Verify cookie acceptance AND expected account.
+    if (session.user.userId !== value.userId)
       throw new ServiceError(
-        'RECOVERY_UNCONFIRMED',
-        '이전 요청의 완료 여부를 확인할 수 없습니다. 가입했다면 로그인하고, PIN을 변경했다면 새 PIN으로 로그인해 주세요.',
+        'UNKNOWN',
+        '로그인 계정이 변경되었습니다. 카카오 로그인을 다시 시작해 주세요.',
       );
-    },
-    async logout() {
-      await authRequest('/logout', 'POST', undefined, undefined, 204);
-      pending.clear();
-    },
-    async unregister() {
-      await authRequest('/browser-registration', 'DELETE', undefined, undefined, 204);
-      pending.clear();
-    },
-  };
-}
-export const httpAuthApi = createHttpAuth();
+    return value as { next: string };
+  },
+  async logout(_token?: string) {
+    await authRequest('/logout', 'POST', undefined, undefined, 204);
+  },
+};

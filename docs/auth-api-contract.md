@@ -1,3 +1,5 @@
+> 2026-11-27 인증 변경: 현재 브랜치는 카카오 OAuth 회원가입·로그인을 사용합니다. 아래의 SMS·로그인 PIN 설명은 이전 구현 기록입니다. 현재 계약·설정·전환 제한은 [카카오 OAuth 안내](kakao-oauth.md)를 우선합니다. 키오스크 이용 코드는 유지됩니다.
+
 # 모바일 프론트 ↔ 인증 API 계약
 
 기준: `develop`의 `sms-mock` 서버 API와 `frontend/src/shared/httpAuth.ts`의 HTTP 어댑터. `VITE_AUTH_MODE=http`에서 아래 인증 API를 호출하며, 미설정 시 기존 브라우저 Mock을 사용한다. 이 문서는 필드·오류·재시도 규칙과 아직 연결하지 않은 흐름을 정한다. 서버의 인증 컨트롤러는 `sms-mock` 프로필에서만 활성화되며 운영 SMS 공급자는 연결되지 않았다.

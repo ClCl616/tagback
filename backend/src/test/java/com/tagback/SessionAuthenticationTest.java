@@ -98,16 +98,13 @@ class SessionAuthenticationTest extends SharedAdminMvcSupport {
     @Test void actualPublicSessionCleanupEndpointsRemainAvailableWithStaleCookies() throws Exception {
         var beans = new StaticListableBeanFactory();
         beans.addBean("sessions", sessions);
-        var controller = new SessionController(sessions, new AuthCookies(Clock.systemUTC()), new AuthOriginGuard(""));
+        var controller = new SessionController(sessions, new AuthCookies(Clock.systemUTC()), new AuthOriginGuard(""), mock(com.tagback.service.KakaoOAuthService.class));
         var cleanup = standaloneSetup(controller)
                 .addInterceptors(new SessionAuthenticationInterceptor(beans.getBeanProvider(SessionService.class)))
                 .setControllerAdvice(new ApiExceptionHandler()).build();
         cleanup.perform(post("/api/v1/auth/logout").cookie(new Cookie(AuthCookies.SESSION_COOKIE, "stale")))
                 .andExpect(status().isNoContent()).andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.containsString("Max-Age=0")));
-        cleanup.perform(delete("/api/v1/auth/browser-registration").cookie(new Cookie(AuthCookies.SESSION_COOKIE, "stale")))
-                .andExpect(status().isNoContent());
         verify(sessions).logout("stale");
-        verify(sessions).unregister(null, "stale");
         verifyNoMoreInteractions(sessions);
         cleanup.perform(post("/api/v1/auth/logout").header("Origin", "https://untrusted.example"))
                 .andExpect(status().isForbidden());

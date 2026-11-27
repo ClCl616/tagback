@@ -1,4 +1,4 @@
-package com.tagback.service.sms;
+package com.tagback.service;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -14,17 +14,14 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Component
-@Profile("sms-mock & !prod & !production")
-public class SmsSecrets {
+public class AuthSecrets {
     private final SecureRandom random = new SecureRandom();
     private final byte[] key;
 
-    public SmsSecrets(@Value("${tagback.auth.sms-hash-key}") String key) {
-        if (key == null || key.length() < 32) throw new IllegalArgumentException("SMS hash key must contain at least 32 characters");
+    public AuthSecrets(@Value("${tagback.auth.hash-key:${tagback.auth.sms-hash-key:}}") String key) {
+        if (key == null || (!key.isEmpty() && key.length() < 32)) throw new IllegalArgumentException("Authentication hash key must contain at least 32 characters");
         this.key = key.getBytes(StandardCharsets.UTF_8);
     }
-
-    public String generateCode() { return String.format(Locale.ROOT, "%06d", random.nextInt(1_000_000)); }
 
     public String generateToken() {
         byte[] bytes = new byte[32];
@@ -32,20 +29,14 @@ public class SmsSecrets {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
-    public String codeHash(UUID requestId, String code) { return keyedHash("sms-code:" + requestId + ":" + code); }
-
-    public boolean matches(UUID requestId, String code, String storedHash) {
-        return MessageDigest.isEqual(codeHash(requestId, code).getBytes(StandardCharsets.UTF_8),
-                storedHash.getBytes(StandardCharsets.UTF_8));
-    }
-
     public String keyedHash(String value) {
+        if (key.length < 32) throw new com.tagback.exception.AuthException(com.tagback.exception.AuthErrorCode.OAUTH_NOT_CONFIGURED);
         try {
             Mac mac = Mac.getInstance("HmacSHA256");
             mac.init(new SecretKeySpec(key, "HmacSHA256"));
             return HexFormat.of().formatHex(mac.doFinal(value.getBytes(StandardCharsets.UTF_8)));
         } catch (java.security.GeneralSecurityException exception) {
-            throw new IllegalStateException("Cannot initialize SMS hashing", exception);
+            throw new IllegalStateException("Cannot initialize authentication hashing", exception);
         }
     }
 

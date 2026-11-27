@@ -1,3 +1,5 @@
+> 2026-11-27 인증 변경: 현재 브랜치는 카카오 OAuth 회원가입·로그인을 사용합니다. 아래의 SMS·로그인 PIN 설명은 이전 구현 기록입니다. 현재 계약·설정·전환 제한은 [카카오 OAuth 안내](../docs/kakao-oauth.md)를 우선합니다. 키오스크 이용 코드는 유지됩니다.
+
 # TagBack 프론트엔드
 
 2026-11-13 develop 통합: 사용자 웹의 비회원 물품 탐색은 `GET /api/v1/catalog/item-types?keyword=...`, 직접 상세는 `/api/v1/catalog/item-types/{id}`로 연결한다. 개별 물품/태그를 노출하지 않고 서버의 종류별 전체·대여 가능 수량을 사용한다. 관리자 물품·태그 목록은 `/api/v1/admin/items`의 keyword/itemTypeId/status 검색을 사용한다. 전체 현황 및 검색 결과 수집은 10,000건 한도이며 초과 시 명시적으로 실패한다. Android 구현은 보류 중이다.

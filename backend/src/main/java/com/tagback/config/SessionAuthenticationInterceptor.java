@@ -60,7 +60,7 @@ public class SessionAuthenticationInterceptor implements HandlerInterceptor {
                 && request.getAttribute(RentalAuthenticationInterceptor.ATTRIBUTE) != null) return true;
         response.setHeader("Cache-Control", "no-store");
         var service = sessions.getIfAvailable();
-        // Authentication is mock-profile-only for now. Protected handlers must fail closed elsewhere.
+        // Protected handlers fail closed if no session service is available.
         if (service == null) throw new AuthException(AuthErrorCode.SESSION_REQUIRED);
         String token = null;
         if (request.getCookies() != null) {

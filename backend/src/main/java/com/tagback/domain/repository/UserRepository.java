@@ -24,9 +24,4 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("select u from User u where u.phoneNumber = :phone")
     Optional<User> findByPhoneNumberForUpdate(@Param("phone") String phone);
 
-    @Modifying
-    @Transactional(propagation = Propagation.MANDATORY)
-    @Query("update User u set u.pinFailedCount = :count, u.pinLockedUntil = :until where u.id = :id")
-    int updatePinFailureState(@Param("id") Long id, @Param("count") int count, @Param("until") Instant until);
 }
-

@@ -1156,12 +1156,6 @@ function AccountPage() {
               <p>{profile.data?.occupation}</p>
             </div>
           </section>
-          <section className="uw-card uw-settings">
-            <Link to="/mobile/recover">
-              PIN 재설정
-              <ChevronRight size={20} />
-            </Link>
-          </section>
           <button className="secondary full" disabled={busy} onClick={() => void logout()}>
             {busy ? '로그아웃 중…' : '로그아웃'}
           </button>
@@ -1170,7 +1164,7 @@ function AccountPage() {
     </div>
   );
 }
-function AuthPage({ mode = 'access' }: { mode?: 'access' | 'signup' | 'reset' | 'change' }) {
+function AuthPage({ mode = 'access' }: { mode?: 'access' | 'signup' }) {
   const { token, setToken } = useAuth();
   return (
     <>
@@ -1297,8 +1291,8 @@ export default function UserWeb() {
                 <Route path="items/:id" element={<LegacyItemDetail />} />
                 <Route path="login" element={<AuthPage key="login" />} />
                 <Route path="signup" element={<AuthPage key="signup" mode="signup" />} />
-                <Route path="recover" element={<AuthPage key="reset" mode="reset" />} />
-                <Route path="change-phone" element={<AuthPage key="change" mode="change" />} />
+                <Route path="recover" element={<Navigate to="/mobile/login" replace />} />
+                <Route path="change-phone" element={<Navigate to="/mobile/login" replace />} />
                 <Route
                   path="code"
                   element={

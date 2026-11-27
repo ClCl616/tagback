@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@Profile("sms-mock & !prod & !production")
 @RequestMapping("/api/v1/rentals")
 public class RentalReturnController {
     private final RentalReturnService returns;

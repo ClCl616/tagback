@@ -3,7 +3,7 @@ package com.tagback;
 import com.tagback.config.AuthCookies;
 import com.tagback.domain.entity.*;
 import com.tagback.domain.repository.*;
-import com.tagback.service.sms.SmsSecrets;
+import com.tagback.service.AuthSecrets;
 import jakarta.servlet.http.Cookie;
 import java.sql.Timestamp;
 import java.time.*;
@@ -62,7 +62,7 @@ class RentalApiPostgresIntegrationTest {
     @Autowired ItemTypeRepository types;
     @Autowired ItemRepository items;
     @Autowired NfcTagRepository tags;
-    @Autowired SmsSecrets secrets;
+    @Autowired AuthSecrets secrets;
     private long userId;
     private long otherUserId;
     private long itemId;

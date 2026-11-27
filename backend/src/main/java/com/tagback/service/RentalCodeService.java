@@ -4,7 +4,7 @@ import com.tagback.domain.repository.RentalAuthorizationStore;
 import com.tagback.domain.repository.UserRepository;
 import com.tagback.dto.rental.RentalResponses;
 import com.tagback.exception.*;
-import com.tagback.service.sms.SmsSecrets;
+import com.tagback.service.AuthSecrets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
@@ -16,16 +16,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Profile("sms-mock & !prod & !production")
 public class RentalCodeService {
     private final RentalAuthorizationStore store;
     private final UserRepository users;
-    private final SmsSecrets secrets;
+    private final AuthSecrets secrets;
     private final RentalVerificationLimiter limiter;
     private final Clock clock;
     private final int issueLimit;
 
-    public RentalCodeService(RentalAuthorizationStore store, UserRepository users, SmsSecrets secrets,
+    public RentalCodeService(RentalAuthorizationStore store, UserRepository users, AuthSecrets secrets,
             RentalVerificationLimiter limiter, Clock clock,
             @Value("${tagback.rental.new-codes-per-user-per-hour:10}") int issueLimit) {
         if (issueLimit < 1) throw new IllegalArgumentException("Rental code issuance limit must be positive");
@@ -66,7 +65,7 @@ public class RentalCodeService {
         String token = secrets.generateToken();
         store.insertGrant(UUID.randomUUID(), stored.id(), secrets.tokenHash(token), now, stored.expiresAt());
         String phone = user.getPhoneNumber();
-        return new RentalResponses.Grant(token, stored.expiresAt(), "010-****-" + phone.substring(phone.length() - 4));
+        return new RentalResponses.Grant(token, stored.expiresAt(), phone == null ? "카카오 이용자" : "010-****-" + phone.substring(phone.length() - 4));
     }
 
     @Transactional(readOnly = true)

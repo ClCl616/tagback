@@ -9,7 +9,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@Profile("sms-mock & !prod & !production")
 public class KioskHealthController {
     private final JdbcTemplate jdbc;
 

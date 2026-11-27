@@ -1,3 +1,5 @@
+> 2026-11-27 인증 변경: 현재 브랜치는 카카오 OAuth 회원가입·로그인을 사용합니다. 아래의 SMS·로그인 PIN 설명은 이전 구현 기록입니다. 현재 계약·설정·전환 제한은 [카카오 OAuth 안내](../../docs/kakao-oauth.md)를 우선합니다. 키오스크 이용 코드는 유지됩니다.
+
 # TagBack Docker Compose 실행
 
 웹(Nginx HTTPS), Spring Boot API, PostgreSQL 17을 `compose.yaml` 한 프로젝트로 실행한다. Java·Node·pnpm·Gradle은 Docker 빌드 단계 안에서 사용하므로 호스트에 별도로 설치하지 않아도 된다. Windows의 초기화·확인 스크립트에는 PowerShell이 필요하며 확인 스크립트는 PowerShell 7을 사용한다.

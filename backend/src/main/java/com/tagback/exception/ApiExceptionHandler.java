@@ -46,7 +46,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(AuthException.class)
     public ResponseEntity<ApiErrorResponse> handleAuth(AuthException exception) {
-        return ResponseEntity.status(exception.code().status()).body(new ApiErrorResponse(
+        return ResponseEntity.status(exception.code().status()).header("Cache-Control", "no-store").body(new ApiErrorResponse(
                 new ApiErrorResponse.Error(exception.code().name(), exception.code().message(), exception.retryAt())));
     }
 

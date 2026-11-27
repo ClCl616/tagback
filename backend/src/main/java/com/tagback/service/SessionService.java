@@ -6,7 +6,7 @@ import com.tagback.domain.entity.*;
 import com.tagback.domain.repository.*;
 import com.tagback.dto.auth.AuthResponses;
 import com.tagback.exception.*;
-import com.tagback.service.sms.SmsSecrets;
+import com.tagback.service.AuthSecrets;
 import java.time.Clock;
 import java.time.Instant;
 import org.springframework.context.annotation.Profile;
@@ -14,37 +14,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Profile("sms-mock & !prod & !production")
 public class SessionService {
     private final UserRepository users;
     private final BrowserRegistrationRepository browsers;
     private final LoginSessionRepository sessions;
-    private final SmsSecrets secrets;
+    private final AuthSecrets secrets;
     private final AuthProperties policy;
     private final Clock clock;
 
     public SessionService(UserRepository users, BrowserRegistrationRepository browsers, LoginSessionRepository sessions,
-                          SmsSecrets secrets, AuthProperties policy, Clock clock) {
+                          AuthSecrets secrets, AuthProperties policy, Clock clock) {
         this.users = users; this.browsers = browsers; this.sessions = sessions;
         this.secrets = secrets; this.policy = policy; this.clock = clock;
-    }
-
-    @Transactional
-    public AuthResponses.BrowserStatus registration(String browserToken) {
-        if (missing(browserToken)) return unregistered();
-        String hash = secrets.tokenHash(browserToken);
-        var userId = browsers.findUserIdByTokenHash(hash);
-        if (userId.isEmpty() || users.findByIdForUpdate(userId.get()).isEmpty()) return unregistered();
-        var found = browsers.findByRegistrationTokenHash(hash);
-        if (found.isEmpty() || found.get().getRevokedAt() != null) return unregistered();
-        var browser = found.get();
-        Instant now = clock.instant();
-        if (!browser.getExpiresAt().isAfter(now)) {
-            sessions.revokeForRegistration(browser.getId(), now, SessionRevokedReason.EXPIRED);
-            browser.revoke(now);
-            return unregistered();
-        }
-        return new AuthResponses.BrowserStatus(true, mask(browser.getUser().getPhoneNumber()), browser.getExpiresAt());
     }
 
     // Request authentication does not count as user activity or extend any expiry.
@@ -77,21 +58,6 @@ public class SessionService {
     public void logout(String sessionToken) {
         var session = findLocked(sessionToken);
         if (session != null) session.revoke(clock.instant(), SessionRevokedReason.LOGOUT);
-    }
-
-    @Transactional
-    public void unregister(String browserToken, String sessionToken) {
-        if (missing(browserToken)) { logout(sessionToken); return; }
-        String hash = secrets.tokenHash(browserToken);
-        var userId = browsers.findUserIdByTokenHash(hash);
-        if (userId.isEmpty()) { logout(sessionToken); return; }
-        if (users.findByIdForUpdate(userId.get()).isEmpty()) return;
-        var found = browsers.findByRegistrationTokenHash(hash);
-        if (found.isEmpty()) return;
-        var browser = found.get();
-        // Only this registration's sessions; stale cookies must not revoke a newer browser.
-        sessions.revokeForRegistration(browser.getId(), clock.instant(), SessionRevokedReason.REGISTRATION_REMOVED);
-        browser.revoke(clock.instant());
     }
 
     private LoginSession requireValid(String token) {
@@ -136,9 +102,8 @@ public class SessionService {
         var summary = new AuthResponses.UserSummary(user.getId().toString(), mask(user.getPhoneNumber()), user.getRole().name(), user.getName(), user.getOccupation());
         return new AuthResponses.SessionStatus(true, summary, session.getIdleExpiresAt());
     }
-    private AuthResponses.BrowserStatus unregistered() { return new AuthResponses.BrowserStatus(false, null, null); }
     private boolean missing(String token) { return token == null || token.isBlank(); }
-    private String mask(String phone) { return "010-****-" + phone.substring(phone.length() - 4); }
+    private String mask(String phone) { return phone == null ? "" : "010-****-" + phone.substring(phone.length() - 4); }
     public static final class SessionInvalid extends AuthException {
         public SessionInvalid(AuthErrorCode code) { super(code); }
     }

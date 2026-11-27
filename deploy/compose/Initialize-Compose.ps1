@@ -27,4 +27,4 @@ if (!(Test-Path -LiteralPath $cert)) {
 }
 Write-Host 'Compose local secrets and TLS files are ready. Existing values were preserved.'
 Write-Host 'The self-signed certificate was NOT installed into the OS trust store.'
-Write-Host 'From the repository root: docker compose up -d --build --wait'
+Write-Host 'Before Compose start, provision the real Kakao client secret and app settings described in docs/kakao-oauth.md. This script does not invent Kakao credentials.'

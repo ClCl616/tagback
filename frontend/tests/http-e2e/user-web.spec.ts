@@ -89,12 +89,19 @@ async function fixture(page: Page) {
       role: 'USER',
       maskedPhoneNumber: '010-****-5678',
     };
-    if (url.pathname.endsWith('/browser-registration'))
-      return route.fulfill({ json: { registered: false } });
-    if (url.pathname.includes('/login/')) {
-      state.signedIn = true;
+    if (url.pathname.endsWith('/kakao/pending'))
+      return route.fulfill({ json: { needsSignup: true, nickname: '김민준', next: '/mobile' } });
+    if (url.pathname.endsWith('/kakao/start')) {
+      const next = route.request().postDataJSON().next;
+      await page.route('https://kauth.kakao.com/**', async (provider) => {
+        state.signedIn = true;
+        await provider.fulfill({
+          status: 302,
+          headers: { Location: 'http://localhost:5175' + next },
+        });
+      });
       return route.fulfill({
-        json: { user, sessionExpiresAt: expires(), browserRegistrationExpiresAt: expires() },
+        json: { url: 'https://kauth.kakao.com/oauth/authorize?state=fixture' },
       });
     }
     if (url.pathname.endsWith('/logout')) {
@@ -222,12 +229,8 @@ test('guest login returns to the requested code screen and polling preserves typ
   state.signedIn = false;
   await page.goto('/mobile/code');
   await expect(page).toHaveURL(/login\?next=/);
-  await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
   await page.evaluate(() => window.dispatchEvent(new Event('tagback-session')));
-  await expect(page.getByLabel('전화번호', { exact: true })).toHaveValue('01012345678');
-  await page.getByRole('button', { name: '다음', exact: true }).click();
-  await page.getByLabel('PIN 번호', { exact: true }).fill('048259');
-  await page.getByRole('button', { name: '로그인', exact: true }).click();
+  await page.getByRole('button', { name: '카카오 로그인', exact: true }).click();
   await expect(page).toHaveURL(/\/mobile\/code$/);
   expect(state.codes).toBe(0);
 });
@@ -345,7 +348,7 @@ test('approved screens and signup reflow without horizontal overflow from 320 to
   state.signedIn = false;
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/mobile/signup');
-  await expect(page.getByLabel('이름', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('닉네임', { exact: true })).toBeVisible();
   await page.screenshot({ path: 'test-results/user-web-auth.png', fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(
     true,
@@ -399,17 +402,10 @@ test('mobile basic pages fit the viewport and lists scroll inside the frame', as
     ).toBe(true);
   }
   await page.goto('/mobile/login');
-  await page.getByLabel('전화번호', { exact: true }).fill('01012345678');
-  await page.getByRole('button', { name: '다음', exact: true }).click();
-  await expect(page.getByLabel('숫자 키패드')).toBeVisible();
-  expect(
-    await page.locator('.uw-main').evaluate((el) => el.scrollHeight <= el.clientHeight + 1),
-    'PIN',
-  ).toBe(true);
-  // Keyboard-sized viewport must still permit reaching the submit button.
-  await page.screenshot({ path: 'test-results/viewport-pin.png' });
+  await expect(page.getByRole('button', { name: '카카오 로그인', exact: true })).toBeVisible();
+  await page.screenshot({ path: 'test-results/viewport-oauth.png' });
   await page.setViewportSize({ width: 375, height: 360 });
-  const submit = page.getByRole('button', { name: '로그인', exact: true });
+  const submit = page.getByRole('button', { name: '카카오 로그인', exact: true });
   await submit.scrollIntoViewIfNeeded();
   const box = await submit.boundingBox();
   expect(box!.y + box!.height).toBeLessThanOrEqual(361);

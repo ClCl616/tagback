@@ -16,7 +16,7 @@ import com.tagback.domain.repository.RentalAuthorizationStore;
 import com.tagback.dto.rental.NfcScanProof;
 import com.tagback.exception.ItemException;
 import com.tagback.exception.RentalException;
-import com.tagback.service.sms.SmsSecrets;
+import com.tagback.service.AuthSecrets;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Clock;
@@ -28,7 +28,6 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Profile("sms-mock & !prod & !production")
 public class RentalReturnService {
     private static final long RETURN_SCAN_TICKET_TTL_SECONDS = 60;
     private static final long RETURN_REPLAY_SECONDS = 86400;
@@ -41,14 +40,14 @@ public class RentalReturnService {
     private final NfcScanProofUseStore scanProofUses;
     private final NfcReturnScanTicketStore returnTickets;
     private final RentalAuthorizationStore codes;
-    private final SmsSecrets secrets;
+    private final AuthSecrets secrets;
     private final Clock clock;
 
     public RentalReturnService(ItemRepository items, RentalRepository rentals, NfcTagRepository tags,
                                ItemStatusHistoryRepository history, ReturnInspectionWriter inspections,
                                NfcScanProofVerifier scanProofs, NfcScanProofUseStore scanProofUses,
                                NfcReturnScanTicketStore returnTickets, RentalAuthorizationStore codes,
-                               SmsSecrets secrets, Clock clock) {
+                               AuthSecrets secrets, Clock clock) {
         this.items = items;
         this.rentals = rentals;
         this.tags = tags;
