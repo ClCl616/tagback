@@ -10,7 +10,7 @@
 
 예시 브랜치: `feat/item-list`, `feat/auth`, `feat/nfc-scan`, `fix/duplicate-rental`.
 
-## PR·병합 운영 기준 (2026-10-07)
+## PR·병합 운영 기준
 
 - `develop` 대상: PR을 생성하고 팀장(치우)이 직접 승인·병합합니다. PR 요청 이후 코멘트나 별도 사용자 요청이 없으면 에이전트는 추가 작업을 수행하지 않습니다.
 - `develop` 이외 대상, 본인 소유 브랜치 사이: 별도 PR 없이 바로 병합합니다.
