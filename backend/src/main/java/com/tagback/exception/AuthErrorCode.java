@@ -3,14 +3,14 @@ package com.tagback.exception;
 import org.springframework.http.HttpStatus;
 
 public enum AuthErrorCode {
+    OAUTH_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "로그인 시도가 많습니다. 잠시 후 다시 시도해 주세요."),
+    OAUTH_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "카카오 로그인 설정을 확인해 주세요."),
+    OAUTH_INVALID(HttpStatus.UNAUTHORIZED, "카카오 로그인을 다시 시작해 주세요."),
+    OAUTH_FAILED(HttpStatus.BAD_GATEWAY, "카카오 인증을 완료하지 못했습니다. 다시 로그인해 주세요."),
     ADMIN_NOT_CONFIGURED(HttpStatus.SERVICE_UNAVAILABLE, "관리자 비밀번호가 설정되지 않았습니다."),
     ADMIN_PASSWORD_INVALID(HttpStatus.UNAUTHORIZED, "관리자 비밀번호가 일치하지 않습니다."),
     ADMIN_LOGIN_LIMITED(HttpStatus.TOO_MANY_REQUESTS, "관리자 로그인 시도가 많습니다. 잠시 후 다시 시도해 주세요."),
     INVALID_INPUT(HttpStatus.BAD_REQUEST, "입력값을 확인해 주세요."),
-    PIN_POLICY_VIOLATION(HttpStatus.BAD_REQUEST, "사용할 수 없는 PIN입니다."),
-    PIN_MISMATCH(HttpStatus.UNAUTHORIZED, "PIN이 일치하지 않습니다."),
-    PIN_RETRY_WAIT(HttpStatus.TOO_MANY_REQUESTS, "잠시 후 다시 시도해 주세요."),
-    PIN_LOGIN_BLOCKED(HttpStatus.FORBIDDEN, "계정 복구가 필요합니다."),
     SMS_CODE_MISMATCH(HttpStatus.BAD_REQUEST, "인증번호가 일치하지 않습니다."),
     SMS_CODE_EXPIRED(HttpStatus.GONE, "인증번호가 만료되었습니다."),
     SMS_ATTEMPTS_EXCEEDED(HttpStatus.FORBIDDEN, "인증번호 입력 횟수를 초과했습니다."),

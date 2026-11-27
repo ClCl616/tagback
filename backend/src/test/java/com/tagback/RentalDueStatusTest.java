@@ -45,4 +45,20 @@ class RentalDueStatusTest {
         assertTrue(RentalResponses.Summary.from(rental, DUE.plusSeconds(20)).overdue());
         assertEquals(DUE, RentalResponses.Summary.from(rental, DUE.plusSeconds(20)).dueAt());
     }
+    @Test void rentalImageUsesIndividualThenTypeThenNoImage() {
+        var type = mock(ItemType.class);
+        when(type.getId()).thenReturn(3L);
+        var item = mock(Item.class);
+        when(item.getId()).thenReturn(12L);
+        when(item.getItemType()).thenReturn(type);
+        var rental = mock(Rental.class);
+        when(rental.getId()).thenReturn(101L);
+        when(rental.getItem()).thenReturn(item);
+        when(rental.getDueAt()).thenReturn(DUE);
+        org.junit.jupiter.api.Assertions.assertNull(RentalResponses.Summary.from(rental, DUE).imageUrl());
+        when(type.getImageUrl()).thenReturn("/api/v1/catalog/images/type");
+        assertEquals("/api/v1/catalog/images/type", RentalResponses.Summary.from(rental, DUE).imageUrl());
+        when(item.getImageUrl()).thenReturn("/api/v1/catalog/images/item");
+        assertEquals("/api/v1/catalog/images/item", RentalResponses.Summary.from(rental, DUE).imageUrl());
+    }
 }

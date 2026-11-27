@@ -24,14 +24,14 @@ public class KioskAdminController {
             TagRegistrationService tags, KioskTagService registration) {
         this.sessions=sessions;this.origins=origins;this.items=items;this.tags=tags;this.registration=registration;
     }
-    public record Login(String token, UUID sessionId, java.time.Instant expiresAt) {
+    public record Login(String token, UUID sessionId, java.time.Instant expiresAt, String adminNumber, String name, boolean mustChangePassword) {
         @Override public String toString() { return "KioskAdminLogin[redacted]"; }
     }
     @PostMapping("/login") @PublicApi
     public ResponseEntity<Login> login(@Valid @RequestBody AdminAuthController.Password body, HttpServletRequest request) {
         origins.check(request);
-        var login=sessions.login(body.password(),"KIOSK");
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new Login(login.token(),login.principal().sessionId(),login.principal().expiresAt()));
+        var login=sessions.login(body.adminNumber(),body.password(),"KIOSK");
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(new Login(login.token(),login.principal().sessionId(),login.principal().expiresAt(),login.principal().adminNumber(),login.principal().name(),login.principal().mustChangePassword()));
     }
     @PostMapping("/logout") @AdminOnly
     public ResponseEntity<Void> logout(@RequestAttribute(AdminPrincipal.ATTRIBUTE) AdminPrincipal admin, HttpServletRequest request) {

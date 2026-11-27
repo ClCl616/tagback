@@ -26,6 +26,7 @@ export function parseItem(row: any): Item {
     kindId: row.itemTypeId,
     stationId: STATION.id,
     status: itemStatuses[row.status],
+    image: row.imageUrl || row.typeImageUrl || undefined,
     tag: '',
     tagKnown: false,
     active: row.status === 'AVAILABLE' || row.status === 'RENTED',
@@ -75,8 +76,14 @@ export async function publicCatalogHttp(keyword = '', itemTypeId?: string): Prom
       ).map(parsePublicKind);
   if (new Set(kinds.map((k) => k.id)).size !== kinds.length)
     throw new ServiceError('CHANGED', '조회 중 물품이 변경되었습니다. 다시 조회해 주세요.');
-  // Public data contains counts only; never invent individual item IDs or statuses.
-  return { items: [], kinds, categories: ['공용 물품'], stations: [STATION] };
+  const items = (
+    await allPages(
+      `/api/v1/catalog/items?keyword=${encodeURIComponent(keyword.trim())}${itemTypeId ? '&itemTypeId=' + encodeURIComponent(itemTypeId) : ''}`,
+      'items',
+      signal,
+    )
+  ).map(parseItem);
+  return { items, kinds, categories: ['공용 물품'], stations: [STATION] };
 }
 export async function catalogHttp(includeAllTypes = false): Promise<Catalog> {
   const rows = await allPages('/api/v1/items', 'items', AbortSignal.timeout(60000));

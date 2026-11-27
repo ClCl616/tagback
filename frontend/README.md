@@ -1,3 +1,7 @@
+> 2026-11-27 현재 UI 기준: 작업 전에 [현재 설계·디자인 시스템](../docs/frontend-redesign-design.md)과 [검수 체크리스트](../docs/ui-quality-checklist.md)를 읽습니다. [확정 시안 기록](../docs/approved-ui-20261127.md)의 마지막 재대조 결정이 아래 과거 설명보다 우선합니다. 현재는 개별 물품/이미지, 자동 이용 코드, 개인 관리자 인증을 사용합니다. 아래 종류별 공개 목록·수동 코드 발급·공통 계정·사진 API 미구현 설명은 이력입니다.
+>
+> 2026-11-27 인증 변경: 현재 브랜치는 카카오 OAuth 회원가입·로그인을 사용합니다. 아래의 SMS·로그인 PIN 설명은 이전 구현 기록입니다. 현재 계약·설정·전환 제한은 [카카오 OAuth 안내](../docs/kakao-oauth.md)를 우선합니다. 키오스크 이용 코드는 유지됩니다.
+
 # TagBack 프론트엔드
 
 TagBack 프론트엔드는 사용자 웹, 관리자 웹, 키오스크 화면을 제공합니다.
@@ -168,3 +172,7 @@ pnpm test
 - [키오스크 리더기 연동](../docs/kiosk-reader-integration.md)
 - [물품 반출 API 계약](../docs/item-checkout-api-contract.md)
 - [본인 대여 현황 조회 API 계약](../docs/rental-status-api-contract.md)
+
+## 승인 UI 구현
+
+개인 관리자 계정·자동 이용 코드·개별 물품 이미지는 [현재 승인 기록](../docs/approved-ui-20261127.md)과 [카카오 OAuth 계약](../docs/kakao-oauth.md)을 따른다.

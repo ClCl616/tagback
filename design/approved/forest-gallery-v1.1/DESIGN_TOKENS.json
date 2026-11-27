@@ -1,0 +1,214 @@
+{
+  "version": "1.1",
+  "color": {
+    "brand": {
+      "primary": "#194D36",
+      "hover": "#123C2A",
+      "pressed": "#0E3021",
+      "soft": "#E5EEE7",
+      "border": "#C3D6C8"
+    },
+    "bg": {
+      "canvas": "#F7F8F5",
+      "surface": "#FFFFFF",
+      "subtle": "#F0F2EE"
+    },
+    "border": {
+      "default": "#DFE4DE",
+      "control": "#89958D",
+      "selected": "#194D36"
+    },
+    "text": {
+      "primary": "#202923",
+      "secondary": "#56635B",
+      "muted": "#6B766E",
+      "disabled": "#A3ABA5"
+    },
+    "admin": {
+      "sidebar": "#103D2D",
+      "active": "#30654E",
+      "hover": "#245440",
+      "text": "#FFFFFF",
+      "muted": "#B6D0C3",
+      "divider": "#426858"
+    },
+    "status": {
+      "success": {
+        "text": "#17633A",
+        "bg": "#E6F3E9"
+      },
+      "info": {
+        "text": "#245A91",
+        "bg": "#E8F0FA"
+      },
+      "warning": {
+        "text": "#8A510C",
+        "bg": "#FFF3DD"
+      },
+      "error": {
+        "text": "#B42318",
+        "bg": "#FDECEA"
+      },
+      "neutral": {
+        "text": "#56635B",
+        "bg": "#EDF0ED"
+      }
+    },
+    "kakao": {
+      "bg": "#FEE500",
+      "text": "#191919"
+    }
+  },
+  "font": {
+    "family": [
+      "Pretendard",
+      "Noto Sans KR",
+      "맑은 고딕",
+      "system-ui",
+      "sans-serif"
+    ],
+    "weight": {
+      "regular": 400,
+      "medium": 500,
+      "semibold": 600,
+      "bold": 700
+    },
+    "webScale": {
+      "page": {
+        "size": 32,
+        "lineHeight": 42,
+        "weight": 700
+      },
+      "section": {
+        "size": 24,
+        "lineHeight": 34,
+        "weight": 600
+      },
+      "subsection": {
+        "size": 20,
+        "lineHeight": 28,
+        "weight": 600
+      },
+      "item": {
+        "size": 16,
+        "lineHeight": 24,
+        "weight": 600
+      },
+      "body": {
+        "size": 14,
+        "lineHeight": 22,
+        "weight": 400
+      },
+      "label": {
+        "size": 13,
+        "lineHeight": 20,
+        "weight": 500
+      },
+      "caption": {
+        "size": 12,
+        "lineHeight": 18,
+        "weight": 400
+      }
+    }
+  },
+  "spacing": [
+    4,
+    8,
+    12,
+    16,
+    20,
+    24,
+    32,
+    40,
+    48,
+    64
+  ],
+  "radius": {
+    "xs": 4,
+    "sm": 6,
+    "md": 8,
+    "lg": 12,
+    "xl": 16
+  },
+  "shadow": {
+    "none": "none",
+    "sm": "0 1px 3px rgba(0,0,0,0.05)",
+    "md": "0 4px 12px rgba(0,0,0,0.08)",
+    "lg": "0 12px 32px rgba(0,0,0,0.12)"
+  },
+  "size": {
+    "button": {
+      "small": 32,
+      "default": 40,
+      "large": 48,
+      "kiosk": 80
+    },
+    "input": {
+      "default": 44,
+      "pcSearch": 48,
+      "mobileSearch": 44
+    },
+    "icon": {
+      "small": 16,
+      "default": 20,
+      "nav": 24,
+      "kiosk": 32,
+      "result": 80
+    },
+    "badge": 24,
+    "table": {
+      "header": 44,
+      "row": 52,
+      "denseRow": 44
+    },
+    "mobileTouchMin": 44,
+    "kioskTouchMin": 64,
+    "kioskKeypad": {
+      "width": 96,
+      "height": 88
+    },
+    "kioskCondition": 96
+  },
+  "layout": {
+    "pc": {
+      "header": 72,
+      "padding": 32,
+      "maxWidth": 1600,
+      "filterWidth": 240,
+      "filterGap": 24,
+      "gridGap": 16,
+      "cardMinWidth": 248,
+      "columns": 4
+    },
+    "mobile": {
+      "header": 56,
+      "padding": 16,
+      "bottomNav": 64,
+      "gridGap": 12,
+      "columns": 2
+    },
+    "admin": {
+      "sidebar": 232,
+      "header": 64,
+      "padding": 32,
+      "menuHeight": 44,
+      "menuGap": 4
+    },
+    "kiosk": {
+      "width": 1920,
+      "height": 1080,
+      "header": 96,
+      "padding": 64,
+      "maxWidth": 1440,
+      "actionGap": 24
+    }
+  },
+  "breakpoints": [
+    320,
+    360,
+    768,
+    1024,
+    1280,
+    1600
+  ]
+}

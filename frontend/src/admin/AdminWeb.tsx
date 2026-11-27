@@ -1,3 +1,4 @@
+import { ItemPicture } from '../shared/ItemPicture';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -15,7 +16,6 @@ import {
   Tag,
   ArrowRight,
   LogOut,
-  Wrench,
   Search,
   ShieldCheck,
 } from 'lucide-react';
@@ -25,6 +25,8 @@ import type { Item } from '../shared/types';
 import { loadAdminData, type AdminData, type AdminRecord } from './adminQueries';
 import { adminApi } from './adminApi';
 import { ItemEditor, StatusEditor, DeleteItem, TagEditor } from './AdminActions';
+import { AccountManagement } from './AccountManagement';
+import { ImageEditor } from './ImageEditor';
 import { allPages } from '../shared/http';
 import { parseItem } from '../shared/catalogHttp';
 import '../mobile/user-web.css';
@@ -88,13 +90,15 @@ function Empty({ title, children }: { title: string; children?: ReactNode }) {
 const Access = createContext<(error: unknown) => boolean>(() => false);
 export const useAdminError = () => useContext(Access);
 const menus = [
-  ['overview', '현황', LayoutDashboard],
+  ['overview', '운영 현황', LayoutDashboard],
   ['items', '물품 관리', Box],
-  ['tags', 'NFC 태그', Radio],
-  ['rentals', '대여 현황', ClipboardList],
-  ['overdue', '연체 조회', CircleAlert],
+  ['tags', 'NFC 태그 관리', Radio],
+  ['inventory', '재고 관리', Box],
+  ['users', '사용자 관리', Users],
+  ['rentals', '대여·반납 관리', ClipboardList],
+  ['overdue', '연체 관리', CircleAlert],
   ['history', '이용 이력', History],
-  ['users', '사용자', Users],
+  ['accounts', '관리자 계정', ShieldCheck],
 ] as const;
 function Brand() {
   return (
@@ -207,6 +211,26 @@ export default function AdminWeb() {
       document.removeEventListener('visibilitychange', check);
     };
   }, []);
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      if (
+        !identity.current ||
+        document.visibilityState !== 'visible' ||
+        document.querySelector('dialog[open]') ||
+        document.activeElement?.matches('input,textarea,select')
+      )
+        return;
+      const run = seq.current;
+      try {
+        const fresh = await loadAdminData(AbortSignal.timeout(15000));
+        if (active.current && run === seq.current && fresh.operatorId === identity.current)
+          setData(fresh);
+      } catch (e) {
+        if (active.current && run === seq.current) deny(e);
+      }
+    }, 15000);
+    return () => clearInterval(timer);
+  }, []);
   const currentSeq = seq.current;
   const report = (e: unknown) => (currentSeq === seq.current ? deny(e) : true);
   const reload = (message = '') => {
@@ -227,7 +251,7 @@ export default function AdminWeb() {
         <div className="aw-auth-heading">
           <ShieldCheck />
           <h1>관리자 로그인</h1>
-          <p>공통 관리자 비밀번호를 입력해 주세요. 사용자 계정과 별도로 로그인합니다.</p>
+          <p>관리자 번호와 개인 비밀번호를 입력해 주세요.</p>
         </div>
         <AdminLogin onLogin={() => nav(destination, { replace: true })} />
         <Link className="aw-back-user" to="/mobile">
@@ -310,7 +334,7 @@ function Workspace({
   const name = loc.pathname.split('/')[2] || 'overview';
   const section = menus.some(([id]) => id === name) ? name : 'overview';
   const title = menus.find(([id]) => id === section)![1];
-  const itemView = ['items', 'tags'].includes(section),
+  const itemView = ['items', 'tags', 'inventory'].includes(section),
     userView = section === 'users';
   const [menuOpen, setMenuOpen] = useState(false),
     [modal, setModal] = useState<{ type: 'new' | 'edit' | 'status' | 'delete'; item?: Item }>();
@@ -341,7 +365,8 @@ function Workspace({
         inspection: 'INSPECTION',
         repair: 'REPAIR',
       };
-      if (section === 'items' && states[filter]) query.set('status', states[filter]);
+      if (['items', 'inventory'].includes(section) && states[filter])
+        query.set('status', states[filter]);
       if (section === 'tags' && filter !== 'linked' && filter !== 'all')
         query.set('status', 'TAG_PENDING');
       allPages(
@@ -434,6 +459,7 @@ function Workspace({
                 ? r.status === 'RENTED'
                 : r.status !== 'RETURNED'),
   );
+  if (section === 'overdue') rentals.sort((a, b) => Date.parse(a.dueAt!) - Date.parse(b.dueAt!));
   const rows = itemView ? items : userView ? users : rentals;
   const total = itemView
     ? data.catalog.items.length
@@ -450,17 +476,19 @@ function Workspace({
         <Brand />
         <div className="aw-nav-caption">운영 관리</div>
         <nav aria-label="관리자 메뉴">
-          {menus.map(([id, label, Icon]) => (
-            <NavLink
-              key={id}
-              to={id === 'overview' ? '/admin' : '/admin/' + id}
-              end
-              className={section === id ? 'active' : ''}
-            >
-              <Icon size={20} />
-              {label}
-            </NavLink>
-          ))}
+          {menus
+            .filter(([id]) => id !== 'accounts' || data.adminNumber === '000')
+            .map(([id, label, Icon]) => (
+              <NavLink
+                key={id}
+                to={id === 'overview' ? '/admin' : '/admin/' + id}
+                end
+                className={section === id ? 'active' : ''}
+              >
+                <Icon size={20} />
+                {label}
+              </NavLink>
+            ))}
         </nav>
         <div className="aw-operator">
           <span className="aw-avatar">{data.operator.slice(0, 1)}</span>
@@ -508,16 +536,9 @@ function Workspace({
         </div>
         <header className="aw-heading">
           <div>
-            <h1 tabIndex={-1}>{title}</h1>
-            <p>
-              {section === 'overview'
-                ? '물품 이용 현황과 확인이 필요한 내역을 한눈에 살펴보세요.'
-                : itemView
-                  ? '대여소의 물품과 태그를 확인하고 관리하세요.'
-                  : userView
-                    ? '사용자 정보와 관련 이용 내역을 확인하세요.'
-                    : '대여부터 반납까지 이용 내역을 확인하세요.'}
-            </p>
+            <h1 tabIndex={-1}>
+              {modal?.type === 'new' ? '물품 등록' : modal?.type === 'edit' ? '물품 수정' : title}
+            </h1>
           </div>
           <div className="aw-actions">
             <button aria-label="새로고침" onClick={() => reload()}>
@@ -537,7 +558,9 @@ function Workspace({
             {notice.replace('최신 목록을 확인하고 있어요.', '목록을 갱신했어요.')}
           </div>
         )}
-        {section === 'overview' ? (
+        {section === 'accounts' ? (
+          <AccountManagement />
+        ) : section === 'overview' ? (
           <Overview data={data} />
         ) : (
           <>
@@ -565,6 +588,56 @@ function Workspace({
                     </strong>
                   </button>
                 ))}
+              </section>
+            )}
+            {section === 'items' && !selected && (
+              <section className="aw-card aw-kind-summary" aria-label="종류별 물품">
+                <div className="aw-section-heading">
+                  <h2>물품 종류</h2>
+                  <Link to="/admin/inventory">개별 실물 재고 관리</Link>
+                </div>
+                <div className="aw-table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>종류</th>
+                        <th>분류</th>
+                        <th>대여 가능 / 전체</th>
+                        <th>관리</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.catalog.kinds
+                        .filter((k) => !kind || kind === k.id)
+                        .filter(
+                          (k) =>
+                            !q ||
+                            k.name.toLowerCase().includes(q.toLowerCase()) ||
+                            data.catalog.items.some(
+                              (i) =>
+                                i.kindId === k.id &&
+                                (i.name || i.label).toLowerCase().includes(q.toLowerCase()),
+                            ),
+                        )
+                        .map((k) => {
+                          const units = data.catalog.items.filter((i) => i.kindId === k.id);
+                          return (
+                            <tr key={k.id}>
+                              <td>{k.name}</td>
+                              <td>{k.category}</td>
+                              <td>
+                                {units.filter((i) => i.status === 'available').length} /{' '}
+                                {units.length}
+                              </td>
+                              <td>
+                                <button onClick={() => update('kind', k.id)}>실물 보기</button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
               </section>
             )}
             <div className={'aw-master-detail ' + (selected ? 'has-selection' : '')}>
@@ -619,7 +692,7 @@ function Workspace({
                       ))}
                     </select>
                   )}
-                  {section === 'items' && (
+                  {['items', 'inventory'].includes(section) && (
                     <select
                       aria-label="상태 필터"
                       value={filter}
@@ -683,7 +756,11 @@ function Workspace({
                           <th>{itemView ? '종류' : userView ? '직업' : '사용자'}</th>
                           <th>{userView ? '권한' : '상태'}</th>
                           {!itemView && !userView && (
-                            <th>{section === 'history' ? '반납일' : '반납 예정'}</th>
+                            <>
+                              <th>대여일</th>
+                              <th>반납 기한</th>
+                              <th>반납일</th>
+                            </>
                           )}
                         </tr>
                       </thead>
@@ -693,6 +770,7 @@ function Workspace({
                               <tr key={i.id} className={selected === i.id ? 'selected' : ''}>
                                 <td data-label="물품">
                                   <button className="aw-row-link" onClick={() => open(i.id)}>
+                                    <ItemPicture src={i.image} />
                                     {i.name}
                                     <span className="aw-sr"> 상세 보기</span>
                                   </button>
@@ -727,9 +805,11 @@ function Workspace({
                                     )}
                                   </td>
                                   {!userView && (
-                                    <td data-label={section === 'history' ? '반납일' : '반납 예정'}>
-                                      {formatDate(section === 'history' ? r.returnedAt : r.dueAt)}
-                                    </td>
+                                    <>
+                                      <td data-label="대여일">{formatDate(r.rentedAt)}</td>
+                                      <td data-label="반납 기한">{formatDate(r.dueAt)}</td>
+                                      <td data-label="반납일">{formatDate(r.returnedAt)}</td>
+                                    </>
                                   )}
                                 </tr>
                               ))}
@@ -869,27 +949,6 @@ function Workspace({
   );
 }
 function Overview({ data }: { data: AdminData }) {
-  const cards = [
-    { name: '등록 물품', value: data.items.length, href: '/admin/items', Icon: Box },
-    {
-      name: '대여 중',
-      value: data.rentals.filter((r) => r.status !== 'RETURNED').length,
-      href: '/admin/rentals',
-      Icon: ClipboardList,
-    },
-    {
-      name: '연체',
-      value: data.rentals.filter((r) => r.status === 'OVERDUE').length,
-      href: '/admin/overdue',
-      Icon: CircleAlert,
-    },
-    {
-      name: '점검·수리',
-      value: data.items.filter((r) => ['INSPECTION', 'REPAIR'].includes(r.status)).length,
-      href: '/admin/items?status=maintenance',
-      Icon: Wrench,
-    },
-  ];
   const recent = [...data.rentals]
     .sort((a, b) => Date.parse(b.rentedAt!) - Date.parse(a.rentedAt!))
     .slice(0, 6);
@@ -899,20 +958,35 @@ function Overview({ data }: { data: AdminData }) {
     .slice(0, 6);
   return (
     <>
-      <section className="aw-stats" aria-label="전체 현황">
-        {cards.map(({ name, value, href, Icon }) => (
-          <Link key={name} to={href}>
-            <span className={'aw-stat-icon ' + (name === '연체' ? 'warning' : '')}>
-              <Icon size={25} />
-            </span>
+      <section className="aw-stats fg-operating-stats" aria-label="운영 수량">
+        {[
+          ['전체 실물', data.items.length, '/admin/inventory'],
+          [
+            '대여 가능',
+            data.items.filter((i) => i.status === 'AVAILABLE').length,
+            '/admin/inventory?status=available',
+          ],
+          [
+            '미반납 (연체 포함)',
+            data.rentals.filter((r) => r.status !== 'RETURNED').length,
+            '/admin/rentals',
+          ],
+          [
+            '연체',
+            overdue.length === 6
+              ? data.rentals.filter((r) => r.status === 'OVERDUE').length
+              : overdue.length,
+            '/admin/overdue',
+          ],
+        ].map(([label, count, href]) => (
+          <Link key={label} to={String(href)}>
             <div>
-              <span>{name}</span>
+              <span>{label}</span>
               <strong>
-                {value}
-                <small>{name === '등록 물품' || name === '점검·수리' ? '개' : '건'}</small>
+                {count}
+                <small>{label === '전체 실물' || label === '대여 가능' ? '개' : '건'}</small>
               </strong>
             </div>
-            <ArrowRight size={17} />
           </Link>
         ))}
       </section>
@@ -920,20 +994,7 @@ function Overview({ data }: { data: AdminData }) {
         <section className="aw-card">
           <div className="aw-section-heading">
             <div>
-              <h2>최근 대여 내역</h2>
-              <p>최근에 시작된 이용 내역을 확인하세요.</p>
-            </div>
-            <Link to="/admin/rentals">
-              전체 보기 <ArrowRight size={16} />
-            </Link>
-          </div>
-          <RecordLinks rows={recent} />
-        </section>
-        <section className="aw-card">
-          <div className="aw-section-heading">
-            <div>
               <h2>연체 목록</h2>
-              <p>반납 기한이 지난 이용 내역이에요.</p>
             </div>
             <Link to="/admin/overdue">
               전체 보기 <ArrowRight size={16} />
@@ -941,17 +1002,28 @@ function Overview({ data }: { data: AdminData }) {
           </div>
           <RecordLinks rows={overdue} empty="현재 연체 내역이 없어요" />
         </section>
+        <section className="aw-card">
+          <div className="aw-section-heading">
+            <div>
+              <h2>최근 대여 내역</h2>
+            </div>
+            <Link to="/admin/rentals">
+              전체 보기 <ArrowRight size={16} />
+            </Link>
+          </div>
+          <RecordLinks rows={recent} />
+        </section>
       </div>
-      <div className="aw-guide">
-        <Radio size={25} />
-        <div>
-          <h2>새 물품을 등록하셨나요?</h2>
-          <p>NFC 태그를 연결하면 키오스크에서 실물을 식별할 수 있어요.</p>
-        </div>
-        <Link className="aw-secondary" to="/admin/tags">
-          태그 연결하기 <ArrowRight size={17} />
+      <section className="aw-overview-totals" aria-label="전체 현황">
+        <Link to="/admin/items">
+          등록 물품 <strong>{data.items.length}개</strong>
+          <ArrowRight size={16} />
         </Link>
-      </div>
+        <Link to="/admin/rentals">
+          대여 중 <strong>{data.rentals.filter((r) => r.status !== 'RETURNED').length}건</strong>
+          <ArrowRight size={16} />
+        </Link>
+      </section>
     </>
   );
 }
@@ -1043,7 +1115,7 @@ function ItemDetail({
     return () => {
       alive = false;
     };
-  }, [id, attempt]);
+  }, [id, attempt, data.loadedAt]);
   return (
     <aside className="aw-card aw-detail" aria-label="물품 상세">
       <DetailHeader title={tags ? '태그 연결' : '물품 상세'} close={close} />
@@ -1054,7 +1126,7 @@ function ItemDetail({
       ) : (
         <>
           <div className="aw-item-art">
-            <Box size={46} />
+            <ItemPicture src={item.image} alt={item.label} />
           </div>
           <Badge value={item.status} />
           <h3>{item.name}</h3>
@@ -1065,8 +1137,10 @@ function ItemDetail({
               ['태그 UID', item.tag || '태그 미등록'],
             ]}
           />
+          <ImageEditor item={item} saved={saved} />
+          <TagEditor item={item} saved={saved} />
           {tags ? (
-            <TagEditor item={item} saved={saved} />
+            <p>태그 등록은 위에서 진행해 주세요.</p>
           ) : (
             <div className="aw-detail-actions">
               <button className="aw-primary" onClick={() => edit('edit', item)}>

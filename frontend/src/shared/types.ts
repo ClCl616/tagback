@@ -32,6 +32,7 @@ export type Rental = {
   dueAt: number;
   returnedAt?: number;
   condition?: 'normal' | 'damaged';
+  image?: string;
   itemName?: string;
   itemTypeName?: string;
   overdue?: boolean;
@@ -92,6 +93,7 @@ export interface ServiceApi {
     proof: NfcScanProof | undefined,
     condition: 'normal' | 'damaged',
     returnCode: string,
+    grant?: Grant,
   ): Promise<Receipt>;
   operation(operationId: string): Promise<Receipt | null>;
 }

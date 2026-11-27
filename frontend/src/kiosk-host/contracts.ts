@@ -3,11 +3,20 @@ import type { NfcScanProof } from '../shared/types';
 
 export const HOST_PROTOCOL_VERSION = 2 as const;
 export type KioskCommand =
-  | { action: 'admin-login'; password: string }
+  | { action: 'admin-login'; adminNumber: string; password: string }
   | { action: 'admin-session' | 'admin-logout'; adminRef: string }
   | { action: 'admin-items'; adminRef: string; keyword: string; page: number; pending: boolean }
   | { action: 'admin-tag-current'; adminRef: string; itemId: string }
-  | { action: 'admin-tag'; adminRef: string; operationId: string; itemId: string; expectedUid: string | null; proof: NfcScanProof }
+  | {
+      action: 'admin-tag';
+      adminRef: string;
+      operationId: string;
+      itemId: string;
+      expectedUid: string | null;
+      proof: NfcScanProof;
+    }
+  | { action: 'admin-api'; adminRef: string; path: string; method: string; body: unknown }
+  | { action: 'image'; imageId: string }
   | { action: 'health' }
   | { action: 'verify'; code: string }
   | { action: 'catalog'; grantRef: string }
@@ -21,6 +30,7 @@ export type KioskCommand =
       proof: NfcScanProof;
       condition: 'NORMAL' | 'DAMAGED';
       returnCode: string;
+      grantRef?: string;
     };
 
 export type HostRequest = { version: 2; requestId: string; command: KioskCommand };

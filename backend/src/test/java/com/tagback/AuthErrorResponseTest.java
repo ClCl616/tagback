@@ -1,6 +1,6 @@
 package com.tagback;
 
-import com.tagback.dto.auth.AuthRequests;
+import com.tagback.controller.KakaoOAuthController;
 import com.tagback.exception.ApiExceptionHandler;
 import com.tagback.exception.AuthErrorCode;
 import com.tagback.exception.AuthException;
@@ -16,26 +16,26 @@ import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standal
 class AuthErrorResponseTest {
     @RestController
     static class TestController {
-        @PostMapping("/test/pin")
-        public void pin(@Valid @RequestBody AuthRequests.RegisteredLogin request) {
-            throw new AuthException(AuthErrorCode.PIN_RETRY_WAIT, Instant.parse("2026-10-06T09:00:30Z"));
+        @PostMapping("/test/profile")
+        public void pin(@Valid @RequestBody KakaoOAuthController.Profile request) {
+            throw new AuthException(AuthErrorCode.ADMIN_LOGIN_LIMITED, Instant.parse("2026-10-06T09:00:30Z"));
         }
     }
 
     @Test
     void returnsStableErrorAndUtcRetryTime() throws Exception {
         standaloneSetup(new TestController()).setControllerAdvice(new ApiExceptionHandler()).build()
-                .perform(post("/test/pin").contentType(MediaType.APPLICATION_JSON).content("{\"pin\":\"041527\"}"))
+                .perform(post("/test/profile").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"test\",\"occupation\":\"학생\"}"))
                 .andExpect(status().isTooManyRequests())
-                .andExpect(jsonPath("$.error.code").value("PIN_RETRY_WAIT"))
+                .andExpect(jsonPath("$.error.code").value("ADMIN_LOGIN_LIMITED"))
                 .andExpect(jsonPath("$.error.retryAt").value("2026-10-06T09:00:30Z"));
     }
 
     @Test
     void invalidAndMalformedRequestsReturnSanitizedErrors() throws Exception {
         var mvc = standaloneSetup(new TestController()).setControllerAdvice(new ApiExceptionHandler()).build();
-        for (String body : new String[]{"{\"pin\":\"secret\"}", "{", "{}"}) {
-            mvc.perform(post("/test/pin").contentType(MediaType.APPLICATION_JSON).content(body))
+        for (String body : new String[]{"{\"name\":\"secret\"}", "{", "{}"}) {
+            mvc.perform(post("/test/profile").contentType(MediaType.APPLICATION_JSON).content(body))
                     .andExpect(status().isBadRequest())
                     .andExpect(jsonPath("$.error.code").value("INVALID_INPUT"))
                     .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("secret"))));

@@ -14,7 +14,7 @@ public class User {
     @Column(name = "user_id")
     private Long id;
 
-    @Column(name = "phone_number", nullable = false, unique = true, length = 20)
+    @Column(name = "phone_number", unique = true, length = 20)
     private String phoneNumber;
 
     @Column(name = "pin_hash", length = 255)
@@ -57,19 +57,9 @@ public class User {
     public Instant getPinLockedUntil() { return pinLockedUntil; }
     public Instant getCreatedAt() { return createdAt; }
 
-    public void resetPin(String pinHash) {
-        this.pinHash = Objects.requireNonNull(pinHash, "pinHash");
-        setPinFailureState(0, null);
-    }
-
     public void setProfile(String name, String occupation) {
         this.name = Objects.requireNonNull(name, "name");
         this.occupation = Objects.requireNonNull(occupation, "occupation");
     }
 
-    public void setPinFailureState(int count, Instant lockedUntil) {
-        if (count < 0 || count > 20) throw new IllegalArgumentException("Invalid PIN failure count");
-        this.pinFailedCount = count;
-        this.pinLockedUntil = lockedUntil;
-    }
 }

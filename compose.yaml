@@ -1,6 +1,6 @@
 name: tagback
 
-# Local HTTPS stack. Authentication currently requires the sms-mock profile.
+# HTTPS stack. See docs/kakao-oauth.md before enabling OAuth or deploying.
 services:
   db:
     image: postgres:17-bookworm
@@ -27,7 +27,8 @@ services:
       context: .
       dockerfile: deploy/compose/api.Dockerfile
     environment:
-      SPRING_PROFILES_ACTIVE: sms-mock
+      TAGBACK_KAKAO_CLIENT_ID: ${KAKAO_CLIENT_ID:-}
+      TAGBACK_KAKAO_REDIRECT_URI: ${KAKAO_REDIRECT_URI:-}
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/tagback
       SPRING_DATASOURCE_USERNAME: tagback_user
       SPRING_CONFIG_IMPORT: configtree:/run/secrets/
@@ -42,7 +43,9 @@ services:
       - source: admin_password_hash
         target: tagback.admin.password-hash
       - source: sms_hash_key
-        target: tagback.auth.sms-hash-key
+        target: tagback.auth.hash-key
+      - source: kakao_client_secret
+        target: tagback.kakao.client-secret
       - source: nfc_scan_secret
         target: tagback.nfc.scan-secret
     depends_on:
@@ -89,6 +92,8 @@ secrets:
     file: ./deploy/compose/local/admin-password-hash
   sms_hash_key:
     file: ./deploy/compose/local/sms-hash-key
+  kakao_client_secret:
+    file: ./deploy/compose/local/kakao-client-secret
   nfc_scan_secret:
     file: ./deploy/compose/local/nfc-scan-secret
 

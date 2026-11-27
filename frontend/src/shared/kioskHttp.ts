@@ -219,7 +219,7 @@ export async function lookupRentalTag(
   grant: Grant,
   selectedTypeId: string,
 ): Promise<Item> {
-  if (!positiveId(selectedTypeId))
+  if (selectedTypeId && !positiveId(selectedTypeId))
     throw new ServiceError('MISMATCH', '물품 종류를 다시 선택해 주세요.');
   uid = uid.replace(/[\s:-]/g, '').toUpperCase();
   if (!/^(?:[0-9A-F]{8}|[0-9A-F]{14}|[0-9A-F]{20})$/.test(uid))
@@ -238,7 +238,7 @@ export async function lookupRentalTag(
     data.tag?.uid !== uid
   )
     throw new ServiceError('UNKNOWN', '태그 조회 응답을 확인하지 못했습니다.');
-  if (row.itemTypeId !== selectedTypeId)
+  if (selectedTypeId && row.itemTypeId !== selectedTypeId)
     throw new ServiceError(
       'MISMATCH',
       '선택한 종류와 다른 물품입니다. 선택한 종류의 물품을 접촉해 주세요.',
@@ -249,6 +249,7 @@ export async function lookupRentalTag(
     label: row.name,
     name: row.name,
     kindId: row.itemTypeId,
+    image: row.imageUrl || undefined,
     stationId: KIOSK.stationId,
     tag: uid,
     active: true,
@@ -289,6 +290,7 @@ export async function lookupReturnTag(proof: NfcScanProof): Promise<{
     label: data.itemName,
     name: data.itemName,
     kindId: data.itemTypeId,
+    image: data.imageUrl || undefined,
     stationId: KIOSK.stationId,
     tag: proof.uid,
     active: true,
@@ -352,6 +354,7 @@ export async function returnRental(
   proof: NfcScanProof,
   condition: 'normal' | 'damaged',
   returnCode: string,
+  grant?: Grant,
 ): Promise<Receipt> {
   if (
     !/^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$/.test(key) ||
@@ -368,6 +371,7 @@ export async function returnRental(
     proof,
     condition: condition === 'normal' ? 'NORMAL' : 'DAMAGED',
     returnCode,
+    ...(grant ? { grantRef: grant.token } : {}),
   });
   const expectedStatus = condition === 'normal' ? 'AVAILABLE' : 'INSPECTION';
   if (

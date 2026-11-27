@@ -30,6 +30,15 @@ async function openReturn(page: Page) {
         source.dispatchEvent(new MessageEvent(detail.type, { data: JSON.stringify(payload) }));
     });
   });
+  await page.route('**/api/v1/kiosk/rental-grants', (r) =>
+    r.fulfill({
+      json: {
+        token: 'fixture-grant',
+        maskedPhoneNumber: 'fixture',
+        expiresAt: new Date(Date.now() + 180000).toISOString(),
+      },
+    }),
+  );
   await page.route('**/api/v1/kiosk/health', (route) => route.fulfill({ json: {} }));
   await page.goto('/kiosk');
   await page.getByRole('button', { name: /반납하기/ }).click();
@@ -59,8 +68,7 @@ async function scanResponse(page: Page, onScan?: () => void) {
 async function enterCode(page: Page) {
   await page.getByRole('button', { name: /손상이 있어요/ }).click();
   await page.getByRole('button', { name: '선택한 상태로 계속' }).click();
-  await expect(page.getByLabel('일회성 반납 코드')).toBeVisible();
-  await expect(page.getByText('시간이 지나면 물품을 다시 인식해 주세요.')).toBeVisible();
+  await expect(page.getByLabel('이용 코드', { exact: true })).toBeVisible();
 }
 
 test('중복 스캔 억제와 제거 후 UID·선택 상태 유지 및 코드 오류 복구', async ({ page }) => {
@@ -82,17 +90,15 @@ test('중복 스캔 억제와 제거 후 UID·선택 상태 유지 및 코드 �
   expect(calls).toBe(1);
   await emit(page, 'TAG_REMOVED');
   await enterCode(page);
-  await expect(page.getByText('반납할 물품 · 손상')).toBeVisible();
   const request = page.waitForRequest((req) => req.url().endsWith('/api/v1/rentals/return'));
-  await page.getByLabel('일회성 반납 코드').fill('000000');
+  await page.getByLabel('이용 코드', { exact: true }).fill('000000');
   await page.getByRole('button', { name: '확인', exact: true }).click();
   await page.getByRole('button', { name: '반납 확정', exact: true }).click();
   const sent = (await request).postDataJSON();
   expect(sent.proof.uid).toBe('04A23B1C5D6E80');
   expect(sent.condition).toBe('DAMAGED');
-  await expect(page.getByText('코드를 확인해 주세요')).toBeVisible();
-  await expect(page.getByLabel('일회성 반납 코드')).toBeEnabled();
-  await expect(page.getByText('반납할 물품 · 손상')).toBeVisible();
+  await expect(page.getByText('코드를 확인해 주세요', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('이용 코드', { exact: true })).toBeEnabled();
 });
 
 test('뒤로가기와 취소 및 시간 초과에서 이전 입력이 초기화된다', async ({ page }) => {
@@ -100,10 +106,10 @@ test('뒤로가기와 취소 및 시간 초과에서 이전 입력이 초기화�
   await scanResponse(page);
   await emit(page, 'TAG_READ');
   await enterCode(page);
-  await page.getByLabel('일회성 반납 코드').fill('000000');
+  await page.getByLabel('이용 코드', { exact: true }).fill('000000');
   await page.getByRole('button', { name: '이전', exact: true }).click();
   await page.getByRole('button', { name: '선택한 상태로 계속' }).click();
-  await expect(page.getByLabel('일회성 반납 코드')).toHaveValue('');
+  await expect(page.getByLabel('이용 코드', { exact: true })).toHaveValue('');
   await page.getByRole('button', { name: '이용 취소' }).click();
   await page.getByRole('button', { name: '종료하고 처음으로' }).click();
   const scannedUids: string[] = [];
@@ -145,11 +151,11 @@ test('뒤로가기와 취소 및 시간 초과에서 이전 입력이 초기화�
   await expect(page.getByRole('button', { name: '선택한 상태로 계속' })).toBeDisabled();
   expect(scannedUids).toEqual(['04A23B1C5D6E81']);
   await enterCode(page);
-  await expect(page.getByLabel('일회성 반납 코드')).toHaveValue('');
-  await page.getByLabel('일회성 반납 코드').fill('000000');
+  await expect(page.getByLabel('이용 코드', { exact: true })).toHaveValue('');
+  await page.getByLabel('이용 코드', { exact: true }).fill('000000');
   await page.getByRole('button', { name: '확인', exact: true }).click();
   await page.getByRole('button', { name: '반납 확정', exact: true }).click();
-  await expect(page.getByText('코드를 확인해 주세요')).toBeVisible();
+  await expect(page.getByText('코드를 확인해 주세요', { exact: true })).toBeVisible();
   expect(returnedUids).toEqual(['04A23B1C5D6E81']);
   await page.clock.fastForward(181000);
   await expect(page.getByRole('button', { name: /반납하기/ })).toBeVisible();
@@ -168,7 +174,7 @@ test('상태 충돌은 관리자 문의와 처음으로 돌아가기를 표시�
       json: { error: { code: 'RENTAL_STATE_CONFLICT', message: 'conflict' } },
     }),
   );
-  await page.getByLabel('일회성 반납 코드').fill('000000');
+  await page.getByLabel('이용 코드', { exact: true }).fill('000000');
   await page.getByRole('button', { name: '확인', exact: true }).click();
   await page.getByRole('button', { name: '반납 확정', exact: true }).click();
   await expect(

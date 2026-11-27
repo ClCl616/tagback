@@ -39,10 +39,13 @@ import {
   ScanLine,
   Search,
   Tag,
+  Ticket,
+  Copy,
   UserRound,
   WifiOff,
   X,
 } from 'lucide-react';
+import { ItemPicture } from '../shared/ItemPicture';
 import { api, ServiceError } from '../shared/api';
 import { authApi } from '../shared/auth';
 import { serverSession } from '../shared/httpAuth';
@@ -112,7 +115,15 @@ function State({
     </div>
   );
 }
-function Failure({ error, retry }: { error: unknown; retry?: () => void }) {
+function Failure({
+  error,
+  retry,
+  title = '정보를 불러오지 못했어요',
+}: {
+  error: unknown;
+  retry?: () => void;
+  title?: string;
+}) {
   const { setToken } = useAuth();
   const location = useLocation();
   if (error instanceof ServiceError && error.code === 'AUTH')
@@ -129,7 +140,7 @@ function Failure({ error, retry }: { error: unknown; retry?: () => void }) {
       </State>
     );
   return (
-    <State title="정보를 불러오지 못했어요" error>
+    <State title={title} error>
       <p>{error instanceof Error ? error.message : '연결 상태를 확인한 뒤 다시 시도해 주세요.'}</p>
       {retry && (
         <button className="primary" onClick={retry}>
@@ -138,6 +149,26 @@ function Failure({ error, retry }: { error: unknown; retry?: () => void }) {
       )}
     </State>
   );
+}
+function RefreshStatus({
+  resource,
+}: {
+  resource: { refreshing: boolean; refreshError: unknown; reload: () => void };
+}) {
+  if (resource.refreshError)
+    return (
+      <div className="uw-refresh-status" role="status">
+        최신 정보를 확인하지 못했어요. 이전 조회 내용을 표시하고 있어요.
+        <button className="secondary" onClick={resource.reload}>
+          다시 시도
+        </button>
+      </div>
+    );
+  return resource.refreshing ? (
+    <p className="uw-refresh-status" role="status">
+      최신 정보를 확인하고 있어요.
+    </p>
+  ) : null;
 }
 function Notice({ children }: { children: ReactNode }) {
   return (
@@ -176,122 +207,111 @@ type CodeState = { code?: Code; busy: boolean; error?: unknown; issue: () => Pro
 const CodeContext = createContext<CodeState>({ busy: false, issue: async () => {} });
 function CodeProvider({ children }: { children: ReactNode }) {
   const { token, epoch } = useAuth();
-  const [state, setState] = useState<{
-    epoch: number;
-    code?: Code;
-    busy: boolean;
-    error?: unknown;
-  }>({ epoch, busy: false });
-  const currentEpoch = useRef(epoch);
-  currentEpoch.current = epoch;
-  const visible = state.epoch === epoch ? state : { epoch, busy: false };
-  const running = useRef(false);
-  const alive = useRef(true);
+  const [state, setState] = useState<{ code?: Code; busy: boolean; error?: unknown }>({
+    busy: true,
+  });
+  const initial = useRef<{ epoch: number; promise: Promise<Code> } | undefined>(undefined);
+  const refresh = useRef<() => Promise<void>>(async () => {});
   useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-    };
-  }, []);
-  useEffect(() => {
-    running.current = false;
-  }, [epoch]);
-  async function issue() {
-    if (!token || running.current) return;
-    running.current = true;
-    setState({ epoch, busy: true });
-    try {
-      const code = await api.code(token, true);
-      if (alive.current && currentEpoch.current === epoch) setState({ epoch, code, busy: false });
-    } catch (error) {
-      if (alive.current && currentEpoch.current === epoch) setState({ epoch, error, busy: false });
-    } finally {
-      if (currentEpoch.current === epoch) running.current = false;
+    if (!token) {
+      setState({ busy: false });
+      return;
     }
-  }
-  return <CodeContext.Provider value={{ ...visible, issue }}>{children}</CodeContext.Provider>;
+    setState({ busy: true });
+    let alive = true,
+      running = false;
+    if (initial.current?.epoch !== epoch)
+      initial.current = { epoch, promise: api.code(token, true) };
+    let lastCode = '';
+    const update = async (first = false) => {
+      if (running) return;
+      running = true;
+      try {
+        const code = await (first ? initial.current!.promise : api.code(token, false));
+        if (alive) {
+          setState({ code, busy: false });
+          if (lastCode && lastCode !== code.value)
+            window.dispatchEvent(new Event('tagback-change'));
+          lastCode = code.value;
+        }
+      } catch (error) {
+        if (alive) setState({ busy: false, error });
+      } finally {
+        running = false;
+      }
+    };
+    refresh.current = () => update();
+    void update(true);
+    const timer = window.setInterval(() => void update(), 2000);
+    const focus = () => void update();
+    window.addEventListener('focus', focus);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      window.removeEventListener('focus', focus);
+    };
+  }, [token, epoch]);
+  return (
+    <CodeContext.Provider value={{ ...state, issue: () => refresh.current() }}>
+      {children}
+    </CodeContext.Provider>
+  );
 }
 function CodeCard({ compact = false }: { compact?: boolean }) {
+  const [copyMessage, setCopyMessage] = useState('');
   const { code, busy, error, issue } = useContext(CodeContext);
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  const expired = !!code && code.expiresAt <= now;
-  const seconds = Math.max(0, Math.ceil(((code?.expiresAt || 0) - now) / 1000));
   return (
     <section className={`uw-card uw-code ${compact ? 'compact' : ''}`} aria-label="이용 코드">
-      <h2>
-        이용 코드 <Info size={18} aria-hidden="true" />
-      </h2>
+      {compact && <h2>나의 이용 코드</h2>}
       {error ? (
-        <Failure error={error} retry={() => void issue()} />
-      ) : busy ? (
-        <Loading text="이용 코드를 발급하고 있어요" />
+        <Failure error={error} retry={() => void issue()} title="이용 코드를 확인하지 못했어요" />
+      ) : busy || !code || code.expiresAt <= Date.now() ? (
+        <Loading text="이용 코드를 준비하고 있어요" />
       ) : (
         <>
-          <div className={`uw-code-value ${expired ? 'expired' : ''}`}>
-            <ScanLine size={32} aria-hidden="true" />
+          <div className="uw-code-value">
             <strong className="code-number" aria-label="이용 코드 숫자">
-              {code && !expired ? code.value : '— — —'}
+              {code.value}
             </strong>
           </div>
-          <p className="uw-code-status" role="status">
-            {expired
-              ? '유효시간이 지났어요'
-              : code
-                ? '코드가 발급되었어요'
-                : '키오스크에서 사용할 코드를 발급해 주세요.'}
-          </p>
-          {code && !expired && (
-            <p className="uw-countdown">
-              <Clock3 size={16} aria-hidden="true" />
-              남은 시간{' '}
-              <strong>
-                {String(Math.floor(seconds / 60)).padStart(2, '0')}:
-                {String(seconds % 60).padStart(2, '0')}
-              </strong>
-            </p>
-          )}
           <button
-            className={code && !expired ? 'secondary full' : 'primary full'}
-            onClick={() => void issue()}
+            className="secondary uw-copy-code"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(code.value);
+                setCopyMessage('코드를 복사했어요.');
+              } catch {
+                setCopyMessage('복사하지 못했어요. 코드를 직접 입력해 주세요.');
+              }
+            }}
           >
-            {code ? '새 코드 발급' : '이용 코드 발급'}
+            <Copy size={16} />
+            복사
           </button>
-          {code && !expired && (
-            <p className="uw-caption">
-              유효한 코드가 있으면 같은 코드가 표시돼요. 사용 여부는 키오스크에서 확인합니다.
-            </p>
-          )}
+          <span role="status">{copyMessage}</span>
+          <p className="uw-code-status">키오스크에 입력해 주세요</p>
+          <p className="uw-caption">대여·반납 후에는 새 코드로 자동 변경돼요.</p>
         </>
-      )}
-      {!compact && (
-        <p className="uw-caption">
-          코드는 본인만 사용해 주세요. 코드 발급만으로 대여·반납이 완료되지 않아요.
-        </p>
       )}
     </section>
   );
 }
 const menu = [
-  { to: '/mobile', label: '홈', icon: Home },
   { to: '/mobile/items', label: '물품 조회', icon: Box },
-  { to: '/mobile/rentals', label: '대여 내역', icon: ClipboardList },
+  { to: '/mobile/rentals', label: '내 대여 현황', icon: ClipboardList },
   { to: '/mobile/history', label: '이용 이력', icon: History },
-  { to: '/mobile/account', label: '내 정보', icon: UserRound },
 ];
 const savedPositions = new Map<
   string,
   { y: number; main: number; regions: number[]; focus?: string }
 >();
 function Layout() {
+  const { token } = useAuth();
   const location = useLocation();
   const navigationType = useNavigationType();
   const authScreen = /^\/mobile\/(login|signup|recover|change-phone)/.test(location.pathname);
-  const viewKey =
-    location.pathname + ':' + (new URLSearchParams(location.search).get('item') || '');
+  // Opening item details must preserve the mounted catalogue and its scroll position.
+  const viewKey = location.pathname;
   const main = useRef<HTMLElement>(null);
   const remember = (focus?: string) => {
     savedPositions.set(location.key, {
@@ -365,29 +385,20 @@ function Layout() {
       <a className="uw-skip" href="#user-main">
         본문 바로가기
       </a>
-      {!authScreen && (
-        <aside className="uw-sidebar">
-          <Link to="/mobile" aria-label="TagBack 홈">
-            <UserBrand />
-          </Link>
-          <nav aria-label="사용자 메뉴">
-            {menu.map(({ to, label, icon: Icon }) => (
-              <NavLink key={to} to={to} end={to === '/mobile'}>
-                <Icon size={22} aria-hidden="true" />
-                {label}
-              </NavLink>
-            ))}
-          </nav>
-          <p className="uw-sidebar-foot">함께 쓰고, 다시 연결하다.</p>
-        </aside>
-      )}
       <div className="uw-workspace">
         {!authScreen && (
           <header className="uw-header">
             <Link to="/mobile" aria-label="TagBack 홈" className="uw-mobile-brand">
               <UserBrand />
             </Link>
-            <span className="uw-desktop-title">내 물품 관리</span>
+            <nav className="uw-top-nav" aria-label="사용자 메뉴">
+              {menu.map(({ to, label, icon: Icon }) => (
+                <NavLink key={to} to={to}>
+                  <Icon size={20} aria-hidden="true" />
+                  {label}
+                </NavLink>
+              ))}
+            </nav>
             <Link className="uw-account-link" to="/mobile/account" aria-label="내 계정">
               <UserRound size={22} />
               <span>내 정보</span>
@@ -407,16 +418,15 @@ function Layout() {
           <Outlet />
         </main>
       </div>
-      {!authScreen && (
+      {!authScreen && token && (
         <nav className="uw-bottom-nav" aria-label="모바일 메뉴">
           {menu
-            .filter((x) => x.to !== '/mobile/history')
+            .filter(() => true)
             .map(({ to, label, icon: Icon }) => {
               const active =
                 to === '/mobile'
                   ? location.pathname === to || location.pathname === to + '/'
-                  : location.pathname.startsWith(to) ||
-                    (to === '/mobile/rentals' && location.pathname.startsWith('/mobile/history'));
+                  : location.pathname.startsWith(to);
               return (
                 <Link
                   key={to}
@@ -425,7 +435,7 @@ function Layout() {
                   aria-current={active ? 'page' : undefined}
                 >
                   <Icon size={24} aria-hidden="true" />
-                  <span>{label === '물품 조회' ? '물품' : label}</span>
+                  <span>{label}</span>
                 </Link>
               );
             })}
@@ -448,9 +458,6 @@ function GuestHome() {
       <Link className="primary full" to="/mobile/login">
         로그인
       </Link>
-      <Link className="secondary full" to="/mobile/signup">
-        회원가입
-      </Link>
       <Link className="uw-text-link" to="/mobile/items">
         물품 둘러보기 <ArrowRight size={18} />
       </Link>
@@ -463,145 +470,177 @@ function HomePage() {
 }
 function MemberHome() {
   const { token } = useAuth();
-  const profile = useResource(() => api.me(token), [token]);
-  const rentals = useResource(() => api.rentals(token), [token], true);
+  const rentals = useResource(() => api.rentals(token), [token], true, true);
   const rows = rentals.data?.filter((x) => !x.returnedAt);
   return (
-    <>
-      <Heading
-        title={profile.data ? `안녕하세요, ${profile.data.name}님!` : '안녕하세요!'}
-        description="필요한 물품을 찾고, 이용 코드를 발급해 키오스크에서 대여·반납해 보세요."
-      />
-      {profile.error && <Failure error={profile.error} retry={profile.reload} />}
-      <div className="uw-home-grid">
-        <div className="uw-home-primary">
-          <section className="uw-hero">
-            <ScanLine size={52} aria-hidden="true" />
-            <div>
-              <h2>이용 코드 발급</h2>
-              <p>
-                키오스크에서 대여·반납할 때 사용할
-                <br className="uw-desktop-break" /> 이용 코드를 준비해 주세요.
-              </p>
-            </div>
-            <Link to="/mobile/code" className="uw-hero-button">
-              이용 코드 발급하기 <ArrowRight size={20} />
-            </Link>
-          </section>
-          <div className="uw-shortcuts">
-            {menu.slice(1, 4).map(({ to, label, icon: Icon }) => (
-              <Link to={to} key={to}>
-                <Icon size={30} aria-hidden="true" />
-                <strong>{label}</strong>
-                <ChevronRight size={18} aria-hidden="true" />
-                <p>
-                  {to.endsWith('items')
-                    ? '대여 가능한 물품을 확인해요.'
-                    : to.endsWith('rentals')
-                      ? '지금 빌린 물품을 확인해요.'
-                      : '지난 이용 기록을 확인해요.'}
-                </p>
-              </Link>
-            ))}
-          </div>
-          <section className="uw-card uw-home-rentals">
-            <div className="uw-section-title">
-              <h2>내 대여 물품</h2>
-              {rows && <span>{rows.length}개</span>}
-            </div>
-            {rentals.loading ? (
-              <Loading />
-            ) : rentals.error ? (
-              <Failure error={rentals.error} retry={rentals.reload} />
-            ) : !rows?.length ? (
-              <State title="대여 중인 물품이 없어요">
-                <Link className="uw-text-link" to="/mobile/items">
-                  물품 찾아보기 <ArrowRight size={18} />
-                </Link>
-              </State>
-            ) : (
-              <div
-                className="uw-rental-list"
-                data-scroll-region
-                tabIndex={0}
-                aria-label="최근 대여 물품"
-              >
-                {rows.slice(0, 3).map((row) => (
-                  <RentalRow key={row.id} row={row} />
-                ))}
-                <Link className="uw-text-link" to="/mobile/rentals">
-                  대여 내역 전체 보기 <ArrowRight size={18} />
-                </Link>
-              </div>
-            )}
-          </section>
-        </div>
-        <aside className="uw-home-aside">
+    <div className="uw-depot-home">
+      <h1 className="uw-sr-only">홈</h1>
+      <div className="uw-depot-grid">
+        <div className="uw-ticket">
           <CodeCard compact />
-          <Notice>
-            대여와 반납은 현장 키오스크에서 진행해요. 처리 결과는 대여 내역과 이용 이력에서 확인할
-            수 있어요.
-          </Notice>
-        </aside>
+        </div>
+        <section className="uw-card uw-home-rentals uw-depot-rentals">
+          <div className="uw-section-title">
+            <h2>대여 중인 물품</h2>
+            {rows && <span>{rows.length}개</span>}
+            <Link className="uw-text-link" to="/mobile/rentals">
+              전체 보기 <ChevronRight size={18} aria-hidden="true" />
+            </Link>
+          </div>
+          <RefreshStatus resource={rentals} />
+          {rentals.loading ? (
+            <Loading />
+          ) : rentals.error ? (
+            <Failure error={rentals.error} retry={rentals.reload} />
+          ) : !rows?.length ? (
+            <State title="대여 중인 물품이 없어요">
+              <Link className="uw-text-link" to="/mobile/items">
+                물품 둘러보기 <ArrowRight size={18} aria-hidden="true" />
+              </Link>
+            </State>
+          ) : (
+            <div
+              className="uw-rental-list"
+              data-scroll-region
+              tabIndex={0}
+              aria-label="최근 대여 물품"
+            >
+              {rows.slice(0, 3).map((row) => (
+                <RentalRow key={row.id} row={row} compact />
+              ))}
+            </div>
+          )}
+        </section>
       </div>
-    </>
+    </div>
   );
 }
+function CatalogDetails({ children, close }: { children: ReactNode; close: () => void }) {
+  const panel = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const origin = document.querySelector<HTMLElement>('.uw-product.selected');
+    panel.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
+    return () => {
+      requestAnimationFrame(() => origin?.isConnected && origin.focus({ preventScroll: true }));
+    };
+  }, []);
+  return (
+    <section
+      ref={panel}
+      className="uw-detail-panel uw-detail-page"
+      aria-label="물품 상세"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') close();
+      }}
+    >
+      <header className="uw-detail-heading">
+        <h1 tabIndex={-1}>물품 상세</h1>
+        <button
+          type="button"
+          className="secondary uw-detail-back"
+          aria-label="물품 상세 닫기"
+          onClick={close}
+        >
+          <ArrowLeft size={18} /> 목록으로
+        </button>
+      </header>
+      {children}
+    </section>
+  );
+}
+const itemState: Record<string, string> = {
+  available: '대여 가능',
+  rented: '대여 중',
+  inspection: '점검 중',
+  repair: '수리 중',
+  pending: '태그 등록 대기',
+};
 function CatalogPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [params, setParams] = useSearchParams();
   const query = params.get('q') || '';
-  const r = useResource(() => publicCatalogHttp(query), [query], true);
+  const r = useResource(() => publicCatalogHttp(query), [query], true, true);
   const category = params.get('category') || '전체';
   const selected = params.get('item');
   const categories = ['전체', ...new Set(r.data?.kinds.map((k) => k.category) || [])];
-  const kinds = r.data?.kinds.filter((k) => category === '전체' || k.category === category);
+  const kinds = r.data?.items.filter(
+    (i) =>
+      (category === '전체' ||
+        r.data?.kinds.find((k) => k.id === i.kindId)?.category === category) &&
+      (params.get('available') !== 'true' || i.status === 'available'),
+  );
   function update(key: string, value: string) {
     const next = new URLSearchParams(params);
     value ? next.set(key, value) : next.delete(key);
     next.delete('item');
     setParams(next, { replace: true });
   }
-  const selectedKind = r.data?.kinds.find((k) => k.id === selected);
+  const selectedKind = r.data?.items.find((k) => k.id === selected);
+  function closeDetails() {
+    if (location.state?.catalogOverlay) navigate(-1);
+    else {
+      const next = new URLSearchParams(params);
+      next.delete('item');
+      setParams(next, { replace: true });
+    }
+  }
   return (
     <>
-      <Heading title="물품 조회" description="대여 가능한 물품을 검색하고 확인해 보세요.">
-        <button className="secondary" onClick={r.reload} disabled={r.loading}>
-          <RefreshCw size={18} />
-          새로고침
-        </button>
-      </Heading>
-      <div className="uw-catalog-controls">
-        <label className="uw-search">
-          <Search size={20} aria-hidden="true" />
-          <input
-            aria-label="물품명 검색"
-            placeholder="물품을 검색해 보세요"
-            value={query}
-            onChange={(e) => update('q', e.target.value)}
-          />
-          {query && (
-            <button onClick={() => update('q', '')} aria-label="검색어 지우기">
-              <X size={18} />
-            </button>
-          )}
-        </label>
-        <p className="uw-station">
-          <MapPin size={18} />
-          {r.data?.stations[0]?.name || '대여소 확인 중'}
-        </p>
-        <div className="uw-filters" aria-label="물품 분류">
-          {categories.map((c) => (
-            <button
-              key={c}
-              aria-pressed={category === c}
-              className={category === c ? 'selected' : ''}
-              onClick={() => update('category', c)}
-            >
-              {c}
-            </button>
-          ))}
+      <div className="uw-catalog-heading-controls" hidden={!!selected}>
+        <Heading title="물품 조회">
+          <button className="secondary" onClick={r.reload} disabled={r.loading}>
+            <RefreshCw size={18} />
+            새로고침
+          </button>
+        </Heading>
+        <div className="uw-catalog-controls">
+          <label className="uw-search">
+            <Search size={20} aria-hidden="true" />
+            <input
+              aria-label="물품명 검색"
+              placeholder="물품명 검색"
+              value={query}
+              onChange={(e) => update('q', e.target.value)}
+            />
+            {query && (
+              <button onClick={() => update('q', '')} aria-label="검색어 지우기">
+                <X size={18} />
+              </button>
+            )}
+          </label>
+          <Link className="primary uw-catalog-code" to="/mobile/code">
+            <Ticket size={20} />
+            이용 코드 보기
+          </Link>
+          <p className="uw-station">
+            <MapPin size={18} />
+            {r.data?.stations[0]?.name || '대여소 확인 중'}
+          </p>
+          <label className="uw-available-filter">
+            <input
+              type="checkbox"
+              checked={params.get('available') === 'true'}
+              onChange={(e) => update('available', e.target.checked ? 'true' : '')}
+            />{' '}
+            대여 가능만
+          </label>
+          <div className="uw-filters" aria-label="물품 분류">
+            {categories.map((c) => (
+              <button
+                key={c}
+                aria-pressed={category === c}
+                className={category === c ? 'selected' : ''}
+                onClick={() => update('category', c)}
+              >
+                {c}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
+      {!selected && <RefreshStatus resource={r} />}
+      {kinds && !selected && <p className="uw-result-count">전체 {kinds.length}개 물품</p>}
       {r.loading ? (
         <Loading />
       ) : r.error ? (
@@ -620,13 +659,18 @@ function CatalogPage() {
           )}
         </State>
       ) : (
-        <div className={`uw-master-detail ${selectedKind ? 'has-selection' : ''}`}>
-          <div className="uw-products" data-scroll-region tabIndex={0} aria-label="물품 목록">
+        <div
+          className={`uw-master-detail uw-catalog-layout ${selectedKind ? 'has-selection' : ''}`}
+        >
+          <div
+            className="uw-products uw-individual-items"
+            hidden={!!selected}
+            data-scroll-region
+            tabIndex={0}
+            aria-label="물품 목록"
+          >
             {kinds.map((k) => {
-              const items = r.data!.items.filter((i) => i.kindId === k.id);
-              const available =
-                k.availableCount ??
-                items.filter((i) => i.active && i.status === 'available').length;
+              const available = k.status === 'available';
               const next = new URLSearchParams(params);
               next.set('item', k.id);
               return (
@@ -634,35 +678,37 @@ function CatalogPage() {
                   className={`uw-product ${selected === k.id ? 'selected' : ''}`}
                   key={k.id}
                   to={`/mobile/items?${next}`}
+                  state={{ catalogOverlay: true }}
                 >
                   <div className="uw-product-art">
-                    <ItemIcon name={k.name} />
+                    {k.image ? (
+                      <img src={k.image} alt={k.name || k.label} />
+                    ) : (
+                      <ItemIcon name={k.name || k.label} />
+                    )}
                   </div>
-                  <span className="uw-caption">{k.category}</span>
+                  <span className="uw-category">
+                    {r.data?.kinds.find((kind) => kind.id === k.kindId)?.category || '물품'}
+                  </span>
+                  <span className="uw-caption">#{k.id}</span>
                   <h2>{k.name}</h2>
-                  <Pill tone={available ? 'green' : 'gray'}>
-                    {available ? `대여 가능 ${available}개` : '현재 대여 불가'}
-                  </Pill>
-                  <ChevronRight className="uw-product-arrow" size={20} />
+                  <Pill tone={available ? 'green' : 'gray'}>{itemState[k.status]}</Pill>
+                  <span className="uw-product-detail">
+                    상세 보기 <ChevronRight size={16} />
+                  </span>
                 </Link>
               );
             })}
           </div>
           {selected && (
-            <aside className="uw-detail-panel" aria-label="물품 상세">
-              <Link
-                className="uw-panel-close"
-                to={`/mobile/items?${new URLSearchParams([...params].filter(([key]) => key !== 'item'))}`}
-                aria-label="물품 상세 닫기"
-              >
-                <X size={20} />
-              </Link>
+            <CatalogDetails close={closeDetails}>
+              <RefreshStatus resource={r} />
               {selectedKind ? (
                 <ItemDetails kindId={selected} catalog={r.data!} />
               ) : (
                 <State title="물품을 찾을 수 없어요" />
               )}
-            </aside>
+            </CatalogDetails>
           )}
         </div>
       )}
@@ -676,55 +722,55 @@ function ItemDetails({
   kindId: string;
   catalog: Awaited<ReturnType<typeof api.catalog>>;
 }) {
-  const kind = catalog.kinds.find((k) => k.id === kindId)!;
-  const items = catalog.items.filter((i) => i.kindId === kindId);
-  const available =
-    kind.availableCount ?? items.filter((i) => i.active && i.status === 'available').length;
+  const item = catalog.items.find((i) => i.id === kindId)!;
+  const kind = catalog.kinds.find((k) => k.id === item.kindId);
   return (
     <div className="uw-item-detail">
       <div className="uw-product-art">
-        <ItemIcon name={kind.name} />
+        {item.image ? <img src={item.image} alt={item.label} /> : <ItemIcon name={item.label} />}
       </div>
-      <h2>{kind.name}</h2>
-      {kind.description && <p>{kind.description}</p>}
-      <Pill tone={available ? 'green' : 'gray'}>{available ? '대여 가능' : '현재 대여 불가'}</Pill>
-      <dl className="uw-facts">
-        <div>
-          <dt>대여소</dt>
-          <dd>{catalog.stations[0]?.name}</dd>
-        </div>
-        <div>
-          <dt>대여 가능</dt>
-          <dd>
-            {available}개 / 전체 {kind.totalCount ?? items.length}개
-          </dd>
-        </div>
-      </dl>
-      <Notice>대여와 반납은 키오스크에서 진행해요. 현재 재고는 예약을 의미하지 않아요.</Notice>
-      {available > 0 ? (
-        <Link className="primary full" to="/mobile/code">
-          이용 코드 발급 <ArrowRight size={18} />
+      <div className="uw-detail-information">
+        <span className="uw-category">{kind?.category || '물품'}</span>
+        <h2>{item.label}</h2>
+        <Pill tone={item.status === 'available' ? 'green' : 'gray'}>{itemState[item.status]}</Pill>
+        {kind?.description && <p className="uw-detail-description">{kind.description}</p>}
+        <dl className="uw-facts">
+          <div>
+            <dt>식별번호</dt>
+            <dd>#{item.id}</dd>
+          </div>
+          <div>
+            <dt>종류</dt>
+            <dd>{kind?.name}</dd>
+          </div>
+          <div>
+            <dt>대여소</dt>
+            <dd>{catalog.stations[0]?.name}</dd>
+          </div>
+        </dl>
+        <Notice>대여와 반납은 키오스크에서 진행해요.</Notice>
+        <Link className="primary" to="/mobile/code">
+          <Ticket size={20} />
+          이용 코드 보기
         </Link>
-      ) : (
-        <Link className="secondary full" to="/mobile/items">
-          다른 물품 찾아보기
-        </Link>
-      )}
+      </div>
     </div>
   );
 }
+
 function LegacyItemDetail() {
   const { id } = useParams();
-  const r = useResource(() => publicCatalogHttp('', id), [id], true);
+  const r = useResource(() => publicCatalogHttp(), [id], true, true);
   return (
     <>
       <Back to="/mobile/items">물품 목록으로</Back>
       <Heading title="물품 상세" />
+      <RefreshStatus resource={r} />
       {r.loading ? (
         <Loading />
       ) : r.error ? (
         <Failure error={r.error} retry={r.reload} />
-      ) : !r.data?.kinds.some((k) => k.id === id) ? (
+      ) : !r.data?.items.some((k) => k.id === id) ? (
         <State title="물품을 찾을 수 없어요">
           <Link to="/mobile/items">물품 목록으로</Link>
         </State>
@@ -749,7 +795,7 @@ function CodePage() {
   }, []);
   return (
     <div className="uw-code-page">
-      <Heading title="나의 이용 코드" description="대여·반납할 때 현장 키오스크에 입력해 주세요." />
+      <Heading title="나의 이용 코드" />
       <CodeCard />
       <details className="uw-card uw-code-help" ref={instructions}>
         <summary>대여·반납 이용 방법</summary>
@@ -757,11 +803,11 @@ function CodePage() {
           <h2>이렇게 대여하세요</h2>
           <ol>
             <li>키오스크에서 이용 코드를 입력해요.</li>
-            <li>대여할 물품 종류를 선택해요.</li>
-            <li>NFC 인식 후 대여를 확정해요.</li>
+            <li>대여할 물품의 NFC 태그를 인식해요.</li>
+            <li>물품 정보를 확인하고 대여를 확정해요.</li>
           </ol>
           <h2>반납할 때는</h2>
-          <p>NFC 인식 → 정상·손상 상태 선택 → 본인의 이용 코드 입력 → 반납 확정</p>
+          <p>NFC 인식 → 정상·손상 상태 선택 → 이용 코드 입력 → 반납 확정</p>
           <Link className="uw-text-link" to="/mobile/rentals">
             대여 내역 확인 <ArrowRight size={18} />
           </Link>
@@ -770,33 +816,87 @@ function CodePage() {
     </div>
   );
 }
-function RentalRow({ row, history = false }: { row: Rental; history?: boolean }) {
+function RentalRow({
+  row,
+  history = false,
+  compact = false,
+}: {
+  row: Rental;
+  history?: boolean;
+  compact?: boolean;
+}) {
+  const location = useLocation();
   const overdue = !row.returnedAt && row.overdue === true;
+  if (compact)
+    return (
+      <Link className="uw-depot-item" to={`/mobile/rentals/${row.id}`}>
+        <span className="uw-rental-art">
+          <ItemPicture src={row.image} alt={row.itemName || row.itemTypeName} />
+        </span>
+        <div>
+          <strong>{row.itemTypeName || '물품'}</strong>
+          <span className="uw-depot-item-label">{row.itemName}</span>
+          <time
+            className={`uw-due-tag ${overdue ? 'overdue' : ''}`}
+            dateTime={new Date(row.dueAt).toISOString()}
+          >
+            {overdue ? '기한 초과 · ' : '반납 예정 · '}
+            {new Intl.DateTimeFormat('ko-KR', {
+              timeZone: 'Asia/Seoul',
+              month: 'numeric',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+            }).format(row.dueAt)}
+          </time>
+        </div>
+        <ChevronRight size={18} aria-hidden="true" />
+      </Link>
+    );
   return (
-    <Link className="uw-rental-row" to={`/mobile/${history ? 'history' : 'rentals'}/${row.id}`}>
-      <ItemIcon name={row.itemTypeName || '물품'} />
-      <div className="uw-rental-name">
+    <Link
+      className={`uw-rental-row ${history ? 'uw-history-entry' : 'uw-loan-tag'} ${overdue ? 'is-overdue' : ''}`}
+      to={`/mobile/${history ? 'history' : 'rentals'}/${row.id}${location.search}`}
+    >
+      <span className="uw-rental-art">
+        <ItemPicture src={row.image} alt={row.itemName || row.itemTypeName} />
+      </span>
+      <div className="uw-record-name">
         <strong>{row.itemTypeName || '물품'}</strong>
         <span>{row.itemName}</span>
       </div>
-      <div className="uw-rental-date">
-        <span>대여일</span>
-        <time>{stamp(row.rentedAt)}</time>
-      </div>
-      <div className="uw-rental-date">
-        <span>{history ? '반납일' : '반납 예정'}</span>
-        <time>{stamp(row.returnedAt || row.dueAt)}</time>
-      </div>
-      <Pill tone={history ? 'green' : overdue ? 'red' : 'blue'}>
-        {history ? '반납 완료' : overdue ? '반납 기한 초과' : '대여 중'}
-      </Pill>
-      <ChevronRight size={18} aria-hidden="true" />
+      {history ? (
+        <div className="uw-record-date">
+          <span className="uw-history-status">{row.overdue ? '지연 반납' : '반납 완료'}</span>
+          <span>
+            대여일{' '}
+            <time dateTime={new Date(row.rentedAt).toISOString()}>{stamp(row.rentedAt)}</time>
+          </span>
+          <span>
+            반납 기한 <time dateTime={new Date(row.dueAt).toISOString()}>{stamp(row.dueAt)}</time>
+          </span>
+          <span>
+            반납일{' '}
+            <time dateTime={new Date(row.returnedAt!).toISOString()}>{stamp(row.returnedAt!)}</time>
+          </span>
+        </div>
+      ) : (
+        <>
+          <div className={`uw-loan-deadline ${overdue ? 'overdue' : ''}`}>
+            <span>{overdue ? '반납 기한 초과' : '반납 예정'}</span>
+            <time dateTime={new Date(row.dueAt).toISOString()}>{stamp(row.dueAt)}</time>
+          </div>
+          <span className="uw-loan-start">대여일 · {stamp(row.rentedAt)}</span>
+        </>
+      )}
+      <ChevronRight className="uw-record-arrow" size={18} aria-hidden="true" />
     </Link>
   );
 }
+
 function RentalsPage({ history = false }: { history?: boolean }) {
   const { token } = useAuth();
-  const r = useResource(() => api.rentals(token), [token], true);
+  const r = useResource(() => api.rentals(token), [token], true, true);
   const { id } = useParams();
   const [params, setParams] = useSearchParams();
   const month = params.get('month') || '';
@@ -808,28 +908,39 @@ function RentalsPage({ history = false }: { history?: boolean }) {
       year: 'numeric',
       month: '2-digit',
     }).format(value);
-  const rows = all?.filter(
-    (row) =>
-      `${row.itemTypeName} ${row.itemName}`.toLowerCase().includes(query.trim().toLowerCase()) &&
-      (!month || monthKey(row.returnedAt!) === month),
-  );
+  const rows = all
+    ?.filter(
+      (row) =>
+        `${row.itemTypeName} ${row.itemName}`.toLowerCase().includes(query.trim().toLowerCase()) &&
+        (!month || monthKey(row.returnedAt!) === month),
+    )
+    .sort((a, b) =>
+      history
+        ? b.returnedAt! - a.returnedAt!
+        : Number(!!b.overdue) - Number(!!a.overdue) || a.dueAt - b.dueAt,
+    );
   const selected = r.data?.find((row) => row.id === id);
-  const base = `/mobile/${history ? 'history' : 'rentals'}`;
+  const base = `/mobile/${history ? 'history' : 'rentals'}${params.size ? '?' + params.toString() : ''}`;
   return (
     <>
-      <Heading
-        title={history ? '이용 이력' : '대여 내역'}
-        description={
-          history
-            ? '그동안 이용한 대여·반납 기록을 확인해 보세요.'
-            : '현재 대여 중인 물품과 반납 예정일을 확인해 보세요.'
-        }
-      >
+      <Heading title={history ? '이용 이력' : '내 대여 현황'}>
         <button className="secondary" disabled={r.loading} onClick={r.reload}>
           <RefreshCw size={18} />
           새로고침
         </button>
       </Heading>
+      {!history && all && (
+        <div className="uw-rental-summary" aria-label="내 대여 요약">
+          <div>
+            <span>미반납 (연체 포함)</span>
+            <strong>{all.length}개</strong>
+          </div>
+          <div>
+            <span>연체</span>
+            <strong>{all.filter((row) => row.overdue).length}개</strong>
+          </div>
+        </div>
+      )}
       {!history && (
         <Link className="uw-text-link uw-history-link" to="/mobile/history">
           <History size={18} />
@@ -871,6 +982,7 @@ function RentalsPage({ history = false }: { history?: boolean }) {
           </label>
         </div>
       )}
+      <RefreshStatus resource={r} />
       {r.loading ? (
         <Loading />
       ) : r.error ? (
@@ -904,7 +1016,7 @@ function RentalsPage({ history = false }: { history?: boolean }) {
               </State>
             ) : (
               <div
-                className="uw-rental-list"
+                className={`uw-rental-list ${history ? 'uw-history-entries' : 'uw-loan-tags'}`}
                 data-scroll-region
                 tabIndex={0}
                 aria-label={history ? '이용 이력 목록' : '대여 물품 목록'}
@@ -939,7 +1051,9 @@ function RentalDetails({ row }: { row: Rental }) {
   return (
     <div className="uw-item-detail">
       <h2>대여 상세</h2>
-      <ItemIcon name={row.itemTypeName || '물품'} />
+      <span className="uw-rental-art">
+        <ItemPicture src={row.image} alt={row.itemName || row.itemTypeName} />
+      </span>
       <h3>{row.itemTypeName || '물품'}</h3>
       <p>{row.itemName}</p>
       <Pill tone={row.returnedAt ? 'green' : overdue ? 'red' : 'blue'}>
@@ -975,10 +1089,10 @@ function RentalDetails({ row }: { row: Rental }) {
         <>
           <Notice>
             <strong>반납은 키오스크에서 진행해 주세요.</strong>
-            <p>NFC 인식 → 상태 선택 → 본인 코드 입력 → 반납 확정</p>
+            <p>이용 코드 입력 → NFC 인식 → 상태 선택 → 반납 확정</p>
           </Notice>
           <Link to="/mobile/code" className="primary full">
-            이용 코드 발급
+            이용 코드 보기
           </Link>
         </>
       )}
@@ -989,7 +1103,6 @@ function AccountPage() {
   const { token, setToken } = useAuth();
   const nav = useNavigate();
   const profile = useResource(() => api.me(token), [token]);
-  const rentals = useResource(() => api.rentals(token), [token], true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>();
   const locked = useRef(false);
@@ -1013,10 +1126,10 @@ function AccountPage() {
   }
   return (
     <div className="uw-account">
-      <Heading title="내 정보" description="계정 정보와 이용 현황을 확인해 보세요." />
+      <Heading title="내 정보" />
       {error ? (
         <>
-          <Failure error={error} retry={() => void logout()} />
+          <Failure error={error} retry={() => void logout()} title="로그아웃을 확인하지 못했어요" />
           <p>로그아웃 결과를 확인하지 못해 개인정보를 가렸어요.</p>
         </>
       ) : profile.loading ? (
@@ -1025,46 +1138,13 @@ function AccountPage() {
         <Failure error={profile.error} retry={profile.reload} />
       ) : (
         <>
-          <section className="uw-card uw-profile">
+          <section className="uw-card uw-profile uw-member-pass">
             <UserRound size={40} aria-hidden="true" />
             <div>
+              <span className="uw-member-label">캠퍼스 이용자</span>
               <h2>{profile.data?.name}님</h2>
               <p>{profile.data?.occupation}</p>
             </div>
-          </section>
-          {rentals.loading ? (
-            <Loading />
-          ) : rentals.error ? (
-            <Failure error={rentals.error} retry={rentals.reload} />
-          ) : (
-            <div className="uw-account-stats">
-              <Link to="/mobile/rentals">
-                <Box />
-                <span>대여 중</span>
-                <strong>{rentals.data?.filter((r) => !r.returnedAt).length}</strong>
-                <ChevronRight />
-              </Link>
-              <Link to="/mobile/history">
-                <History />
-                <span>이용 이력</span>
-                <strong>{rentals.data?.filter((r) => !!r.returnedAt).length}</strong>
-                <ChevronRight />
-              </Link>
-            </div>
-          )}
-          <section className="uw-card uw-settings">
-            <Link to="/mobile/recover">
-              PIN 재설정
-              <ChevronRight size={20} />
-            </Link>
-            <Link to="/mobile/history">
-              이용 이력
-              <ChevronRight size={20} />
-            </Link>
-            <Link to="/mobile/code">
-              내 이용 코드
-              <ChevronRight size={20} />
-            </Link>
           </section>
           <button className="secondary full" disabled={busy} onClick={() => void logout()}>
             {busy ? '로그아웃 중…' : '로그아웃'}
@@ -1074,7 +1154,7 @@ function AccountPage() {
     </div>
   );
 }
-function AuthPage({ mode = 'access' }: { mode?: 'access' | 'signup' | 'reset' | 'change' }) {
+function AuthPage({ mode = 'access' }: { mode?: 'access' | 'signup' }) {
   const { token, setToken } = useAuth();
   return (
     <>
@@ -1201,8 +1281,8 @@ export default function UserWeb() {
                 <Route path="items/:id" element={<LegacyItemDetail />} />
                 <Route path="login" element={<AuthPage key="login" />} />
                 <Route path="signup" element={<AuthPage key="signup" mode="signup" />} />
-                <Route path="recover" element={<AuthPage key="reset" mode="reset" />} />
-                <Route path="change-phone" element={<AuthPage key="change" mode="change" />} />
+                <Route path="recover" element={<Navigate to="/mobile/login" replace />} />
+                <Route path="change-phone" element={<Navigate to="/mobile/login" replace />} />
                 <Route
                   path="code"
                   element={

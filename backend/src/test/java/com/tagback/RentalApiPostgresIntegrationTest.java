@@ -3,7 +3,7 @@ package com.tagback;
 import com.tagback.config.AuthCookies;
 import com.tagback.domain.entity.*;
 import com.tagback.domain.repository.*;
-import com.tagback.service.sms.SmsSecrets;
+import com.tagback.service.AuthSecrets;
 import jakarta.servlet.http.Cookie;
 import java.sql.Timestamp;
 import java.time.*;
@@ -31,7 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** HTTP boundary + actual Flyway/PostgreSQL transactions. No test-wide transaction or mocked authentication. */
 @EnabledIfEnvironmentVariable(named = "TAGBACK_ITEM_DB_TEST", matches = "true")
 @SpringBootTest(properties = {
-        "spring.profiles.active=sms-mock",
+        "spring.profiles.active=sms-mock", "tagback.rental.new-codes-per-user-per-hour=10",
         "spring.datasource.url=jdbc:postgresql://127.0.0.1:${TAGBACK_ITEM_DB_PORT:55440}/tagback_items_test",
         "spring.datasource.username=postgres", "spring.datasource.password=",
         "tagback.nfc.scan-secret=test-only-nfc-scan-secret-32-bytes-long",
@@ -62,7 +62,7 @@ class RentalApiPostgresIntegrationTest {
     @Autowired ItemTypeRepository types;
     @Autowired ItemRepository items;
     @Autowired NfcTagRepository tags;
-    @Autowired SmsSecrets secrets;
+    @Autowired AuthSecrets secrets;
     private long userId;
     private long otherUserId;
     private long itemId;
@@ -107,9 +107,32 @@ class RentalApiPostgresIntegrationTest {
         });
     }
 
+    @Test void refreshInvalidatesNewVerificationButPreservesVerifiedCheckoutAndRefreshesAfterCompletion() throws Exception {
+        String first=issue(member);String token=verify(first);String replacement=issue(member);
+        assertNotEquals(first,replacement);assertEquals(replacement,current(member));
+        mvc.perform(post("/api/v1/kiosk/rental-grants").contentType("application/json").content(json.writeValueAsString(Map.of("code",first)))).andExpect(status().isUnauthorized());
+        perform(token,key(),body(itemId)).andExpect(status().isCreated());
+        assertNotEquals(replacement,current(member));
+    }
+    @Test void verifiedReturnSurvivesRotationAndPreservesExactReplay() throws Exception {
+        perform(verify(issue(member)),key(),body(itemId)).andExpect(status().isCreated());
+        String displayed=issue(member);String grant=verify(displayed);String replacement=issue(member);
+        var proof=scanProof("04A23B1C5D6E80");String ticket=scanFor(proof);
+        var body=json.writeValueAsString(Map.of("scanTicketId",ticket,"proof",proof,"condition","NORMAL","returnCode",displayed,"grantToken",grant));
+        mvc.perform(post("/api/v1/rentals/return").contentType("application/json").content(body)).andExpect(status().isOk()).andExpect(jsonPath("$.rentalStatus").value("RETURNED"));
+        assertNotEquals(replacement,current(member));
+        mvc.perform(post("/api/v1/rentals/return").contentType("application/json").content(body)).andExpect(status().isOk());
+        assertEquals(1,jdbc.queryForObject("select count(*) from rentals where item_id=? and returned_at is not null",Integer.class,itemId));
+    }
+    @Test void verifiedCheckoutCanFinishAfterTheDisplayedCodeExpires() throws Exception {
+        String code=issue(member);clock.set(NOW.plusSeconds(170));String token=verify(code);
+        clock.set(NOW.plusSeconds(181));current(member);
+        perform(token,key(),body(itemId)).andExpect(status().isCreated());
+    }
+
     @Test void storesRentalAndReturnsAllFieldsThenReplaysOriginalSnapshot() throws Exception {
         String code = issue(member);
-        assertEquals(code, issue(member));
+        assertEquals(code, current(member));
         String token = verify(code);
         assertEquals(0, count("rentals"));
         String key = key();
@@ -153,7 +176,7 @@ class RentalApiPostgresIntegrationTest {
         mvc.perform(delete("/api/items/" + itemId + "/tag").header("Authorization", "Bearer " + token)
                         .param("expectedUid", "04A23B1C5D6E80"))
                 .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.error.code").value("SESSION_REQUIRED"));
+                .andExpect(jsonPath("$.error.code").value("SESSION_EXPIRED"));
         clock.set(NOW.plusSeconds(180));
         mvc.perform(get("/api/tags/04A23B1C5D6E80").header("Authorization", "Bearer " + token))
                 .andExpect(status().isGone())
@@ -605,12 +628,12 @@ class RentalApiPostgresIntegrationTest {
 
     @Test void expiredCodeIsReleasedAndIssueRetryDoesNotCreateNewActiveCodes() throws Exception {
         String first = issue(member);
-        assertEquals(first, issue(member));
+        assertEquals(first, current(member));
         clock.set(NOW.plusSeconds(180));
         mvc.perform(post("/api/v1/kiosk/rental-grants").contentType("application/json").content("{\"code\":\"" + first + "\"}"))
                 .andExpect(status().isUnauthorized());
         String next = issue(member);
-        assertEquals(next, issue(member));
+        assertEquals(next, current(member));
         assertEquals(2, jdbc.queryForObject("select count(*) from rental_codes where user_id = ?", Integer.class, userId));
         assertEquals(1, jdbc.queryForObject("select count(*) from rental_codes where user_id = ? and code_hash is not null", Integer.class, userId));
         verify(next);
@@ -622,7 +645,7 @@ class RentalApiPostgresIntegrationTest {
             clock.set(NOW.plusSeconds(n * 180));
             code = issue(member);
         }
-        assertEquals(code, issue(member));
+        assertEquals(code, current(member));
         // Keep the mobile session alive while testing the separate hourly code issuance limit.
         jdbc.update("update login_sessions set idle_expires_at = absolute_expires_at where user_id = ?", userId);
         clock.set(NOW.plusSeconds(1800));
@@ -654,6 +677,9 @@ class RentalApiPostgresIntegrationTest {
         tags.saveAndFlush(new NfcTag(uid, item));
         item.markAvailable(); items.flush();
         return item.getId();
+    }
+    private String current(Cookie cookie) throws Exception {
+        return json.readTree(mvc.perform(get("/api/v1/rental-codes").cookie(cookie)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("code").asText();
     }
     private String issue(Cookie session) throws Exception {
         JsonNode result = json.readTree(mvc.perform(post("/api/v1/rental-codes").cookie(session).contentType("application/json").content("{}"))

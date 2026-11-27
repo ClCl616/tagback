@@ -1,10 +1,10 @@
 /* Scoped to the shared kiosk: user/admin pages retain their own design tokens. */
 .kiosk-shell.kiosk-v2 {
-  --green: #1458f5;
-  --ink: #172033;
-  --muted: #526078;
+  --green: #245443;
+  --ink: #203c32;
+  --muted: #59665e;
   color: var(--ink);
-  background: #f5f7fb;
+  background: #f6f3eb;
   font-size: 18px;
 }
 .kiosk-v2 * {
@@ -16,7 +16,7 @@
 }
 .kiosk-v2 button:focus-visible,
 .kiosk-v2 input:focus-visible {
-  outline: 3px solid #1458f5;
+  outline: 3px solid #245443;
   outline-offset: 4px;
 }
 .kiosk-v2 h1:focus {
@@ -27,28 +27,28 @@
   min-height: 96px;
   padding: 20px max(24px, calc((100vw - 1360px) / 2));
   background: white;
-  border-color: #d8e0ed;
+  border-color: #dce0d5;
   gap: 24px;
   flex-wrap: wrap;
 }
 .kiosk-v2 .brand {
-  color: #172033;
+  color: #203c32;
 }
 .kiosk-v2 .brand-mark {
-  background: #1458f5;
+  background: #245443;
   color: white;
 }
 .kiosk-v2 .kiosk-station {
-  border-color: #d8e0ed;
+  border-color: #dce0d5;
   padding-left: 24px;
 }
 .kiosk-v2 .kiosk-station strong {
   font-size: 18px;
-  color: #172033;
+  color: #203c32;
 }
 .kiosk-v2 .kiosk-station span {
   font-size: 16px;
-  color: #526078;
+  color: #59665e;
 }
 .kiosk-v2 .reader-health {
   font-size: 16px;
@@ -65,14 +65,14 @@
   font-size: clamp(28px, 3.2vw, 44px);
   line-height: 1.4;
   letter-spacing: -1px;
-  color: #172033;
+  color: #203c32;
   overflow-wrap: anywhere;
 }
 .kiosk-v2 .welcome-heading em {
-  color: #1458f5;
+  color: #245443;
 }
 .kiosk-v2 .eyebrow {
-  color: #1458f5;
+  color: #245443;
   font-size: 14px;
   letter-spacing: 2px;
 }
@@ -80,7 +80,7 @@
 .kiosk-v2 .kiosk-title p,
 .kiosk-v2 .code-stage > div > p {
   font-size: 20px;
-  color: #526078;
+  color: #59665e;
 }
 .kiosk-v2 .welcome-heading h1 {
   margin: 12px 0;
@@ -93,20 +93,20 @@
   padding: 32px 32px 0;
   min-height: 280px;
   box-shadow: none;
-  border: 1px solid #d8e0ed;
+  border: 1px solid #dce0d5;
 }
 .kiosk-v2 .rent-action {
-  background: #1458f5;
+  background: #245443;
   color: white;
 }
 .kiosk-v2 .return-action {
   background: white;
-  color: #172033;
+  color: #203c32;
 }
 .kiosk-v2 .return-action .action-symbol {
-  background: #edf3ff;
-  color: #1458f5;
-  border-color: #d8e0ed;
+  background: #edf2e9;
+  color: #245443;
+  border-color: #dce0d5;
 }
 .kiosk-v2 .kiosk-actions h2 {
   font-size: 40px;
@@ -124,11 +124,11 @@
   margin-top: 28px;
 }
 .kiosk-v2 .return-action .action-footer {
-  border-color: #d8e0ed;
+  border-color: #dce0d5;
 }
 .kiosk-v2 .welcome-tip {
   font-size: 18px;
-  color: #526078;
+  color: #59665e;
 }
 .kiosk-v2 .stepper {
   margin-bottom: 24px;
@@ -137,20 +137,20 @@
 }
 .kiosk-v2 .stepper li {
   font-size: 18px;
-  color: #526078;
+  color: #59665e;
 }
 .kiosk-v2 .stepper li > span {
   width: 36px;
   height: 36px;
   font-size: 16px;
-  border-color: #c4cfdf;
+  border-color: #bac8ba;
 }
 .kiosk-v2 .stepper .current {
-  color: #1458f5;
+  color: #245443;
 }
 .kiosk-v2 .stepper .finished > span {
-  color: #1458f5;
-  background: #e7efff;
+  color: #245443;
+  background: #edf2e9;
 }
 .kiosk-v2 .code-stage {
   max-width: 1120px;
@@ -159,16 +159,16 @@
   margin-top: 24px;
 }
 .kiosk-v2 .code-stage strong {
-  color: #172033;
+  color: #203c32;
 }
 .kiosk-v2 .keypad-panel {
   padding: 24px;
-  border-color: #d8e0ed;
+  border-color: #dce0d5;
   border-radius: 24px;
   box-shadow: none;
 }
 .kiosk-v2 .keypad-panel > label {
-  color: #526078;
+  color: #59665e;
   font-size: 18px;
 }
 .kiosk-v2 .kiosk-code-input {
@@ -176,9 +176,9 @@
   height: 80px;
   font-size: 40px;
   letter-spacing: 16px;
-  background: #f5f7fb;
-  color: #172033;
-  border: 1px solid #d8e0ed;
+  background: #f6f3eb;
+  color: #203c32;
+  border: 1px solid #dce0d5;
 }
 .kiosk-v2 .kiosk-code-input::placeholder {
   color: #68768d;
@@ -190,7 +190,7 @@
 .kiosk-v2 .keypad > button {
   height: 64px;
   background: #f1f4f9;
-  color: #172033;
+  color: #203c32;
   font-size: 28px;
   border: 1px solid #e2e8f1;
   border-radius: 12px;
@@ -200,14 +200,14 @@
   font-size: 20px;
 }
 .kiosk-v2 .keypad > button:last-child {
-  background: #1458f5;
+  background: #245443;
   color: white;
-  border-color: #1458f5;
+  border-color: #245443;
 }
 .kiosk-v2 .primary {
   min-height: 64px;
   padding: 16px 24px;
-  background: #1458f5;
+  background: #245443;
   color: white;
   font-size: 20px;
   border-radius: 14px;
@@ -216,8 +216,8 @@
   min-height: 56px;
   padding: 12px 24px;
   background: white;
-  color: #172033;
-  border: 1px solid #c4cfdf;
+  color: #203c32;
+  border: 1px solid #bac8ba;
   font-size: 18px;
 }
 .kiosk-v2 button:disabled {
@@ -229,16 +229,16 @@
 .kiosk-v2 .scan-selection,
 .kiosk-v2 .condition-note,
 .kiosk-v2 .confirm-bottom > p {
-  color: #526078;
+  color: #59665e;
   font-size: 18px;
 }
 .kiosk-v2 .selected-kind {
   background: white;
-  border-color: #d8e0ed;
+  border-color: #dce0d5;
   padding: 16px;
 }
 .kiosk-v2 .selected-kind span {
-  color: #526078;
+  color: #59665e;
   font-size: 16px;
 }
 .kiosk-v2 .selected-kind strong {
@@ -248,13 +248,13 @@
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 .kiosk-v2 .kiosk-product {
-  border-color: #d8e0ed;
+  border-color: #dce0d5;
   border-radius: 24px;
   padding: 24px;
 }
 .kiosk-v2 .kiosk-product:hover:not(:disabled) {
-  background: #edf3ff;
-  border-color: #1458f5;
+  background: #edf2e9;
+  border-color: #245443;
 }
 .kiosk-v2 .kiosk-product .product-art {
   height: 150px;
@@ -267,12 +267,12 @@
   font-size: 16px;
 }
 .kiosk-v2 .scan-status {
-  color: #1458f5;
+  color: #245443;
   font-size: 22px;
   margin: 24px 0;
 }
 .kiosk-v2 .scan-selection strong {
-  color: #172033;
+  color: #203c32;
 }
 .kw-reader-illustration {
   display: flex;
@@ -292,23 +292,23 @@
   border-radius: 24px;
 }
 .kw-tagged-item {
-  color: #1458f5;
-  background: #e7efff;
+  color: #245443;
+  background: #edf2e9;
   border: 2px solid #c4d7ff;
   transform: rotate(-6deg);
 }
 .kw-reader {
   color: white;
-  background: #172033;
+  background: #203c32;
   border-bottom: 12px solid #34445f;
   min-height: 140px;
 }
 .kiosk-v2 .condition-item h2 {
-  color: #172033;
+  color: #203c32;
   font-size: 24px;
 }
 .kiosk-v2 .condition-item p {
-  color: #526078;
+  color: #59665e;
   font-size: 18px;
 }
 .kiosk-v2 .condition-options {
@@ -317,52 +317,52 @@
 .kiosk-v2 .condition-options > button {
   min-height: 190px;
   background: white;
-  border: 2px solid #d8e0ed;
-  color: #172033;
+  border: 2px solid #dce0d5;
+  color: #203c32;
   border-radius: 24px;
   padding: 24px;
 }
 .kiosk-v2 .condition-options > button.selected {
-  border-color: #1458f5;
-  background: #edf3ff;
+  border-color: #245443;
+  background: #edf2e9;
 }
 .kiosk-v2 .condition-options h2 {
   font-size: 26px;
 }
 .kiosk-v2 .condition-options p {
   font-size: 18px;
-  color: #526078;
+  color: #59665e;
 }
 .kiosk-v2 .confirm-panel {
   background: white;
-  border-color: #d8e0ed;
+  border-color: #dce0d5;
   border-radius: 24px;
 }
 .kiosk-v2 .confirm-panel dt {
-  color: #526078;
+  color: #59665e;
   font-size: 18px;
 }
 .kiosk-v2 .confirm-panel dd {
-  color: #172033;
+  color: #203c32;
   font-size: 20px;
   overflow-wrap: anywhere;
 }
 .kiosk-v2 .confirm-panel dl > div {
-  border-color: #d8e0ed;
+  border-color: #dce0d5;
 }
 .kiosk-v2 .confirm-product {
-  border-color: #d8e0ed;
+  border-color: #dce0d5;
 }
 .kiosk-v2 .confirm-product h2 {
-  color: #172033;
+  color: #203c32;
   font-size: 26px;
 }
 .kiosk-v2 .confirm-product > span {
-  color: #526078;
+  color: #59665e;
   font-size: 20px;
 }
 .kiosk-v2 .completion > p {
-  color: #526078;
+  color: #59665e;
   font-size: 20px;
 }
 .kiosk-v2 .success-circle {
@@ -371,26 +371,26 @@
 }
 .kiosk-v2 .completion-detail {
   background: white;
-  border: 1px solid #d8e0ed;
-  color: #172033;
+  border: 1px solid #dce0d5;
+  color: #203c32;
   font-size: 22px;
 }
 .kiosk-v2 .completion-detail span {
-  color: #526078;
+  color: #59665e;
   font-size: 18px;
 }
 .kiosk-v2 .kiosk-footer {
   min-height: 80px;
   height: auto;
   padding: 12px 0 max(12px, env(safe-area-inset-bottom));
-  color: #526078;
+  color: #59665e;
   font-size: 16px;
-  border-color: #d8e0ed;
+  border-color: #dce0d5;
 }
 .kiosk-v2 .kiosk-footer button {
   font-size: 18px;
-  color: #172033;
-  border-color: #d8e0ed;
+  color: #203c32;
+  border-color: #dce0d5;
 }
 .kiosk-inline-error {
   color: #993323;
@@ -418,19 +418,19 @@
   border: 1px solid #dbbb62;
   padding: 16px 24px;
   border-radius: 16px;
-  box-shadow: 0 4px 24px #17203320;
+  box-shadow: 0 4px 24px #203c3220;
 }
 .kiosk-v2 .kw-cancel {
   position: fixed;
   inset: 0;
   margin: auto;
-  border: 1px solid #d8e0ed;
+  border: 1px solid #dce0d5;
   padding: 32px;
   max-width: calc(100% - 32px);
-  color: #172033;
+  color: #203c32;
 }
 .kw-cancel::backdrop {
-  background: #17203399;
+  background: #203c3299;
 }
 .kiosk-tablet .kiosk-main {
   padding-inline: max(32px, env(safe-area-inset-left));
@@ -561,4 +561,167 @@
   flex-wrap: wrap;
 }
 
-.kiosk-v2 .completion .primary { background:#1458f5; }
+.kiosk-v2 .completion .primary {
+  background: #245443;
+}
+
+.kiosk-v2 .welcome-heading .eyebrow {
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+.kiosk-v2 .welcome-heading h1 {
+  font-size: clamp(28px, 3vw, 40px);
+}
+.kiosk-v2 .kiosk-actions > button {
+  border-radius: 18px;
+}
+.kiosk-v2 .return-action {
+  background: #fffdf7;
+  border-color: #9cae9f;
+}
+.kiosk-v2 .stepper .current > span {
+  background: var(--green);
+  color: white;
+  border-color: var(--green);
+}
+.kiosk-v2 .stepper .current {
+  font-weight: 750;
+}
+
+.kiosk-brand-button {
+  border: 0;
+  background: none;
+  color: inherit;
+  padding: 0;
+}
+.kiosk-warning {
+  position: relative;
+  margin-left: auto;
+}
+.kiosk-warning > button {
+  background: #fff2d2;
+  border: 1px solid #ca8035;
+  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  font-size: 28px;
+}
+.kiosk-warning > div {
+  position: absolute;
+  right: 0;
+  top: 52px;
+  min-width: 300px;
+  background: #fff8e8;
+  padding: 20px;
+  border: 1px solid #ca8035;
+  border-radius: 14px;
+  z-index: 20;
+}
+.welcome-main .kiosk-actions {
+  flex: 1;
+  min-height: 48vh;
+}
+.welcome-main .kiosk-actions > button {
+  min-height: 40vh;
+}
+.kiosk-v2 .welcome-main {
+  padding: 24px 4vw;
+  gap: 20px;
+}
+.kiosk-v2 .welcome-heading {
+  margin: 0;
+}
+
+/* Large, illustrated touch targets from the approved kiosk concept. */
+.kiosk-v2 .welcome-main {
+  display: flex;
+  flex-direction: column;
+}
+.kiosk-v2 .welcome-main .kiosk-actions {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  gap: 24px;
+}
+.kiosk-v2 .welcome-main .kiosk-actions > button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  padding: 32px;
+  border: 1px solid #a6c6b3;
+  border-radius: 28px;
+  overflow: hidden;
+  color: #214f3f;
+}
+.kiosk-v2 .welcome-main .rent-action {
+  background: linear-gradient(135deg, #ccebd9, #a7dbc0);
+}
+.kiosk-v2 .welcome-main .return-action {
+  background: linear-gradient(135deg, #fffdf3, #eeeacf);
+}
+.kiosk-v2 .action-illustration {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  min-height: 120px;
+  flex: 1;
+  padding: 16px;
+}
+.kiosk-v2 .action-illustration svg {
+  width: clamp(72px, 10vw, 160px);
+  height: clamp(72px, 10vw, 160px);
+  stroke-width: 1.2;
+  fill: #ffffff55;
+  filter: drop-shadow(0 10px 0 #2454430b);
+  transform: rotate(-9deg);
+}
+.kiosk-v2 .action-illustration svg + svg {
+  transform: rotate(9deg);
+  margin-left: -28px;
+  margin-top: 24px;
+}
+.kiosk-v2 .welcome-main .kiosk-actions h2 {
+  margin: 8px 0;
+}
+.kiosk-v2 .welcome-main .action-footer {
+  position: static;
+  width: 100%;
+  margin-top: 18px;
+  border-top: 1px solid #24544333;
+  padding-top: 18px;
+  color: #245443;
+}
+.kiosk-v2 .welcome-tip {
+  margin: 0;
+  padding: 8px;
+}
+.kiosk-warning > button {
+  display: grid;
+  place-items: center;
+  color: #975b18;
+}
+.kiosk-warning > div {
+  color: #604316;
+  max-width: min(360px, 85vw);
+}
+@media (max-height: 760px) {
+  .kiosk-v2 .welcome-main {
+    gap: 12px;
+    padding: 16px 4vw;
+  }
+  .kiosk-v2 .welcome-main .kiosk-actions > button {
+    padding: 24px;
+  }
+  .kiosk-v2 .action-illustration {
+    min-height: 80px;
+    padding: 0;
+  }
+  .kiosk-v2 .action-illustration svg {
+    width: 90px;
+    height: 90px;
+  }
+}

@@ -3,7 +3,7 @@ package com.tagback;
 import com.tagback.config.AuthCookies;
 import com.tagback.domain.entity.*;
 import com.tagback.domain.repository.*;
-import com.tagback.service.sms.SmsSecrets;
+import com.tagback.service.AuthSecrets;
 import jakarta.persistence.EntityManager;
 import jakarta.servlet.http.Cookie;
 import java.time.Instant;
@@ -27,7 +27,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /** Opt-in, isolated PostgreSQL only; every test rolls its fixture and changes back. */
 @EnabledIfEnvironmentVariable(named = "TAGBACK_ITEM_DB_TEST", matches = "true")
 @SpringBootTest(properties = {
-        "spring.profiles.active=sms-mock",
+        "spring.profiles.active=sms-mock", "tagback.admin.password-hash=isolated-admin-session-fixture",
         "spring.datasource.url=jdbc:postgresql://127.0.0.1:${TAGBACK_ITEM_DB_PORT:55440}/tagback_items_test",
         "spring.datasource.username=postgres", "spring.datasource.password=",
         "spring.jpa.hibernate.ddl-auto=validate", "spring.jpa.open-in-view=false"})
@@ -42,7 +42,8 @@ class ItemCrudPostgresIntegrationTest {
     @Autowired BrowserRegistrationRepository browsers;
     @Autowired LoginSessionRepository sessions;
     @Autowired ItemTypeRepository types;
-    @Autowired SmsSecrets secrets;
+    @Autowired AuthSecrets secrets;
+    private java.util.UUID adminSessionId;
     private Cookie admin;
     private Cookie member;
     private long adminId;
@@ -50,7 +51,13 @@ class ItemCrudPostgresIntegrationTest {
     private long otherTypeId;
 
     @BeforeEach void fixtures() {
-        admin = session("+821011111111", UserRole.ADMIN);
+        session("+821011111111", UserRole.ADMIN); // Legacy user retained for rental fixtures only.
+        adminSessionId=UUID.randomUUID();
+        String adminToken=secrets.generateToken();
+        jdbc.update("insert into administrators(admin_number,name,password_hash,must_change_password) values ('000','Test Owner','isolated-admin-session-fixture',false) on conflict do nothing");
+        jdbc.update("insert into admin_sessions(session_id,token_hash,password_version,channel,created_at,expires_at,admin_number,admin_name) values (?,?,?,'WEB',now(),now()+interval '30 minutes','000','Test Owner')",
+                adminSessionId,com.tagback.service.AdminPassword.digest(adminToken),com.tagback.service.AdminPassword.digest("isolated-admin-session-fixture"));
+        admin = new Cookie(com.tagback.config.AdminCredentials.COOKIE,adminToken);
         member = session("+821022222222", UserRole.USER);
         typeId = types.saveAndFlush(new ItemType("우산", null)).getId();
         otherTypeId = types.saveAndFlush(new ItemType("계산기", null)).getId();
@@ -139,7 +146,7 @@ class ItemCrudPostgresIntegrationTest {
                 Long.class, Long.valueOf(id)));
         assertEquals(1L, jdbc.queryForObject("select count(*) from item_status_history where item_id = ? "
                         + "and from_status = 'AVAILABLE' and to_status = 'INSPECTION' and source = 'ADMIN_API' "
-                        + "and changed_by_user_id = ? and reason = '현장 점검'", Long.class, Long.valueOf(id), adminId));
+                        + "and admin_session_id = ? and reason = '현장 점검'", Long.class, Long.valueOf(id), adminSessionId));
         mvc.perform(delete("/api/v1/items/" + id).cookie(admin)).andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error.code").value("ITEM_DELETE_CONFLICT"));
     }
@@ -283,13 +290,13 @@ class ItemCrudPostgresIntegrationTest {
         }
     }
 
-    @Test void databaseSessionRoleIsEnforcedForWrites() throws Exception {
+    @Test void sharedAdminSessionRevocationIsEnforcedForWrites() throws Exception {
         String id = create("권한 검증 물품", typeId);
         mvc.perform(delete("/api/v1/items/" + id).cookie(member)).andExpect(status().isForbidden());
         mvc.perform(delete("/api/v1/items/" + id)).andExpect(status().isUnauthorized());
-        jdbc.update("update users set role = 'USER' where user_id = ?", adminId);
+        jdbc.update("update admin_sessions set revoked_at=now() where session_id=?",adminSessionId);
         em.clear();
-        mvc.perform(delete("/api/v1/items/" + id).cookie(admin)).andExpect(status().isForbidden());
+        mvc.perform(delete("/api/v1/items/" + id).cookie(admin)).andExpect(status().isUnauthorized());
         assertEquals(1, jdbc.queryForObject("select count(*) from items where item_id = ?", Integer.class, Long.valueOf(id)));
     }
 }

@@ -14,14 +14,14 @@ public class AdminAuthController {
     private final AdminSessionService sessions;
     private final AuthOriginGuard origins;
     public AdminAuthController(AdminSessionService sessions, AuthOriginGuard origins) { this.sessions=sessions; this.origins=origins; }
-    public record Password(@NotBlank @Size(max=128) String password) {
+    public record Password(@NotBlank @Pattern(regexp="[0-9]{3}") String adminNumber, @NotBlank @Size(max=128) String password) {
         @Override public String toString() { return "AdminPassword[redacted]"; }
     }
     @PostMapping("/login") @PublicApi
     public ResponseEntity<AdminPrincipal> login(@Valid @RequestBody Password body, HttpServletRequest request) {
         origins.check(request);
-        var login = sessions.login(body.password(), "WEB");
-        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).header("Set-Cookie", cookie(login.token(),1800)).body(login.principal());
+        var login = sessions.login(body.adminNumber(), body.password(), "WEB");
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).header("Set-Cookie", cookie(login.token(),28800)).body(login.principal());
     }
     @GetMapping("/session") @AdminOnly
     public AdminPrincipal session(@RequestAttribute(AdminPrincipal.ATTRIBUTE) AdminPrincipal principal) { return principal; }

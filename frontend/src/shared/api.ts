@@ -28,7 +28,7 @@ export const api: ServiceApi = {
       occupation: user.occupation || '',
     };
   },
-  code: () => issueRentalCode(),
+  code: (_token, renew = false) => issueRentalCode(renew),
   async rentals() {
     const signal = AbortSignal.timeout(60000);
     const lists = await Promise.all(
@@ -53,6 +53,7 @@ export const api: ServiceApi = {
         rentedAt: timestamp(r.rentedAt),
         dueAt: timestamp(r.dueAt),
         returnedAt: r.returnedAt === null ? undefined : timestamp(r.returnedAt),
+        image: r.imageUrl || undefined,
         itemName: r.itemName,
         itemTypeName: r.itemTypeName,
         overdue: r.overdue,

@@ -33,16 +33,16 @@ public final class RentalResponses {
     }
 
     public record ReturnScan(String scanTicketId, String rentalId, String itemId, String itemName,
-                             String itemTypeId, String itemTypeName) {
+                             String itemTypeId, String itemTypeName,String imageUrl) {
         public static ReturnScan from(ReturnScanResult result) {
             return new ReturnScan(result.scanTicketId().toString(), result.rentalId().toString(), result.itemId().toString(),
-                    result.itemName(), result.itemTypeId().toString(), result.itemTypeName());
+                    result.itemName(), result.itemTypeId().toString(), result.itemTypeName(),result.imageUrl());
         }
     }
 
     public record Summary(String rentalId, String itemId, String itemName,
                           String itemTypeId, String itemTypeName, RentalStatus rentalStatus,
-                          Instant rentedAt, Instant dueAt, Instant returnedAt, boolean overdue) {
+                          Instant rentedAt, Instant dueAt, Instant returnedAt, boolean overdue, String imageUrl) {
         public static Summary from(Rental rental, Instant evaluatedAt) {
             var item = rental.getItem();
             var status = rental.getReturnedAt() != null ? RentalStatus.RETURNED
@@ -50,7 +50,8 @@ public final class RentalResponses {
             return new Summary(rental.getId().toString(), item.getId().toString(), item.getItemName(),
                     item.getItemType().getId().toString(), item.getItemType().getName(), status,
                     rental.getRentedAt(), rental.getDueAt(), rental.getReturnedAt(),
-                    (rental.getReturnedAt() != null ? rental.getReturnedAt() : evaluatedAt).isAfter(rental.getDueAt()));
+                    (rental.getReturnedAt() != null ? rental.getReturnedAt() : evaluatedAt).isAfter(rental.getDueAt()),
+                    item.getImageUrl() != null ? item.getImageUrl() : item.getItemType().getImageUrl());
         }
     }
 

@@ -1,14 +1,16 @@
 .user-web {
-  --green: #1458f5;
-  --mint: #eaf1ff;
-  --ink: #111827;
-  --muted: #53627a;
-  --line: #dce3ef;
+  --green: #245443;
+  --brand-hover: #1a4133;
+  --brand-active: #123d31;
+  --mint: #edf2e9;
+  --ink: #203c32;
+  --muted: #59665e;
+  --line: #dce0d5;
   --paper: #fff;
   --error: #b42318;
-  --uw-blue: #1458f5;
-  --uw-soft: #eaf1ff;
-  --uw-canvas: #f5f7fb;
+  --uw-blue: #245443;
+  --uw-soft: #edf2e9;
+  --uw-canvas: #f6f3eb;
   font-family: 'Noto Sans KR', 'Malgun Gothic', sans-serif;
   color: var(--ink);
   background: var(--uw-canvas);
@@ -103,10 +105,10 @@
   border: 1px solid transparent;
 }
 .user-web .primary:hover:not(:disabled) {
-  background: #1047c8;
+  background: var(--brand-hover);
 }
 .user-web .primary:active:not(:disabled) {
-  background: #0d3aa6;
+  background: var(--brand-active);
 }
 .user-web .secondary {
   color: var(--muted);
@@ -234,7 +236,7 @@
 }
 .user-web .uw-bottom-nav a.active {
   color: var(--uw-blue);
-  background: #f3f7ff;
+  background: var(--uw-soft);
   font-weight: 700;
 }
 .user-web .uw-skip {
@@ -411,7 +413,7 @@
   line-height: 1.5;
   font-weight: 600;
   background: var(--uw-soft);
-  color: #1458f5;
+  color: var(--green);
 }
 .user-web .uw-pill.green {
   background: #ecfdf3;
@@ -636,7 +638,7 @@
   width: 64px;
   height: 64px;
   border-radius: 16px;
-  background: #edf3fc;
+  background: var(--uw-soft);
   color: var(--uw-blue);
   flex-shrink: 0;
 }
@@ -673,7 +675,7 @@
   display: grid;
   place-items: center;
   min-height: 160px;
-  background: #f4f7fc;
+  background: var(--uw-soft);
   border-radius: 16px;
 }
 .user-web .uw-item-detail .uw-product-art .uw-item-icon {
@@ -801,7 +803,7 @@
 .user-web .uw-profile > svg {
   box-sizing: content-box;
   padding: 14px;
-  background: #eaf1fb;
+  background: var(--uw-soft);
   color: #53627a;
   border-radius: 50%;
 }
@@ -939,7 +941,7 @@
 .user-web .auth-flow .pin-keypad button {
   min-height: 44px;
   border-radius: 10px;
-  background: #f2f5fb;
+  background: var(--uw-soft);
   color: var(--ink);
   font-size: 1.125rem;
 }
@@ -1037,7 +1039,7 @@
   color: var(--muted);
   min-height: 120px;
 }
-.user-web .uw-master-detail.has-selection > :first-child {
+.user-web .uw-master-detail.has-selection:not(.uw-catalog-layout) > :first-child {
   display: none;
 }
 @media (max-width: 359px) {
@@ -1093,7 +1095,7 @@
     display: grid;
     place-items: center;
     border-radius: 12px;
-    background: #f4f7fc;
+    background: var(--uw-soft);
   }
   .user-web .uw-product .uw-item-icon {
     transform: scale(1.3);
@@ -1307,4 +1309,689 @@
     transition: none !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Campus depot: flat paper ticket, quiet borders, no decorative textures. */
+.user-web .uw-depot-home {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 16px;
+}
+.user-web .uw-depot-home > .uw-heading {
+  margin-bottom: 0;
+}
+.user-web .uw-depot-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  min-height: 0;
+}
+.user-web .uw-ticket {
+  padding: 10px;
+  border-radius: 20px;
+  background: #245443;
+  min-width: 0;
+}
+.user-web .uw-ticket .uw-code {
+  position: relative;
+  border: 0;
+  border-radius: 12px;
+  background: #fffcf5;
+  padding: 20px;
+  gap: 12px;
+}
+.user-web .uw-ticket .uw-code h2 {
+  color: #9a471f;
+  font-size: 0.875rem;
+  letter-spacing: 0.04em;
+}
+.user-web .uw-ticket .uw-code h2 svg,
+.user-web .uw-ticket .uw-code-value > svg {
+  display: none;
+}
+.user-web .uw-ticket .uw-code-value {
+  background: transparent;
+  padding: 12px 0 0;
+}
+.user-web .uw-ticket .code-number {
+  margin: 0;
+  font-size: clamp(2.5rem, 9vw, 4rem);
+  letter-spacing: 0.08em;
+  color: #245443;
+}
+.user-web .uw-ticket .uw-code-status,
+.user-web .uw-ticket .uw-countdown {
+  text-align: center;
+  justify-content: center;
+}
+.user-web .uw-ticket .uw-code > button {
+  border-top: 1px dashed #a6b5a8;
+  margin-top: 4px;
+}
+.user-web .uw-ticket .uw-caption {
+  font-size: 0.75rem;
+  text-align: center;
+}
+.user-web .uw-depot-rentals {
+  min-width: 0;
+}
+.user-web .uw-depot-rentals .uw-section-title > .uw-text-link {
+  margin-left: auto;
+  font-size: 0.875rem;
+}
+.user-web .uw-depot-rentals .uw-rental-row {
+  background: #f9faf5;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 10px;
+}
+.user-web .uw-depot-rentals .uw-rental-date {
+  color: #875024;
+}
+.user-web .uw-notice {
+  color: #245443;
+}
+.user-web .uw-pill.blue {
+  color: #245443;
+}
+.user-web .uw-state > svg {
+  background: var(--uw-soft);
+}
+@media (min-width: 1024px) {
+  .user-web .uw-depot-grid {
+    grid-template-columns: minmax(280px, 0.85fr) minmax(0, 1.15fr);
+    align-items: start;
+  }
+}
+@media (max-width: 767px) {
+  .user-web .uw-main > .uw-depot-home {
+    flex: 1;
+    min-height: 0;
+    gap: 10px;
+  }
+  .user-web .uw-depot-grid {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .user-web .uw-ticket {
+    flex-shrink: 0;
+    padding: 8px;
+  }
+  .user-web .uw-ticket .uw-code {
+    padding: 14px;
+    gap: 8px;
+  }
+  .user-web .uw-depot-rentals {
+    flex: 0 1 auto;
+    min-height: 120px;
+    padding: 14px;
+  }
+}
+.user-web .uw-depot-item {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f9faf5;
+  margin-bottom: 10px;
+}
+.user-web .uw-depot-item > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.user-web .uw-depot-item strong {
+  overflow-wrap: anywhere;
+}
+.user-web .uw-depot-item .uw-item-icon {
+  width: 44px;
+  height: 44px;
+  background: #edf2e9;
+}
+.user-web .uw-depot-item-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.user-web .uw-due-tag {
+  width: fit-content;
+  background: #f8ead8;
+  color: #7c4524;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 0.75rem;
+}
+.user-web .uw-due-tag.overdue {
+  color: #a32b20;
+  background: #fff0e9;
+}
+
+/* Locker doors are visual containers; the whole card opens item details. */
+.user-web .uw-products.uw-lockers {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  align-items: stretch;
+  gap: 12px;
+}
+.user-web .uw-lockers .uw-product {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #cbd5c7;
+  border-radius: 12px;
+  background: #f0f3e9;
+  box-shadow: none;
+}
+.user-web .uw-lockers .uw-product::before {
+  content: '';
+  width: 28px;
+  height: 5px;
+  border-block: 1px solid #a7b5a4;
+  align-self: center;
+}
+.user-web .uw-lockers .uw-product > .uw-product-art {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 76px;
+  aspect-ratio: auto;
+  background: transparent;
+}
+.user-web .uw-lockers .uw-product > .uw-product-art::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 35%;
+  height: 22px;
+  width: 4px;
+  border-radius: 3px;
+  background: #a7b5a4;
+}
+.user-web .uw-lockers .uw-item-icon {
+  background: transparent;
+  color: #245443;
+  transform: none;
+}
+.user-web .uw-lockers .uw-product > .uw-caption {
+  display: none;
+}
+.user-web .uw-lockers .uw-product h2 {
+  font-size: 1rem;
+  line-height: 1.5;
+  margin: 0;
+  background: #fffcf5;
+  padding: 6px 8px;
+  border: 1px solid #dce0d5;
+  border-radius: 4px;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.user-web .uw-lockers .uw-product > .uw-pill {
+  margin-top: auto;
+  border-radius: 4px;
+  max-width: 100%;
+}
+.user-web .uw-lockers .uw-product-arrow {
+  display: none;
+}
+.user-web .uw-lockers .uw-product:hover,
+.user-web .uw-lockers .uw-product.selected {
+  border-color: #245443;
+  background: #e7eddf;
+  box-shadow: inset 0 0 0 1px #245443;
+}
+@media (min-width: 768px) {
+  .user-web .uw-products.uw-lockers {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  }
+  .user-web .uw-lockers .uw-product {
+    padding: 16px;
+  }
+  .user-web .uw-lockers .uw-product > .uw-product-art {
+    min-height: 110px;
+  }
+}
+@media (max-width: 359px) {
+  .user-web .uw-products.uw-lockers {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.user-web .uw-detail-sheet {
+  position: fixed;
+  inset: auto 0 0;
+  margin: 0 auto;
+  width: min(100%, 640px);
+  max-width: 100%;
+  max-height: 88dvh;
+  box-sizing: border-box;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 56px 20px max(24px, env(safe-area-inset-bottom));
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 24px 24px 0 0;
+  color: var(--ink);
+  background: var(--uw-canvas);
+  animation: uw-sheet-enter 180ms ease-out;
+}
+.user-web .uw-detail-sheet::backdrop {
+  background: rgb(20 38 30 / 42%);
+}
+.user-web .uw-detail-sheet::before {
+  content: '';
+  position: absolute;
+  top: 12px;
+  left: calc(50% - 18px);
+  width: 36px;
+  height: 4px;
+  border-radius: 4px;
+  background: #c1cbbd;
+}
+@keyframes uw-sheet-enter {
+  from {
+    transform: translateY(32px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .user-web .uw-detail-sheet {
+    animation: none;
+  }
+}
+
+/* Rental tags emphasize the deadline; returned records stay compact. */
+.user-web .uw-loan-tags {
+  gap: 12px;
+}
+.user-web .uw-rental-row.uw-loan-tag,
+.user-web .uw-rental-row.uw-history-entry {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 18px;
+  gap: 10px 12px;
+  align-items: center;
+}
+.user-web .uw-rental-row.uw-loan-tag {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--green);
+  border-radius: 12px;
+  background: #fffdf7;
+}
+.user-web .uw-rental-row.uw-loan-tag.is-overdue {
+  border-left-color: var(--error);
+}
+.user-web .uw-rental-row.uw-history-entry {
+  padding: 14px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+.user-web .uw-rental-row.uw-loan-tag > .uw-item-icon,
+.user-web .uw-rental-row.uw-history-entry > .uw-item-icon {
+  grid-column: 1;
+  grid-row: 1;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+}
+.user-web .uw-record-name {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+}
+.user-web .uw-record-name strong,
+.user-web .uw-record-name span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.user-web .uw-record-name span {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 3px;
+}
+.user-web .uw-rental-row > .uw-record-arrow {
+  grid-column: 3;
+  grid-row: 1;
+  color: var(--muted);
+}
+.user-web .uw-loan-deadline {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: baseline;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #f6e9d7;
+  color: #74451b;
+}
+.user-web .uw-loan-deadline span {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.user-web .uw-loan-deadline time {
+  font-size: 0.95rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.user-web .uw-loan-deadline.overdue {
+  background: #fff0ec;
+  color: var(--error);
+}
+.user-web .uw-loan-start {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.user-web .uw-record-date {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.user-web .uw-record-date span {
+  color: var(--green);
+}
+@media (min-width: 1024px) {
+  .user-web .uw-history-entry .uw-record-date {
+    grid-column: 2;
+  }
+}
+
+.user-web .auth-flow.uw-access-pass {
+  border-top: 4px solid var(--green);
+  border-radius: 16px;
+  background: #fffdf7;
+  box-shadow: none;
+}
+.user-web .uw-pass-step {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 12px;
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+  border-bottom: 1px dashed #b9c5b5;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.user-web .uw-pass-step > span:first-child {
+  font-weight: 700;
+  color: var(--green);
+}
+.user-web .uw-access-pass .auth-login-card {
+  background: transparent;
+}
+.user-web .uw-access-pass .auth-mask {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--uw-soft);
+  font-size: 0.85rem;
+}
+.user-web .uw-access-pass .pin-keypad button {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.user-web .uw-access-pass .pin-keypad button:hover:not(:disabled) {
+  background: var(--uw-soft);
+}
+@media (max-width: 767px) {
+  .user-web .uw-access-pass .uw-pass-step {
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+  }
+}
+
+.user-web .uw-profile.uw-member-pass {
+  border-top: 4px solid var(--green);
+  background: #fffdf7;
+  border-radius: 14px;
+  box-shadow: none;
+  padding-block: 24px;
+}
+.user-web .uw-member-pass > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.user-web .uw-member-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--green);
+}
+.user-web .uw-member-pass h2 {
+  margin: 0;
+}
+.user-web .uw-member-pass > svg {
+  background: var(--uw-soft);
+  color: var(--green);
+}
+.user-web .uw-account .uw-settings {
+  box-shadow: none;
+  border-radius: 12px;
+}
+
+.user-web .uw-refresh-status {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.user-web .uw-auth-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+.user-web .auth-flow form {
+  display: grid;
+  gap: 12px;
+}
+.user-web .auth-flow .kakao-login {
+  background: #fee500;
+  color: #191919;
+  border-color: #fee500;
+}
+.user-web .auth-flow .kakao-login:hover:not(:disabled) {
+  background: #f3da00;
+}
+.user-web .auth-flow .kakao-login:active:not(:disabled) {
+  background: #e7cf00;
+}
+.user-web .auth-flow > button + button {
+  margin-top: 12px;
+}
+.user-web .auth-flow > p {
+  margin-block: 12px 16px;
+}
+.user-web .auth-flow form > label {
+  display: grid;
+  gap: 8px;
+}
+
+.uw-product-art img {
+  width: 100%;
+  height: 100%;
+  max-height: 180px;
+  object-fit: contain;
+}
+.uw-code {
+  border: 1px dashed #538467;
+  background: #e2f4e6;
+}
+.uw-code-value {
+  letter-spacing: 0.12em;
+}
+
+.uw-catalog-controls .uw-available-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  margin: 10px 0;
+  font-weight: 600;
+}
+.uw-catalog-controls .uw-available-filter input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  margin: 0;
+  accent-color: #245443;
+}
+.uw-individual-items .uw-product {
+  border-radius: 18px;
+  overflow: hidden;
+  padding: 16px;
+  background: #fffdf7;
+}
+.uw-individual-items .uw-product-art {
+  height: 150px;
+  background: #ddf2df;
+  border-radius: 14px;
+  margin-bottom: 14px;
+}
+.uw-individual-items .uw-item-icon {
+  background: transparent;
+}
+.uw-individual-items .uw-product h2 {
+  margin: 8px 0;
+}
+.uw-individual-items .uw-product .uw-caption {
+  display: block;
+}
+@media (max-width: 767px) {
+  .uw-individual-items .uw-product-art {
+    height: 100px;
+  }
+  .uw-individual-items .uw-product {
+    padding: 12px;
+  }
+}
+
+.user-web .uw-products.uw-individual-items {
+  grid-auto-rows: max-content;
+}
+.user-web .uw-individual-items .uw-product-art {
+  background: #ddf2df;
+}
+
+/* Approved mint ticket and individual item imagery. */
+.user-web .uw-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.user-web .uw-ticket {
+  position: relative;
+  padding: 0;
+  border: 1px solid #a4d8c3;
+  background: linear-gradient(135deg, #d4f1e1, #bde6d2);
+  box-shadow: 0 8px 24px #2454430a;
+}
+.user-web .uw-ticket .uw-code {
+  background: transparent;
+  padding: 24px;
+  border-radius: 20px;
+}
+.user-web .uw-ticket .uw-code h2 {
+  color: #245443;
+  font-size: 1.05rem;
+  letter-spacing: 0;
+}
+.user-web .uw-ticket .uw-code-value {
+  background: #fffef9;
+  border: 1px solid #b4d9c5;
+  border-radius: 14px;
+  padding: 18px 10px;
+  margin: 8px 0;
+}
+.user-web .uw-ticket .code-number {
+  font-variant-numeric: tabular-nums;
+}
+.user-web .uw-ticket .uw-code-status {
+  color: #345e4c;
+}
+.user-web .uw-rental-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+  background: #e6f1e6;
+  overflow: hidden;
+  color: #3b6652;
+  flex-shrink: 0;
+}
+.user-web .uw-rental-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.user-web .uw-rental-art svg {
+  width: 32px;
+  height: 32px;
+}
+.user-web .uw-depot-item .uw-rental-art {
+  width: 44px;
+  height: 44px;
+}
+.user-web .uw-product-art {
+  background: linear-gradient(145deg, #e6f5e9, #d4ebd9);
+}
+
+.user-web .uw-ticket::before,
+.user-web .uw-ticket::after {
+  content: '';
+  position: absolute;
+  top: 48%;
+  width: 20px;
+  height: 30px;
+  border-radius: 50%;
+  background: #f6f3eb;
+  z-index: 1;
+}
+.user-web .uw-ticket::before {
+  left: -11px;
+}
+.user-web .uw-ticket::after {
+  right: -11px;
+}
+.user-web .uw-ticket .uw-code h2 {
+  text-align: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 1.3rem;
 }

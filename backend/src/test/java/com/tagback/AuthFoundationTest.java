@@ -1,7 +1,7 @@
 package com.tagback;
 
 import com.tagback.config.AuthProperties;
-import com.tagback.dto.auth.AuthRequests;
+
 import com.tagback.exception.AuthErrorCode;
 import com.tagback.exception.AuthException;
 import com.tagback.service.PhoneNumberNormalizer;
@@ -33,32 +33,13 @@ class AuthFoundationTest {
     }
 
     @Test
-    void validatesPinAsSixAsciiDigitsWithoutLosingLeadingZero() {
-        try (var factory = Validation.buildDefaultValidatorFactory()) {
-            var validator = factory.getValidator();
-            assertTrue(validator.validate(new AuthRequests.RegisteredLogin("041527")).isEmpty());
-            String[] invalid = {null, "", "41527", "0415270", "abcdef", "０４１５２７"};
-            for (String value : invalid) {
-                assertFalse(validator.validate(new AuthRequests.RegisteredLogin(value)).isEmpty());
-            }
-            assertFalse(validator.validate(new AuthRequests.Signup("", "041527", new AuthRequests.Profile("테스트", "학생"))).isEmpty());
-            assertFalse(validator.validate(new AuthRequests.Signup("token", "041527", new AuthRequests.Profile(" ", "학생"))).isEmpty());
-            assertFalse(validator.validate(new AuthRequests.Signup("token", "041527", null)).isEmpty());
-            assertFalse(validator.validate(new AuthRequests.SmsRequest("", null)).isEmpty());
-        }
-    }
-
-    @Test
     void bindsPolicyDefaultsAndRejectsInvalidDurations() {
-        var defaults = new Binder(new MapConfigurationPropertySource(Map.of("tagback.auth.sms-max-requests", "10")))
+        var defaults = new Binder(new MapConfigurationPropertySource(Map.of("tagback.auth.session-idle-timeout", "30m")))
                 .bind("tagback.auth", Bindable.of(AuthProperties.class)).get();
-        assertEquals(Duration.ofMinutes(5), defaults.smsCodeTtl());
-        assertEquals(Duration.ofDays(30), defaults.browserRegistrationTtl());
         assertEquals(Duration.ofHours(8), defaults.sessionAbsoluteTimeout());
-        assertEquals(10, defaults.smsMaxRequests());
         try (var factory = Validation.buildDefaultValidatorFactory()) {
             assertTrue(factory.getValidator().validate(defaults).isEmpty());
-            var invalid = new Binder(new MapConfigurationPropertySource(Map.of("tagback.auth.sms-code-ttl", "0s")))
+            var invalid = new Binder(new MapConfigurationPropertySource(Map.of("tagback.auth.session-idle-timeout", "0s")))
                     .bind("tagback.auth", Bindable.of(AuthProperties.class)).get();
             assertFalse(factory.getValidator().validate(invalid).isEmpty());
         }

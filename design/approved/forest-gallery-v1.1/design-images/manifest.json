@@ -1,0 +1,308 @@
+[
+  {
+    "id": "PC-01",
+    "title": "물품 조회",
+    "path": "design-images/user-web-pc/PC-01.png",
+    "source": "a_clean_modern_korean_web_ui_for_tagback_item_b.png",
+    "width": 1585,
+    "height": 992,
+    "sha256": "b03361bf2de3c774caa92f3740ae2a4ffb68643b49c84ccf118871d2eabaace3"
+  },
+  {
+    "id": "PC-02",
+    "title": "물품 상세",
+    "path": "design-images/user-web-pc/PC-02.png",
+    "source": "tagback_디지털_카메라_상세_페이지.png",
+    "width": 1586,
+    "height": 992,
+    "sha256": "9574b2be6fa6852b66474e203e000bd1bb892c7efa086c3acd5085c5bb99ce9a"
+  },
+  {
+    "id": "PC-03",
+    "title": "이용 코드 발급",
+    "path": "design-images/user-web-pc/PC-03.png",
+    "source": "a_clean_modern_web_ui_screenshot_in_korean_for_t.png",
+    "width": 1585,
+    "height": 992,
+    "sha256": "0d16a8202ca0e35ac51778c0a0271cd7e7e151b0d827a28785963bfec948ec39"
+  },
+  {
+    "id": "PC-04",
+    "title": "내 대여 현황",
+    "path": "design-images/user-web-pc/PC-04.png",
+    "source": "a_clean_modern_korean_web_app_dashboard_screensho.png",
+    "width": 1586,
+    "height": 992,
+    "sha256": "d9bd3bfb8e5b1e2c114642839b12206be2373df49f72549014f2c3c18fa416af"
+  },
+  {
+    "id": "PC-05",
+    "title": "이용 이력",
+    "path": "design-images/user-web-pc/PC-05.png",
+    "source": "a_clean_modern_web_ui_mockup_tagback_in_korean.png",
+    "width": 1585,
+    "height": 992,
+    "sha256": "8fc3239c5876813a79d3c215d4fcbc4af4eaf4b10483d4e3c5782088cdcaa05a"
+  },
+  {
+    "id": "PC-06",
+    "title": "카카오 간편 로그인",
+    "path": "design-images/user-web-pc/PC-06.png",
+    "source": "a_clean_minimal_ui_login_page_kakao_only_in_a_fl.png",
+    "width": 1585,
+    "height": 992,
+    "sha256": "5c65a5f07f8b667267ea1c19d244eb1392310b409daa63a916e51e4ed5c6f006"
+  },
+  {
+    "id": "MO-01",
+    "title": "물품 조회",
+    "path": "design-images/user-web-mobile/MO-01.png",
+    "source": "a_clean_mobile_app_ui_screenshot_no_device_bezel.png",
+    "width": 887,
+    "height": 1774,
+    "sha256": "3c10c9b54a3f4b826b51a362490434266931023fb64c9fd4958ab2283a2bd2ab"
+  },
+  {
+    "id": "MO-02",
+    "title": "물품 상세",
+    "path": "design-images/user-web-mobile/MO-02.png",
+    "source": "a_clean_mobile_app_ui_screenshot_smartphone_portr.png",
+    "width": 887,
+    "height": 1774,
+    "sha256": "a79008909ee6022b70d8795c5c3e8f10bcf8079d429d2ea9b7a8ce1f971e02f3"
+  },
+  {
+    "id": "MO-03",
+    "title": "이용 코드 발급",
+    "path": "design-images/user-web-mobile/MO-03.png",
+    "source": "a_clean_mobile_app_ui_screenshot_korean_in_a_tal.png",
+    "width": 887,
+    "height": 1774,
+    "sha256": "5ebb9fb416744cb2ee1f5c093cf61016f74f3f2724f5595bd3bf0025a939aa80"
+  },
+  {
+    "id": "MO-04",
+    "title": "내 대여 현황",
+    "path": "design-images/user-web-mobile/MO-04.png",
+    "source": "a_clean_mobile_app_ui_screenshot_korean_in_a_gre.png",
+    "width": 887,
+    "height": 1774,
+    "sha256": "df902867f8060868cb8cda30606cd47c31f0166569a9fe4b6cce822319a77482"
+  },
+  {
+    "id": "MO-05",
+    "title": "이용 이력",
+    "path": "design-images/user-web-mobile/MO-05.png",
+    "source": "a_clean_mobile_app_ui_screenshot_korean_in_a_ver.png",
+    "width": 887,
+    "height": 1774,
+    "sha256": "252709f55097f11775e1d32b76183f808aa16d51d864a88ad80d8baeef769dc3"
+  },
+  {
+    "id": "MO-06",
+    "title": "카카오 간편 로그인",
+    "path": "design-images/user-web-mobile/MO-06.png",
+    "source": "a_clean_minimal_mobile_app_login_screen_smartpho.png",
+    "width": 887,
+    "height": 1774,
+    "sha256": "8c76a4f772753490f97e20715d45fd2de48daef5339cadf9a6783d0ac2091d79"
+  },
+  {
+    "id": "AD-01",
+    "title": "운영 현황",
+    "path": "design-images/admin-web/AD-01.png",
+    "source": "a_clean_modern_web_admin_dashboard_ui_for_tagback.png",
+    "width": 1672,
+    "height": 941,
+    "sha256": "1eb6024f6468fdbed17f5097dc10a6988087ec5ba44440d199e8af110576c17f"
+  },
+  {
+    "id": "AD-02",
+    "title": "물품 관리",
+    "path": "design-images/admin-web/AD-02.png",
+    "source": "tagback_물품_관리_대시보드.png",
+    "width": 1586,
+    "height": 992,
+    "sha256": "08ae0e4df345cbace47afd66ad42ef3a351e0b5c892e6b0c09e76a25aa08afa9"
+  },
+  {
+    "id": "AD-03",
+    "title": "물품 등록 및 수정",
+    "path": "design-images/admin-web/AD-03.png",
+    "source": "a_wide_clean_admin_dashboard_ui_screenshot_deskt.png",
+    "width": 1671,
+    "height": 941,
+    "sha256": "40e73eb3c398608df92f1716b82121ea5586b75eb3479f1149529a43d9163c67"
+  },
+  {
+    "id": "AD-04",
+    "title": "NFC 태그 관리",
+    "path": "design-images/admin-web/AD-04.png",
+    "source": "a_detailed_admin_dashboard_ui_screenshot_for_tagba.png",
+    "width": 1672,
+    "height": 941,
+    "sha256": "1394490682284f708b835a857ab41eb9be2206e66b8f2a54ccd239f3bd3811a4"
+  },
+  {
+    "id": "AD-05",
+    "title": "재고 및 물품 상태 관리",
+    "path": "design-images/admin-web/AD-05.png",
+    "source": "a_clean_modern_admin_web_dashboard_screenshot_ko.png",
+    "width": 1671,
+    "height": 941,
+    "sha256": "b6261cc71d386b16bb32b9c42d25f782ebd9a25cf2fbdc8dfc690893b05cd71e"
+  },
+  {
+    "id": "AD-06",
+    "title": "사용자 관리",
+    "path": "design-images/admin-web/AD-06.png",
+    "source": "a_clean_modern_admin_dashboard_ui_in_korean_for.png",
+    "width": 1671,
+    "height": 941,
+    "sha256": "2cfef06bb6be0a606355677a1c744b3c0e101ef40f354d1092a1fee6efe7be22"
+  },
+  {
+    "id": "AD-07",
+    "title": "대여·반납 관리",
+    "path": "design-images/admin-web/AD-07.png",
+    "source": "a_crisp_modern_admin_web_ui_dashboard_screenshot.png",
+    "width": 1671,
+    "height": 941,
+    "sha256": "f1122880c1b1bef4194f82ffca982c6ec2547a5627f2100af0b5997a41a9f775"
+  },
+  {
+    "id": "AD-08",
+    "title": "연체 관리",
+    "path": "design-images/admin-web/AD-08.png",
+    "source": "a_crisp_modern_ui_screenshot_of_an_admin_dashboar.png",
+    "width": 1671,
+    "height": 941,
+    "sha256": "bd5903dcdcb1d4111b9e43664d4688f61b4bb47ea97c55f691f9092f80f4c67c"
+  },
+  {
+    "id": "AD-09",
+    "title": "이용 이력",
+    "path": "design-images/admin-web/AD-09.png",
+    "source": "a_clean_flat_ui_dashboard_screenshot_in_korean_for.png",
+    "width": 1670,
+    "height": 941,
+    "sha256": "b8e7db055430d00c1fefd7fde09d273df66cebf7a701f63b043c0e68a80fac85"
+  },
+  {
+    "id": "KS-01",
+    "title": "초기 화면",
+    "path": "design-images/windows-kiosk/KS-01.png",
+    "source": "a_clean_modern_kiosk_ui_screenshot_1920_1080_styl.png",
+    "width": 1672,
+    "height": 941,
+    "sha256": "f1c1dcdae9fdfc5e0437a4bc7d374607605845086cfc8db194cadb3beecf9142"
+  },
+  {
+    "id": "KS-02",
+    "title": "대여 — 이용 코드 입력",
+    "path": "design-images/windows-kiosk/KS-02.png",
+    "source": "tagback_이용_코드_입력_화면.png",
+    "width": 1672,
+    "height": 941,
+    "sha256": "583a8426fe640e2018b0060e5dc922e8ea52256e879d3ab1a9b5ce47b6dbc67a"
+  },
+  {
+    "id": "KS-03",
+    "title": "대여 — NFC 태그 인식",
+    "path": "design-images/windows-kiosk/KS-03.png",
+    "source": "a_clean_modern_kiosk_ui_korean_in_green_and_whi.png",
+    "width": 1672,
+    "height": 941,
+    "sha256": "6c4bbd75a1e50d7f4acdaf267d6b0c6250eb9dc90d7d2a9685a2a7758bbf5bff"
+  },
+  {
+    "id": "KS-04",
+    "title": "대여 — 물품 확인 및 확정",
+    "path": "design-images/windows-kiosk/KS-04.png",
+    "source": "a_clean_modern_kiosk_ui_screen_1920_1080_style.png",
+    "width": 1672,
+    "height": 941,
+    "sha256": "b022228d2b61de78e8e8e221154a0807168ddfe7f01808b08dbbe8d786dbd152"
+  },
+  {
+    "id": "KS-05",
+    "title": "대여 완료",
+    "path": "design-images/windows-kiosk/KS-05.png",
+    "source": "a_clean_ui_screenshot_illustration_of_a_kiosk_li.png",
+    "width": 1671,
+    "height": 941,
+    "sha256": "bb96b9a8994ba3266c791d3da91cffd94516042f34f6acf86623d886ad1b17d9"
+  },
+  {
+    "id": "KS-06",
+    "title": "반납 — NFC 인식 및 식별",
+    "path": "design-images/windows-kiosk/KS-06.png",
+    "source": "a_clean_modern_ui_design_in_a_1920_1080_style_for.png",
+    "width": 1672,
+    "height": 941,
+    "sha256": "936f2a017f39f211e519144dda0f79d9f10b4dfdaa676dbdcdd28354d66181b8"
+  },
+  {
+    "id": "KS-07",
+    "title": "반납 — 물품 상태 입력",
+    "path": "design-images/windows-kiosk/KS-07.png",
+    "source": "a_clean_modern_ui_screen_wide_landscape_for_tagb.png",
+    "width": 1672,
+    "height": 941,
+    "sha256": "260ebfcd7c7afffd75f910cad8b68c15768958a92447f8817784f9877a4d01ca"
+  },
+  {
+    "id": "KS-08",
+    "title": "반납 — 이용 코드 입력",
+    "path": "design-images/windows-kiosk/KS-08.png",
+    "source": "a_clean_modern_korean_ui_kiosk_screen_for_tagback.png",
+    "width": 1672,
+    "height": 941,
+    "sha256": "a57651b4017cb0ad747f9b8cbcead18e76fbf7bf3354aaa1df04e588a509004a"
+  },
+  {
+    "id": "KS-09",
+    "title": "반납 — 정보 확인 및 확정",
+    "path": "design-images/windows-kiosk/KS-09.png",
+    "source": "a_clean_ui_mockup_kiosk_screen_for_tagback_equipme.png",
+    "width": 1671,
+    "height": 941,
+    "sha256": "2376c0a50aed31f4088ca1f3ac80988c677afc3fde1918866add6112da83ddb8"
+  },
+  {
+    "id": "KS-10",
+    "title": "반납 완료",
+    "path": "design-images/windows-kiosk/KS-10.png",
+    "source": "a_clean_modern_ui_success_screen_for_tagback_kios.png",
+    "width": 1671,
+    "height": 941,
+    "sha256": "cc6e7a72d14cf3a25604dc88a5ec95426bc9d2a6961ad7a3f8ab4ef4e872e83a"
+  },
+  {
+    "id": "KS-11",
+    "title": "이용 코드 오류",
+    "path": "design-images/windows-kiosk/KS-11.png",
+    "source": "a_clean_modern_korean_ui_screen_for_tagback_equi.png",
+    "width": 1672,
+    "height": 941,
+    "sha256": "de676f4eabca66706128ef47fc66740d5b847342a4aa4d04c65397dd26f3740b"
+  },
+  {
+    "id": "KS-12",
+    "title": "NFC 태그 인식 실패",
+    "path": "design-images/windows-kiosk/KS-12.png",
+    "source": "a_clean_modern_ui_error_screen_for_tagback_equipm.png",
+    "width": 1670,
+    "height": 941,
+    "sha256": "d2b72bb9560c1a88a9e1a25a8279065285eccf6931fa3e43a05cc7aed67dafb7"
+  },
+  {
+    "id": "KS-13",
+    "title": "서버 연결 및 처리 오류",
+    "path": "design-images/windows-kiosk/KS-13.png",
+    "source": "a_clean_modern_kiosk_ui_in_korean_for_tagback_erro.png",
+    "width": 1670,
+    "height": 941,
+    "sha256": "bcb8be1744f7314022ce4d8ac95d9401b707bd3adcacdcfb4841fbb1e1ef5ae6"
+  }
+]

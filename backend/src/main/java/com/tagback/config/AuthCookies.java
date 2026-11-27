@@ -20,6 +20,7 @@ public class AuthCookies {
     }
 
     public String clearSession() { return cookie(SESSION_COOKIE, "", Duration.ZERO); }
+    public String session(String token, Instant expires) { return cookie(SESSION_COOKIE, token, Duration.between(clock.instant(), expires)); }
     public String[] clearAll() { return new String[]{clearSession(), cookie(BROWSER_COOKIE, "", Duration.ZERO)}; }
 
     private String cookie(String name, String token, Duration maxAge) {

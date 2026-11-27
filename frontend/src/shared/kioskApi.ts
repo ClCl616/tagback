@@ -42,10 +42,10 @@ export const kioskApi: Pick<
     return { item: await lookupRentalTag(tag, grant, kindId || '') };
   },
   rent: checkoutRental,
-  returnItem(id, _itemId, rentalId, _tagUid, scanTicketId, proof, condition, returnCode) {
+  returnItem(id, _itemId, rentalId, _tagUid, scanTicketId, proof, condition, returnCode, grant) {
     if (!scanTicketId || !proof)
       return Promise.reject(new ServiceError('NFC_SCAN_REQUIRED', '태그를 다시 인식해 주세요.'));
-    return returnRental(id, scanTicketId, rentalId, proof, condition, returnCode);
+    return returnRental(id, scanTicketId, rentalId, proof, condition, returnCode, grant);
   },
   async operation() {
     return fail('UNSUPPORTED', '결과 조회를 지원하지 않습니다. 관리자에게 확인해 주세요.');

@@ -29,8 +29,8 @@ public class SessionAuthenticationInterceptor implements HandlerInterceptor {
         boolean adminOnly = method.hasMethodAnnotation(AdminOnly.class)
                 || AnnotatedElementUtils.hasAnnotation(method.getBeanType(), AdminOnly.class);
         boolean adminRead = method.hasMethodAnnotation(AdminReadable.class);
-        boolean kioskAdmin = request.getRequestURI().startsWith("/api/v1/kiosk/admin/");
-        if (adminOnly || (adminRead && AdminCredentials.cookie(request) != null)) {
+        boolean kioskAdmin = request.getRequestURI().startsWith("/api/v1/kiosk/admin/") || ((adminOnly || (adminRead && "1".equals(request.getHeader("X-TagBack-Admin")))) && request.getHeader("Authorization") != null);
+        if (adminOnly || (adminRead && (AdminCredentials.cookie(request) != null || kioskAdmin))) {
             response.setHeader("Cache-Control", "no-store");
             if (adminOnly && !kioskAdmin && AdminCredentials.cookie(request) == null) {
                 String userToken = null;
@@ -49,6 +49,8 @@ public class SessionAuthenticationInterceptor implements HandlerInterceptor {
             if (admins == null) throw new AuthException(AuthErrorCode.SESSION_REQUIRED);
             var principal = admins.authenticate(kioskAdmin ? AdminCredentials.bearer(request) : AdminCredentials.cookie(request),
                     kioskAdmin ? "KIOSK" : "WEB");
+            if(principal.mustChangePassword() && !request.getRequestURI().matches(".*/(session|logout|password)$"))
+                throw new AuthException(AuthErrorCode.FORBIDDEN);
             request.setAttribute(AdminPrincipal.ATTRIBUTE, principal);
             return true;
         }
@@ -60,7 +62,7 @@ public class SessionAuthenticationInterceptor implements HandlerInterceptor {
                 && request.getAttribute(RentalAuthenticationInterceptor.ATTRIBUTE) != null) return true;
         response.setHeader("Cache-Control", "no-store");
         var service = sessions.getIfAvailable();
-        // Authentication is mock-profile-only for now. Protected handlers must fail closed elsewhere.
+        // Protected handlers fail closed if no session service is available.
         if (service == null) throw new AuthException(AuthErrorCode.SESSION_REQUIRED);
         String token = null;
         if (request.getCookies() != null) {

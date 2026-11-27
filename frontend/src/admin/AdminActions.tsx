@@ -1,3 +1,4 @@
+import { TagRegistration } from './TagRegistration';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import type { Catalog, Item, ItemStatus } from '../shared/types';
@@ -10,18 +11,22 @@ function Dialog({
   children,
   close,
   busy,
+  page = false,
 }: {
   title: string;
   children: ReactNode;
   close: () => void;
   busy: boolean;
+  page?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const opener = useRef(document.activeElement as HTMLElement);
   useEffect(() => {
     const dialog = ref.current;
-    dialog?.showModal();
-    dialog?.querySelector<HTMLElement>('[data-aw-autofocus]')?.focus();
+    if (!page) dialog?.showModal();
+    (page ? document.querySelector('.aw-editor-page') : dialog)
+      ?.querySelector<HTMLElement>('[data-aw-autofocus]')
+      ?.focus();
     return () => {
       dialog?.close();
       queueMicrotask(() => {
@@ -29,6 +34,24 @@ function Dialog({
       });
     };
   }, []);
+  if (page)
+    return (
+      <section
+        className="aw-dialog aw-editor-page"
+        aria-label={title}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && !busy) close();
+        }}
+      >
+        <header>
+          <h2>기본 정보</h2>
+          <button type="button" aria-label="닫기" disabled={busy} onClick={close}>
+            <X size={20} />
+          </button>
+        </header>
+        {children}
+      </section>
+    );
   return (
     <dialog
       ref={ref}
@@ -94,39 +117,109 @@ function useOperation() {
   }
   return { busy, error, run, alive };
 }
-export function ItemEditor({ original, catalog, close, saved }: {
-  original?: Item; catalog: Catalog; close: (changed?: boolean) => void; saved: (message?: string) => void;
+export function ItemEditor({
+  original,
+  catalog,
+  close,
+  saved,
+}: {
+  original?: Item;
+  catalog: Catalog;
+  close: (changed?: boolean) => void;
+  saved: (message?: string) => void;
 }) {
   const [label, setLabel] = useState(original?.name || '');
   const [kindId, setKindId] = useState(original?.kindId || '');
   const [uncertain, setUncertain] = useState(false);
   const op = useOperation();
-  return <Dialog title={original ? '물품 수정' : '물품 등록'} close={() => close(uncertain)} busy={op.busy}>
-    <form onSubmit={e => { e.preventDefault(); if (uncertain) return; void op.run(async () => {
-      try {
-        await adminApi.save('', { label, kindId }, original);
-        if (op.alive.current) saved(original ? '물품 정보를 수정했습니다. 태그 변경은 키오스크에서 진행하세요.' : '태그 등록 대기로 저장했습니다. 키오스크에서 태그를 연결하면 대여할 수 있습니다.');
-      } catch(e) { if (op.alive.current && e instanceof ServiceError && e.code === 'UNKNOWN') setUncertain(true); throw e; }
-    }); }}>
-      <fieldset disabled={op.busy || uncertain}>
-        <label>물품명<input aria-label="물품명" required maxLength={100} value={label} onChange={e => setLabel(e.target.value)} data-aw-autofocus /></label>
-        <label>물품 종류<select aria-label="물품 종류" required value={kindId} onChange={e => setKindId(e.target.value)}>
-          <option value="">선택해 주세요</option>{catalog.kinds.map(k => <option key={k.id} value={k.id}>{k.name}</option>)}
-        </select></label>
-      </fieldset>
-      {!catalog.kinds.length && <p className="aw-warning">등록된 물품 종류가 없어 저장할 수 없습니다.</p>}
-      <p className="aw-help">{original ? '물품 정보만 수정합니다. 태그 등록·교체는 리더기가 연결된 키오스크의 관리자 모드에서 진행하세요.' : '태그 없이 등록하며 대여는 불가능합니다. 키오스크 관리자 모드에서 이 물품을 선택하고 태그를 연결해 주세요.'}</p>
-      {uncertain && <p className="aw-warning">저장 결과를 확인하지 못했습니다. 중복 등록하지 말고 창을 닫아 목록을 확인해 주세요.</p>}
-      <Failure error={op.error} />
-      <footer><button type="button" disabled={op.busy} onClick={() => close(uncertain)}>닫기</button>
-        <button className="aw-primary" disabled={op.busy || uncertain || !kindId || !label.trim()}>{op.busy ? '저장 중…' : original ? '변경사항 저장' : '등록하기'}</button></footer>
-    </form>
-  </Dialog>;
+  return (
+    <Dialog
+      page
+      title={original ? '물품 수정' : '물품 등록'}
+      close={() => close(uncertain)}
+      busy={op.busy}
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (uncertain) return;
+          void op.run(async () => {
+            try {
+              await adminApi.save('', { label, kindId }, original);
+              if (op.alive.current)
+                saved(
+                  original
+                    ? '물품 정보를 수정했습니다. 태그 변경은 키오스크에서 진행하세요.'
+                    : '태그 등록 대기로 저장했습니다. 키오스크에서 태그를 연결하면 대여할 수 있습니다.',
+                );
+            } catch (e) {
+              if (op.alive.current && e instanceof ServiceError && e.code === 'UNKNOWN')
+                setUncertain(true);
+              throw e;
+            }
+          });
+        }}
+      >
+        <fieldset disabled={op.busy || uncertain}>
+          <label>
+            물품명
+            <input
+              aria-label="물품명"
+              required
+              maxLength={100}
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              data-aw-autofocus
+            />
+          </label>
+          <label>
+            물품 종류
+            <select
+              aria-label="물품 종류"
+              required
+              value={kindId}
+              onChange={(e) => setKindId(e.target.value)}
+            >
+              <option value="">선택해 주세요</option>
+              {catalog.kinds.map((k) => (
+                <option key={k.id} value={k.id}>
+                  {k.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </fieldset>
+        {!catalog.kinds.length && (
+          <p className="aw-warning">등록된 물품 종류가 없어 저장할 수 없습니다.</p>
+        )}
+        <p className="aw-help">
+          {original
+            ? '물품 정보만 수정합니다. 태그 등록·교체는 리더기가 연결된 키오스크의 관리자 모드에서 진행하세요.'
+            : '태그 없이 등록하며 대여는 불가능합니다. 키오스크 관리자 모드에서 이 물품을 선택하고 태그를 연결해 주세요.'}
+        </p>
+        {uncertain && (
+          <p className="aw-warning">
+            저장 결과를 확인하지 못했습니다. 중복 등록하지 말고 창을 닫아 목록을 확인해 주세요.
+          </p>
+        )}
+        <Failure error={op.error} />
+        <footer>
+          <button type="button" disabled={op.busy} onClick={() => close(uncertain)}>
+            닫기
+          </button>
+          <button
+            className="aw-primary"
+            disabled={op.busy || uncertain || !kindId || !label.trim()}
+          >
+            {op.busy ? '저장 중…' : original ? '변경사항 저장' : '등록하기'}
+          </button>
+        </footer>
+      </form>
+    </Dialog>
+  );
 }
-export function TagEditor({ item }: { item: Item; saved: (message?: string) => void }) {
-  return <div className="aw-notice"><p>{item.tag ? '태그 교체' : '태그 등록'}는 키오스크에서 진행합니다.</p>
-    <p>리더기가 연결된 키오스크 → 관리자 태그 등록 → 공통 비밀번호 로그인 → 물품 ID {item.id} 선택 → NFC 인식 → 연결 확정</p>
-    <p>태그 등록 대기 물품은 연결 완료 후 대여 가능으로 전환됩니다. 점검·수리 상태는 유지됩니다.</p></div>;
+export function TagEditor({ item, saved }: { item: Item; saved: (message?: string) => void }) {
+  return <TagRegistration item={item} saved={() => saved()} />;
 }
 export function StatusEditor({
   item,

@@ -80,7 +80,10 @@ async function setup(page: Page, tablet = false) {
   await page.goto('/kiosk');
   await expect(page.getByRole('button', { name: /대여하기/ })).toBeEnabled();
 }
-const scan = (page: Page) => page.evaluate(() => window.dispatchEvent(new Event('fixture-scan')));
+async function scan(page: Page) {
+  await expect(page.getByRole('heading', { name: /인식해 주세요/ })).toBeVisible();
+  await page.evaluate(() => window.dispatchEvent(new Event('fixture-scan')));
+}
 async function code(page: Page) {
   for (const digit of '123456')
     await page.getByRole('button', { name: digit, exact: true }).click();
@@ -119,7 +122,7 @@ for (const damaged of [false, true])
     });
     await returnConfirm(page, damaged);
     expect(writes).toBe(0);
-    await page.screenshot({path:test.info().outputPath('return-confirm.png'),fullPage:true});
+    await page.screenshot({ path: test.info().outputPath('return-confirm.png'), fullPage: true });
     await page.getByRole('button', { name: '반납 확정', exact: true }).click();
     await expect(
       page.getByRole('heading', {
@@ -128,7 +131,7 @@ for (const damaged of [false, true])
       }),
     ).toBeVisible();
     expect(writes).toBe(1);
-    await page.screenshot({path:test.info().outputPath('return-done.png'),fullPage:true});
+    await page.screenshot({ path: test.info().outputPath('return-done.png'), fullPage: true });
     await page.clock.fastForward(13000);
     await expect(page.getByRole('button', { name: /반납하기/ })).toBeVisible();
   });
@@ -190,7 +193,6 @@ test('대여 응답 유실 후 같은 인증·멱등키·본문으로 복구하�
   });
   await page.getByRole('button', { name: /대여하기/ }).click();
   await code(page);
-  await page.getByRole('button', { name: /공용 우산/ }).click();
   await scan(page);
   await expect(page.getByText('대여 완료 후 안내')).toBeVisible();
   await page.getByRole('button', { name: '대여 확정', exact: true }).click();
@@ -209,13 +211,13 @@ test('키패드 한 자리 삭제·유휴 경고 연장·취소 포커스', asyn
   await page.getByRole('button', { name: /대여하기/ }).click();
   for (const d of '123') await page.getByRole('button', { name: d, exact: true }).click();
   await page.getByRole('button', { name: '지우기', exact: true }).click();
-  await expect(page.getByLabel('일회성 대여 코드')).toHaveValue('12');
+  await expect(page.getByLabel('이용 코드', { exact: true })).toHaveValue('12');
   await expect(page.getByRole('button', { name: '확인', exact: true })).toBeDisabled();
   await page.clock.fastForward(161000);
   await expect(page.getByText('이용 시간이 곧 종료됩니다.')).toBeVisible();
   await page.getByRole('button', { name: '계속 이용하기' }).click();
   await page.clock.fastForward(21000);
-  await expect(page.getByLabel('일회성 대여 코드')).toHaveValue('12');
+  await expect(page.getByLabel('이용 코드', { exact: true })).toHaveValue('12');
   await page.getByRole('button', { name: '이용 취소' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await page.keyboard.press('Escape');
@@ -263,8 +265,8 @@ test('유실된 반납 거부 결과를 확인하면 코드 수정 가능, 만�
   await returnConfirm(page);
   await page.getByRole('button', { name: '반납 확정', exact: true }).click();
   await page.getByRole('button', { name: '반납 결과 다시 확인' }).click();
-  await expect(page.getByLabel('일회성 반납 코드')).toBeEnabled();
-  await expect(page.getByLabel('일회성 반납 코드')).toHaveValue('');
+  await expect(page.getByLabel('이용 코드', { exact: true })).toBeEnabled();
+  await expect(page.getByLabel('이용 코드', { exact: true })).toHaveValue('');
   await code(page);
   await page.getByRole('button', { name: '반납 확정', exact: true }).click();
   await page.getByRole('button', { name: '물품 다시 인식하기' }).click();

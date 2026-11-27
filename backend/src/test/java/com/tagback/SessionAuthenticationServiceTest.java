@@ -4,7 +4,7 @@ import com.tagback.domain.entity.*;
 import com.tagback.domain.repository.*;
 import com.tagback.exception.*;
 import com.tagback.service.SessionService;
-import com.tagback.service.sms.SmsSecrets;
+import com.tagback.service.AuthSecrets;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import java.time.*;
@@ -16,7 +16,7 @@ class SessionAuthenticationServiceTest {
     private final UserRepository users = mock(UserRepository.class);
     private final LoginSessionRepository sessions = mock(LoginSessionRepository.class);
     private final Instant now = Instant.parse("2026-10-06T09:00:00Z");
-    private final SmsSecrets secrets = new SmsSecrets("test-only-key-for-session-authentication");
+    private final AuthSecrets secrets = new AuthSecrets("test-only-key-for-session-authentication");
     private final User user = mock(User.class);
     private BrowserRegistration browser;
     private LoginSession session;

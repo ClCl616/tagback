@@ -136,7 +136,7 @@ public class TagLifecycleService {
         return new TagLookupResponse(
                 new TagLookupResponse.Item(item.getId(), item.getItemName(), item.getStatus(),
                         item.getStatus() == ItemStatus.AVAILABLE,
-                        item.getItemType().getId().toString(), item.getItemType().getName()),
+                        item.getItemType().getId().toString(), item.getItemType().getName(),item.getImageUrl()!=null?item.getImageUrl():item.getItemType().getImageUrl()),
                 new TagLookupResponse.Tag(uid, "ACTIVE"));
     }
 

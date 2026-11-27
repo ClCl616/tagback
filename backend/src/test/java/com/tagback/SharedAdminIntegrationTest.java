@@ -41,13 +41,13 @@ class SharedAdminIntegrationTest {
     @BeforeEach void resetIsolatedDatabase() {
         String database=jdbc.queryForObject("select current_database()",String.class);
         assertEquals("tagback_admin_test",database);
-        jdbc.execute("truncate table users,item_types,admin_sessions,admin_login_limits,admin_tag_operations,nfc_scan_proof_uses restart identity cascade");
+        jdbc.execute("truncate table users,item_types,administrators,admin_sessions,admin_login_limits,admin_tag_operations,nfc_scan_proof_uses restart identity cascade");
         typeId=jdbc.queryForObject("insert into item_types(name) values ('시험 우산') returning item_type_id",Long.class);
     }
     Map<String,Object> body(String value) { return json.readValue(value,Map.class); }
     Cookie web() throws Exception {
         var response=mvc.perform(post("/api/v1/admin/auth/login").contentType("application/json")
-                .content(json.writeValueAsString(Map.of("password",PASSWORD))))
+                .content(json.writeValueAsString(Map.of("adminNumber","000","password",PASSWORD))))
                 .andExpect(status().isOk()).andExpect(header().string("Set-Cookie",org.hamcrest.Matchers.containsString("HttpOnly")))
                 .andExpect(header().string("Set-Cookie",org.hamcrest.Matchers.containsString("Secure")))
                 .andExpect(jsonPath("$.token").doesNotExist()).andReturn().getResponse();
@@ -56,7 +56,7 @@ class SharedAdminIntegrationTest {
     }
     String kiosk() throws Exception {
         return (String)body(mvc.perform(post("/api/v1/kiosk/admin/login").contentType("application/json")
-                .content(json.writeValueAsString(Map.of("password",PASSWORD))))
+                .content(json.writeValueAsString(Map.of("adminNumber","000","password",PASSWORD))))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("token");
     }
     long item(Cookie cookie) throws Exception {
@@ -81,12 +81,51 @@ class SharedAdminIntegrationTest {
         return mvc.perform(post("/api/v1/kiosk/admin/tags").header("Authorization","Bearer "+token)
                 .contentType("application/json").content(json.writeValueAsString(data)));
     }
+    @Test void individualAccountsRequirePasswordChangeAndRepresentativeAuthority() throws Exception {
+        Cookie owner=web();
+        var added=body(mvc.perform(post("/api/v1/admin/accounts").cookie(owner).contentType("application/json")
+            .content("{\"adminNumber\":\"001\",\"name\":\"Operator One\"}"))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+        String temporary=(String)added.get("temporaryPassword");
+        var login=body(mvc.perform(post("/api/v1/kiosk/admin/login").contentType("application/json")
+            .content(json.writeValueAsString(Map.of("adminNumber","001","password",temporary))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.mustChangePassword").value(true)).andReturn().getResponse().getContentAsString());
+        String token=(String)login.get("token");
+        mvc.perform(get("/api/v1/admin/users").header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
+        mvc.perform(post("/api/v1/admin/auth/password").header("Authorization","Bearer "+token).contentType("application/json")
+            .content(json.writeValueAsString(Map.of("currentPassword",temporary,"newPassword","Personal-test-2026!")))).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/admin/users").header("Authorization","Bearer "+token)).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/item-types").header("Authorization","Bearer "+token).header("X-TagBack-Admin","1")).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/admin/accounts").header("Authorization","Bearer "+token)).andExpect(status().isForbidden());
+        mvc.perform(patch("/api/v1/admin/accounts/001").cookie(owner).contentType("application/json")
+            .content("{\"name\":\"Operator One\",\"active\":false}")).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/admin/users").header("Authorization","Bearer "+token)).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/admin/access-log").cookie(owner)).andExpect(status().isOk()).andExpect(jsonPath("$[0].adminNumber").value("001"));
+    }
+    @Test void publicIndividualCatalogueHidesPendingAndImagesFallBackByType() throws Exception {
+        Cookie owner=web();long pending=item(owner);long visible=item(owner);String token=kiosk();
+        connect(token,command(visible,null,proof("AABBCCDD",0))).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/catalog/items")).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1)).andExpect(jsonPath("$.items[0].itemId").value(Long.toString(visible)));
+        var image=new java.awt.image.BufferedImage(2,2,java.awt.image.BufferedImage.TYPE_INT_RGB);
+        var out=new java.io.ByteArrayOutputStream();javax.imageio.ImageIO.write(image,"png",out);
+        String payload=json.writeValueAsString(Map.of("data",Base64.getEncoder().encodeToString(out.toByteArray())));
+        mvc.perform(put("/api/v1/items/"+pending+"/image").contentType("application/json").content(payload)).andExpect(status().isUnauthorized());
+        String url=(String)body(mvc.perform(put("/api/v1/item-types/"+typeId+"/image").cookie(owner).contentType("application/json").content(payload))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("imageUrl");
+        mvc.perform(get("/api/v1/catalog/items")).andExpect(jsonPath("$.items[0].typeImageUrl").value(url)).andExpect(jsonPath("$.items[0].imageUrl").isEmpty());
+        mvc.perform(get(url)).andExpect(status().isOk()).andExpect(content().contentType("image/png"));
+        mvc.perform(put("/api/v1/items/"+visible+"/image").cookie(owner).contentType("application/json").content(payload)).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/catalog/items")).andExpect(jsonPath("$.items[0].imageUrl").isString());
+        mvc.perform(put("/api/v1/items/"+visible+"/image").cookie(owner).contentType("application/json").content("{\"data\":\"PHN2Zy8+\"}")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/catalog/items").param("keyword","%_")).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
+    }
+
     @Test void independentSessionAndChannelIsolationAndLogout() throws Exception {
         Cookie cookie=web();String token=kiosk();
         mvc.perform(get("/api/v1/admin/auth/session").cookie(cookie)).andExpect(status().isOk());
         mvc.perform(get("/api/v1/auth/session").cookie(cookie)).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/v1/kiosk/admin/items").cookie(cookie)).andExpect(status().isUnauthorized());
-        mvc.perform(get("/api/v1/admin/users").header("Authorization","Bearer "+token)).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/admin/users").header("Authorization","Bearer "+token)).andExpect(status().isOk());
         mvc.perform(get("/api/v1/kiosk/admin/items").header("Authorization","Bearer "+token)).andExpect(status().isOk());
         mvc.perform(post("/api/v1/admin/auth/logout").cookie(cookie)).andExpect(status().isNoContent());
         mvc.perform(get("/api/v1/admin/auth/session").cookie(cookie)).andExpect(status().isUnauthorized());
@@ -95,11 +134,11 @@ class SharedAdminIntegrationTest {
     }
     @Test void wrongPasswordsAreRateLimitedAndOriginsRejected() throws Exception {
         for(int i=0;i<10;i++) mvc.perform(post("/api/v1/admin/auth/login").contentType("application/json")
-                .content("{\"password\":\"incorrect\"}")).andExpect(status().isUnauthorized());
+                .content("{\"adminNumber\":\"000\",\"password\":\"incorrect\"}")).andExpect(status().isUnauthorized());
         mvc.perform(post("/api/v1/admin/auth/login").contentType("application/json")
-                .content(json.writeValueAsString(Map.of("password",PASSWORD)))).andExpect(status().isTooManyRequests());
+                .content(json.writeValueAsString(Map.of("adminNumber","000","password",PASSWORD)))).andExpect(status().isTooManyRequests());
         mvc.perform(post("/api/v1/admin/auth/login").header("Origin","https://untrusted.invalid")
-                .contentType("application/json").content(json.writeValueAsString(Map.of("password",PASSWORD))))
+                .contentType("application/json").content(json.writeValueAsString(Map.of("adminNumber","000","password",PASSWORD))))
                 .andExpect(status().isForbidden());
         assertEquals(0,jdbc.queryForObject("select count(*) from admin_sessions",Integer.class));
     }

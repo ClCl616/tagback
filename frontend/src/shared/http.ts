@@ -1,21 +1,28 @@
 import { ServiceError } from './serviceError';
 
+type Reply = { status: number; ok: boolean; json: () => Promise<any> };
+let transport: ((path: string, method: string, body: unknown) => Promise<Reply>) | undefined;
+export function setAdminTransport(value: typeof transport) {
+  transport = value;
+}
 export async function request(
   path: string,
   method = 'GET',
   body?: unknown,
   signal?: AbortSignal,
 ): Promise<any> {
-  let response: Response;
+  let response: Reply;
   try {
-    response = await fetch(path, {
-      method,
-      credentials: 'include',
-      cache: 'no-store',
-      signal: signal ?? AbortSignal.timeout(15000),
-      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    response = transport
+      ? await transport(path, method, body)
+      : await fetch(path, {
+          method,
+          credentials: 'include',
+          cache: 'no-store',
+          signal: signal ?? AbortSignal.timeout(15000),
+          headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+          body: body === undefined ? undefined : JSON.stringify(body),
+        });
   } catch {
     throw new ServiceError(
       'UNKNOWN',

@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@Profile("sms-mock & !prod & !production")
 @RequestMapping("/api/v1/rentals")
 public class RentalReturnController {
     private final RentalReturnService returns;
@@ -57,7 +56,7 @@ public class RentalReturnController {
         }
         limiter.check(request.getRemoteAddr());
         var result = returns.returnItem(java.util.UUID.fromString(body.scanTicketId()), body.proof(),
-                body.condition(), body.returnCode());
+                body.condition(), body.returnCode(), body.grantToken());
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(RentalResponses.Returned.from(result));
     }

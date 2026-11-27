@@ -12,13 +12,17 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@Profile("sms-mock & !prod & !production")
 @RequestMapping("/api/v1")
 public class RentalCodeController {
     private final RentalCodeService codes;
     private final AuthOriginGuard origins;
     public RentalCodeController(RentalCodeService codes, AuthOriginGuard origins) {
         this.codes = codes; this.origins = origins;
+    }
+
+    @GetMapping("/rental-codes")
+    public ResponseEntity<RentalResponses.Code> current(@RequestAttribute(AuthenticatedUser.ATTRIBUTE) AuthenticatedUser user) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(codes.current(user.userId()));
     }
 
     @PostMapping("/rental-codes")

@@ -6,7 +6,7 @@ import com.tagback.dto.rental.NfcScanProof;
 import com.tagback.exception.RentalException;
 import com.tagback.service.NfcScanProofVerifier;
 import com.tagback.service.RentalReturnService;
-import com.tagback.service.sms.SmsSecrets;
+import com.tagback.service.AuthSecrets;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -31,7 +31,7 @@ class RentalReturnOwnershipTest {
     private final NfcScanProofUseStore uses = mock(NfcScanProofUseStore.class);
     private final NfcReturnScanTicketStore tickets = mock(NfcReturnScanTicketStore.class);
     private final RentalAuthorizationStore codes = mock(RentalAuthorizationStore.class);
-    private final SmsSecrets secrets = mock(SmsSecrets.class);
+    private final AuthSecrets secrets = mock(AuthSecrets.class);
     private final RentalReturnService service = new RentalReturnService(items, rentals, tags, history,
             inspections, verifier, uses, tickets, codes, secrets, Clock.fixed(NOW, ZoneOffset.UTC));
     private final UUID ticketId = UUID.randomUUID();

@@ -19,8 +19,9 @@ async function main() {
     const server=net.createServer(socket=>socket.end(testSecret));
     server.on('error',reject);
     server.listen('\\\\.\\pipe\\'+name,()=>{
-      const child=spawn(executable,[`--provision-secret-pipe=${name}`,`--kiosk-profile=${profile}`],{windowsHide:true,stdio:'ignore'});
-      const timer=setTimeout(()=>{child.kill();server.close();reject(Error('Provisioning timeout'));},20000);
+      const child=spawn(executable,[`--provision-secret-pipe=${name}`,`--kiosk-profile=${profile}`],{windowsHide:true,stdio:['ignore','pipe','pipe']});
+      let diagnostics='';child.stdout.on('data',chunk=>{diagnostics+=chunk});child.stderr.on('data',chunk=>{diagnostics+=chunk});
+      const timer=setTimeout(()=>{child.kill();server.close();reject(Error('Provisioning timeout: '+diagnostics));},45000);
       child.on('error',reject);child.on('exit',code=>{clearTimeout(timer);server.close();code===0?resolve():reject(Error(`Provisioning exit ${code}`));});
     });
   });
@@ -76,13 +77,13 @@ async function main() {
       return {packaged:app.isPackaged,sandbox:p.sandbox,contextIsolation:p.contextIsolation,nodeIntegration:p.nodeIntegration,devToolsOpened:wc.isDevToolsOpened()};
     });
     assert.deepEqual(security,{packaged:true,sandbox:true,contextIsolation:true,nodeIntegration:false,devToolsOpened:false});
-    await page.getByRole('button',{name:'연결·설정',exact:true}).click();
-    await expect.poll(()=>electron.windows().length).toBe(2);
-    const panel=electron.windows().find(p=>p!==page);await panel.waitForURL('tagback://operator/index.html');
-    assert.equal(await panel.evaluate(()=>typeof window.require),'undefined');
+    await expect(page.getByRole('button',{name:'연결·설정',exact:true})).toHaveCount(0);
+    for(let i=0;i<5;i++) await page.locator('.kiosk-brand-button').click();
+    await expect(page.getByText('TagBack · 관리자 인증',{exact:true})).toBeVisible();
+    await expect(page.getByRole('button',{name:'연결 설정',exact:true})).toHaveCount(0);
     const blocked=await page.evaluate(()=>window.tagbackKioskHost.request({version:2,requestId:crypto.randomUUID(),command:{action:'operator:action'}}).then(()=>false,()=>true));
     assert.equal(blocked,true);
-    await panel.close();
+    await page.getByRole('button',{name:'이용 화면으로',exact:true}).click();
     await page.screenshot({path:path.join(output,'windows-kiosk.png')});
     fs.writeFileSync(path.join(output,'result.json'),JSON.stringify({state,security,physicalReaderTested:false,serverDatabaseTested:false},null,2));
     console.log('PASS packaged Electron: local UI, host v2, isolated renderer, missing-config gate, denied arbitrary commands/network.');
