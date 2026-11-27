@@ -585,7 +585,8 @@
     column-gap: 24px;
     align-content: start;
   }
-  .user-web .uw-view-items > .uw-heading {
+  .user-web .uw-view-items > .uw-heading,
+  .user-web .uw-catalog-heading-controls > .uw-heading {
     grid-column: 1/-1;
   }
   .user-web .uw-catalog-controls {

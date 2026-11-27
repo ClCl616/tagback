@@ -334,6 +334,8 @@ test('approved screens and signup reflow without horizontal overflow from 320 to
       if (path === '/mobile/items' && width >= 1280) {
         const box = await page.locator('.uw-products').boundingBox();
         expect(box!.width).toBeGreaterThan(900);
+        const headingBox = await page.locator('.uw-catalog-heading-controls .uw-heading').boundingBox();
+        expect(headingBox!.width).toBeGreaterThan(1000);
       }
       if (
         (width === 390 || width === 1440) &&
