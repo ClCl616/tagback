@@ -1,6 +1,6 @@
 # Windows exe·Android APK 패키징 설계 v1
 
-> 2026-11-13 배포 방식 확정: 공통 서버는 Docker Compose로 실행하고, Windows 설치 파일과 향후 Android APK는 GitHub Releases에서 운영자가 수동 설치·업데이트한다. 앱 자동 업데이트는 현재 범위에서 제외하며 Android 구현 보류는 유지한다. 아래 자동 업데이트 관련 제안은 이 결정으로 대체한다. 자동 실행·연결 복구·관리자 종료는 별도 후속 작업이다. 세부 정책은 [진행 보고서의 확정 배포 및 업데이트 정책](frontend-redesign-progress.md#2026-11-13-확정-배포-및-업데이트-정책)을 따른다.
+> 2026-11-13 배포 방식 확정: 공통 서버는 Docker Compose로 실행하고, Windows 설치 파일과 향후 Android APK는 GitHub Releases에서 운영자가 수동 설치·업데이트한다. 앱 자동 업데이트는 현재 범위에서 제외하며 Android 구현 보류는 유지한다. 아래 자동 업데이트 관련 제안은 이 결정으로 대체한다. 자동 실행·연결 복구·관리자 종료는 별도 후속 작업이다. 현재 Windows 실행과 검증 범위는 [Windows 안내](../kiosk/windows/README.md)를 참고한다.
 
 최신 구현 추가(2026-11-13): 사용자 요청에 따라 P1 및 P2 Windows 시험 골격을 구현했다. [Windows README](../kiosk/windows/README.md)에 실제 산출물·검증·남은 조건을 기록했다. 아래 최초 작성 시점의 설계와 후속 단계는 완료 상태를 의미하지 않는다. P2 main/preload는 변환 단계 없는 CommonJS로 구현했으며 공통 UI의 TypeScript host v2 계약은 그대로 따른다.
 
@@ -206,8 +206,8 @@ P2/P3 초기 산출물은 시험용이다. P4~P6 없이 무인 운영 완료라�
 
 ## 2026-11-13 P1 구현 반영
 
-P1 공통 kiosk 빌드/host 경계 분리를 구현했다. 구체적인 구현 계약·명령·제약은 [P1 연결 계약](kiosk-host-contract.md), 검증 결과는 [진행 보고서](frontend-redesign-progress.md)를 참고한다. 실제 entry 파일은 기존 `/kiosk`와의 충돌을 피하기 위해 위 제안 경로 `kiosk.html` 대신 `frontend/kiosk-app.html`이다. v2의 `capabilities.transport=1`과 request envelope는 이번 P1 계약이며 native 영구 복구나 운영 권한 구현 완료를 의미하지 않는다. 위 설계의 snapshot/operation manager/장치 등록 및 P2~P6는 후속 범위다.
+P1 공통 kiosk 빌드/host 경계 분리를 구현했다. 구체적인 구현 계약·명령·제약은 [P1 연결 계약](kiosk-host-contract.md), 현재 실행과 검증 범위는 [Windows 안내](../kiosk/windows/README.md)를 참고한다. 실제 entry 파일은 기존 `/kiosk`와의 충돌을 피하기 위해 위 제안 경로 `kiosk.html` 대신 `frontend/kiosk-app.html`이다. v2의 `capabilities.transport=1`과 request envelope는 이번 P1 계약이며 native 영구 복구나 운영 권한 구현 완료를 의미하지 않는다. 위 설계의 snapshot/operation manager/장치 등록 및 P2~P6는 후속 범위다.
 
 ## 2026-11-13 P2 구현 반영
 
-Windows 시험 호스트·직접 실행 exe·Squirrel Setup.exe 골격을 구현했다. CommonJS main/preload가 host v2 명령을 처리하며 Java 21과 private PC/SC IPC를 동봉한다. 실제 실행과 시험 키 암호화 저장을 검증했다. 최신 검증·산출물은 [진행 보고서](frontend-redesign-progress.md)와 [Windows README](../kiosk/windows/README.md)에 기록했다. 이는 P2 개발 골격이며 타 PC 설치·실물 인수까지 완료한 상태가 아니다. 메모리 보호만 있으므로 P4 영구 복구와 서버 계약, P5 ADMIN·서명·운영, P6 현장 검증 전에 무인 운영하지 않는다. 다음 독립 구현은 P3 Android 호스트/APK 골격이다.
+Windows 시험 호스트·직접 실행 exe·Squirrel Setup.exe 골격을 구현했다. CommonJS main/preload가 host v2 명령을 처리하며 Java 21과 private PC/SC IPC를 동봉한다. 실제 실행과 시험 키 암호화 저장을 검증했다. 최신 검증·산출물은 [Windows README](../kiosk/windows/README.md)에 기록했다. 이는 P2 개발 골격이며 타 PC 설치·실물 인수까지 완료한 상태가 아니다. 메모리 보호만 있으므로 P4 영구 복구와 서버 계약, P5 ADMIN·서명·운영, P6 현장 검증 전에 무인 운영하지 않는다. 다음 독립 구현은 P3 Android 호스트/APK 골격이다.

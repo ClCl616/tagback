@@ -194,7 +194,7 @@ V15 `create_rental_authorization`에 대여 코드·반출 토큰·성공 결과
 1단계는 문서만 작성했으며 API 호출·DB 실행·장비 검증을 수행한 결과가 아니다. 이후 구현·검증은 아래 단계에 기록한다.
 
 관련 문서: [물품 API](item-api-contract.md), [인증 API](auth-api-contract.md),
-[서비스 흐름](service-ui.md), [태그 등록](nfc-tag-registration.md).
+[태그 등록](nfc-tag-registration.md).
 
 ## 8. 2단계: 대여 데이터 접근 구현
 
