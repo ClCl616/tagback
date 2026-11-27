@@ -157,7 +157,7 @@ pnpm test
 
 이 결과는 당시 통합본에 대한 기록입니다. 최종 카카오톡 로그인 구현의 검증 결과를 뜻하지 않습니다.
 
-상세 범위는 [2026-11-19 통합 기록](../docs/post-release-integration-2026-11-19.md)을 참고하세요.
+당시 통합 검증 범위는 [PR #32](https://github.com/ClCl616/tagback/pull/32)를 참고하세요.
 
 ## 관련 문서
 
