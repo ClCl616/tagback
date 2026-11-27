@@ -77,13 +77,15 @@ public class RentalReturnService {
         UUID ticketId = returnTickets.create(verifiedProof.bridgeId(), tagUid, verifiedProof.nonce(), itemId, rental.getId(), scannedAt,
                 scannedAt.plusSeconds(RETURN_SCAN_TICKET_TTL_SECONDS));
         return new ReturnScanResult(ticketId, rental.getId(), item.getId(), item.getItemName(),
-                item.getItemType().getId(), item.getItemType().getName());
+                item.getItemType().getId(), item.getItemType().getName(),item.getImageUrl()!=null?item.getImageUrl():item.getItemType().getImageUrl());
     }
 
     /** Returns an active rental only with a short-lived ticket issued for a signed reader scan. */
     @Transactional
     public ReturnResult returnItem(UUID scanTicketId, NfcScanProof proof,
-                                   ReturnCondition condition, String returnCode) {
+                                   ReturnCondition condition, String returnCode) {return returnItem(scanTicketId,proof,condition,returnCode,null);}
+    @Transactional
+    public ReturnResult returnItem(UUID scanTicketId,NfcScanProof proof,ReturnCondition condition,String returnCode,String grantToken) {
         Instant lookupAt = clock.instant();
         var consumed = returnTickets.findRecentConsumed(scanTicketId, lookupAt.minusSeconds(RETURN_REPLAY_SECONDS));
         if (consumed.isPresent()) return replay(consumed.get(), proof, condition, returnCode);
@@ -101,7 +103,13 @@ public class RentalReturnService {
             throw RentalException.invalidScanProof();
         }
         String returnCodeHash = codeHash(returnCode);
-        var lockedCode = codes.lockCodeByHash(returnCodeHash);
+        var grant = grantToken==null ? null : codes.grantByHash(secrets.tokenHash(grantToken)).orElseThrow(RentalException::returnCodeInvalid);
+        if(grant!=null&&!grant.expiresAt().isAfter(clock.instant()))throw RentalException.returnCodeInvalid();
+        var lockedCode = grant==null ? codes.lockCodeByHash(returnCodeHash) : codes.lockCode(grant.codeId());
+        if(grant!=null&&lockedCode.isPresent()) {
+            long value=Long.parseLong(secrets.keyedHash("rental-code-display:"+lockedCode.get().id()).substring(0,12),16);
+            if(!String.format(java.util.Locale.ROOT,"%06d",value%1_000_000).equals(returnCode))throw RentalException.returnCodeInvalid();
+        }
         if (lockedCode.isEmpty()) {
             var justCompleted = returnTickets.findRecentConsumed(scanTicketId,
                     clock.instant().minusSeconds(RETURN_REPLAY_SECONDS));
@@ -113,7 +121,7 @@ public class RentalReturnService {
         if (!ticketRental.getItem().getId().equals(ticket.itemId())
                 || !ticketRental.getUser().getId().equals(returnCodeRecord.userId())
                 || returnCodeRecord.consumedAt() != null
-                || !returnCodeRecord.expiresAt().isAfter(clock.instant())) throw RentalException.returnCodeInvalid();
+                || (grant==null && !returnCodeRecord.expiresAt().isAfter(clock.instant()))) throw RentalException.returnCodeInvalid();
         long itemId = ticket.itemId();
         // Use the same item-row lock as checkout and admin status changes to serialize transitions.
         var item = items.findForUpdate(itemId).orElseThrow(ItemException::itemNotFound);
@@ -181,5 +189,7 @@ public class RentalReturnService {
                                ReturnCondition condition,
                                Instant rentedAt, Instant dueAt, Instant returnedAt) {}
     public record ReturnScanResult(UUID scanTicketId, Long rentalId, Long itemId, String itemName,
-                                   Long itemTypeId, String itemTypeName) {}
+                                   Long itemTypeId, String itemTypeName,String imageUrl) {
+        public ReturnScanResult(UUID ticket,Long rental,Long item,String name,Long type,String typeName){this(ticket,rental,item,name,type,typeName,null);}
+    }
 }

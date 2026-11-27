@@ -28,7 +28,7 @@ export const api: ServiceApi = {
       occupation: user.occupation || '',
     };
   },
-  code: () => issueRentalCode(),
+  code: (_token, renew = false) => issueRentalCode(renew),
   async rentals() {
     const signal = AbortSignal.timeout(60000);
     const lists = await Promise.all(

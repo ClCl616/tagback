@@ -146,7 +146,16 @@ async function fixture(page: Page) {
       return route.fulfill({ json: paged('itemTypes', kinds) });
     }
     if (url.pathname.endsWith('/items'))
-      return state.failItems ? route.abort() : route.fulfill({ json: paged('items', items) });
+      return state.failItems
+        ? route.abort()
+        : route.fulfill({
+            json: paged(
+              'items',
+              items.filter((i) =>
+                (i.itemName + ' ' + i.itemTypeName).includes(url.searchParams.get('keyword') || ''),
+              ),
+            ),
+          });
     if (url.pathname.endsWith('/rentals/me'))
       return route.fulfill({
         json: paged(
@@ -157,7 +166,7 @@ async function fixture(page: Page) {
         ),
       });
     if (url.pathname.endsWith('/rental-codes')) {
-      state.codes++;
+      if (route.request().method() === 'POST') state.codes++;
       return state.failCode
         ? route.abort()
         : route.fulfill({
@@ -175,28 +184,19 @@ async function fixture(page: Page) {
   return state;
 }
 
-test('code is explicitly issued, shared across routes and never reissued by focus or expiry', async ({
+test('code appears automatically and polling synchronizes it without reissuing on focus', async ({
   page,
 }) => {
   const state = await fixture(page);
-  state.codeSeconds = 4;
   await page.goto('/mobile');
-  await expect(page.getByRole('heading', { name: '홈', exact: true })).toBeVisible();
-  expect(state.codes).toBe(0);
-  await page.getByRole('button', { name: '이용 코드 발급', exact: true }).click();
   await expect(page.locator('.code-number')).toHaveText('482193');
-  await expect(page.getByRole('button', { name: '코드 다시 확인', exact: true })).toBeVisible();
-  await page.locator('.uw-sidebar').getByRole('link', { name: '대여 내역', exact: true }).click();
-  await page.locator('.uw-sidebar').getByRole('link', { name: '홈', exact: true }).click();
-  await expect(page.locator('.code-number')).toHaveText('482193');
-  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-  await expect(page.getByText('유효시간이 지났어요', { exact: true })).toBeVisible({
-    timeout: 8000,
-  });
-  await expect(page.locator('.code-number')).not.toContainText('482193');
   expect(state.codes).toBe(1);
-  state.codeSeconds = 180;
-  await page.getByRole('button', { name: '새 코드 발급', exact: true }).click();
+  await expect(page.getByRole('button', { name: '이용 코드 발급', exact: true })).toHaveCount(0);
+  await expect(page.getByText('남은 시간')).toHaveCount(0);
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+  await expect(page.locator('.code-number')).toHaveText('482193');
+  expect(state.codes).toBe(1);
+  await page.reload();
   await expect(page.locator('.code-number')).toHaveText('482193');
   expect(state.codes).toBe(2);
 });
@@ -205,9 +205,8 @@ test('code response cannot leak across account changes and failure offers an exp
   page,
 }) => {
   const state = await fixture(page);
-  await page.goto('/mobile/code');
   state.failCode = true;
-  await page.getByRole('button', { name: '이용 코드 발급', exact: true }).click();
+  await page.goto('/mobile/code');
   await expect(page.getByRole('alert')).toContainText('코드 발급 결과');
   expect(state.codes).toBe(1);
   state.failCode = false;
@@ -218,7 +217,6 @@ test('code response cannot leak across account changes and failure offers an exp
   await page.evaluate(() => window.dispatchEvent(new Event('tagback-session')));
   await expect(page.locator('.code-number')).not.toHaveText('482193');
   expect(state.codes).toBe(2);
-  await page.getByRole('button', { name: '이용 코드 발급', exact: true }).click();
   await expect(page.locator('.code-number')).toHaveText('679041');
 });
 
@@ -229,10 +227,10 @@ test('guest login returns to the requested code screen and polling preserves typ
   state.signedIn = false;
   await page.goto('/mobile/code');
   await expect(page).toHaveURL(/login\?next=/);
-  await page.evaluate(() => window.dispatchEvent(new Event('tagback-session')));
   await page.getByRole('button', { name: '카카오 로그인', exact: true }).click();
   await expect(page).toHaveURL(/\/mobile\/code$/);
-  expect(state.codes).toBe(0);
+  await expect(page.locator('.code-number')).toHaveText('482193');
+  expect(state.codes).toBe(1);
 });
 
 test('catalog keeps search, distinguishes unavailable stock from request failure and opens direct details', async ({
@@ -242,16 +240,16 @@ test('catalog keeps search, distinguishes unavailable stock from request failure
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/mobile/items');
   await page.getByLabel('물품명 검색').fill('계산기');
-  await expect(page.locator('.uw-product')).toHaveCount(1);
-  await page.locator('.uw-product').click();
+  await expect(page.locator('.uw-product')).toHaveCount(2);
+  await page.locator('.uw-product').first().click();
   await expect(page.getByRole('dialog', { name: '물품 상세' })).toContainText('공학용 계산기');
   await page.getByRole('button', { name: '물품 상세 닫기' }).click();
   await expect(page.getByLabel('물품명 검색')).toHaveValue('계산기');
   await page.getByLabel('물품명 검색').fill('없는 물품');
   await expect(page.getByRole('heading', { name: '검색 결과가 없어요' })).toBeVisible();
   await page.getByRole('button', { name: '검색 초기화' }).click();
-  await page.locator('.uw-product').filter({ hasText: '보조배터리' }).click();
-  await expect(page.getByRole('dialog', { name: '물품 상세' })).toContainText('현재 대여 불가');
+  await page.locator('.uw-product').filter({ hasText: '배터리 01' }).click();
+  await expect(page.getByRole('dialog', { name: '물품 상세' })).toContainText('수리 중');
   await expect(
     page.getByRole('dialog', { name: '물품 상세' }).getByRole('link', { name: '이용 코드 발급' }),
   ).toHaveCount(0);
@@ -261,9 +259,9 @@ test('catalog keeps search, distinguishes unavailable stock from request failure
   await expect(page.getByText('등록된 물품이 없어요')).toHaveCount(0);
   state.failItems = false;
   await page.getByRole('button', { name: '다시 시도', exact: true }).click();
-  await expect(page.locator('.uw-product')).toHaveCount(3);
+  await expect(page.locator('.uw-product')).toHaveCount(4);
   await page.goto('/mobile/items/1');
-  await expect(page.getByRole('heading', { name: '공학용 계산기' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '계산기 01' })).toBeVisible();
 });
 
 test('server overdue, direct rental history, return-month filter and logout stay consistent', async ({
@@ -432,6 +430,23 @@ test('long lists keep navigation fixed and restore the list after browser back',
       },
     }),
   );
+  await page.route('**/api/v1/catalog/items?**', (route) =>
+    route.fulfill({
+      json: {
+        items: Array.from({ length: 30 }, (_, i) => ({
+          itemId: String(i + 1),
+          itemName: `물품 ${i + 1}`,
+          itemTypeId: String(i + 1),
+          itemTypeName: `물품 ${i + 1}`,
+          status: 'AVAILABLE',
+        })),
+        page: 0,
+        size: 100,
+        totalElements: 30,
+        totalPages: 1,
+      },
+    }),
+  );
   await page.goto('/mobile/items');
   await expect(page.locator('.uw-product')).toHaveCount(30);
   const list = page.locator('.uw-products');
@@ -574,7 +589,7 @@ test('background catalog refresh preserves the open sheet and recovers without r
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await expect.poll(() => started).toBe(true);
   await expect(sheet).toHaveAttribute('data-original', 'yes');
-  await expect(page.locator('.uw-product')).toHaveCount(3);
+  await expect(page.locator('.uw-product')).toHaveCount(4);
   release();
   await expect(page.getByText('최신 정보를 확인하고 있어요.', { exact: true })).toHaveCount(0);
   await expect(sheet).toHaveAttribute('data-original', 'yes');
@@ -583,7 +598,7 @@ test('background catalog refresh preserves the open sheet and recovers without r
   state.failItems = true;
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await expect(page.getByText(/이전 조회 내용을 표시하고 있어요/)).toBeVisible();
-  await expect(page.locator('.uw-product')).toHaveCount(3);
+  await expect(page.locator('.uw-product')).toHaveCount(4);
   state.failItems = false;
   await page.getByRole('button', { name: '다시 시도', exact: true }).click();
   await expect(page.getByText(/이전 조회 내용을 표시하고 있어요/)).toHaveCount(0);

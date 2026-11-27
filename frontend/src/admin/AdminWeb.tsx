@@ -1,3 +1,4 @@
+import { ItemPicture } from '../shared/ItemPicture';
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
@@ -25,6 +26,8 @@ import type { Item } from '../shared/types';
 import { loadAdminData, type AdminData, type AdminRecord } from './adminQueries';
 import { adminApi } from './adminApi';
 import { ItemEditor, StatusEditor, DeleteItem, TagEditor } from './AdminActions';
+import { AccountManagement } from './AccountManagement';
+import { ImageEditor } from './ImageEditor';
 import { allPages } from '../shared/http';
 import { parseItem } from '../shared/catalogHttp';
 import '../mobile/user-web.css';
@@ -95,6 +98,7 @@ const menus = [
   ['overdue', '연체 조회', CircleAlert],
   ['history', '이용 이력', History],
   ['users', '사용자', Users],
+  ['accounts', '관리자 계정', ShieldCheck],
 ] as const;
 function Brand() {
   return (
@@ -207,6 +211,26 @@ export default function AdminWeb() {
       document.removeEventListener('visibilitychange', check);
     };
   }, []);
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      if (
+        !identity.current ||
+        document.visibilityState !== 'visible' ||
+        document.querySelector('dialog[open]') ||
+        document.activeElement?.matches('input,textarea,select')
+      )
+        return;
+      const run = seq.current;
+      try {
+        const fresh = await loadAdminData(AbortSignal.timeout(15000));
+        if (active.current && run === seq.current && fresh.operatorId === identity.current)
+          setData(fresh);
+      } catch (e) {
+        if (active.current && run === seq.current) deny(e);
+      }
+    }, 15000);
+    return () => clearInterval(timer);
+  }, []);
   const currentSeq = seq.current;
   const report = (e: unknown) => (currentSeq === seq.current ? deny(e) : true);
   const reload = (message = '') => {
@@ -227,7 +251,7 @@ export default function AdminWeb() {
         <div className="aw-auth-heading">
           <ShieldCheck />
           <h1>관리자 로그인</h1>
-          <p>공통 관리자 비밀번호를 입력해 주세요. 사용자 계정과 별도로 로그인합니다.</p>
+          <p>관리자 번호와 개인 비밀번호를 입력해 주세요.</p>
         </div>
         <AdminLogin onLogin={() => nav(destination, { replace: true })} />
         <Link className="aw-back-user" to="/mobile">
@@ -450,17 +474,19 @@ function Workspace({
         <Brand />
         <div className="aw-nav-caption">운영 관리</div>
         <nav aria-label="관리자 메뉴">
-          {menus.map(([id, label, Icon]) => (
-            <NavLink
-              key={id}
-              to={id === 'overview' ? '/admin' : '/admin/' + id}
-              end
-              className={section === id ? 'active' : ''}
-            >
-              <Icon size={20} />
-              {label}
-            </NavLink>
-          ))}
+          {menus
+            .filter(([id]) => id !== 'accounts' || data.adminNumber === '000')
+            .map(([id, label, Icon]) => (
+              <NavLink
+                key={id}
+                to={id === 'overview' ? '/admin' : '/admin/' + id}
+                end
+                className={section === id ? 'active' : ''}
+              >
+                <Icon size={20} />
+                {label}
+              </NavLink>
+            ))}
         </nav>
         <div className="aw-operator">
           <span className="aw-avatar">{data.operator.slice(0, 1)}</span>
@@ -528,7 +554,9 @@ function Workspace({
             {notice.replace('최신 목록을 확인하고 있어요.', '목록을 갱신했어요.')}
           </div>
         )}
-        {section === 'overview' ? (
+        {section === 'accounts' ? (
+          <AccountManagement />
+        ) : section === 'overview' ? (
           <Overview data={data} />
         ) : (
           <>
@@ -665,7 +693,7 @@ function Workspace({
                 ) : searchError ? (
                   <Failure error={searchError} retry={() => reload()} />
                 ) : rows.length ? (
-                  <div className="aw-table-wrap">
+                  <div className={itemView ? 'aw-table-wrap aw-item-cards' : 'aw-table-wrap'}>
                     <table>
                       <thead>
                         <tr>
@@ -684,6 +712,7 @@ function Workspace({
                               <tr key={i.id} className={selected === i.id ? 'selected' : ''}>
                                 <td data-label="물품">
                                   <button className="aw-row-link" onClick={() => open(i.id)}>
+                                    <ItemPicture src={i.image} />
                                     {i.name}
                                     <span className="aw-sr"> 상세 보기</span>
                                   </button>
@@ -907,6 +936,24 @@ function Overview({ data }: { data: AdminData }) {
           </Link>
         ))}
       </section>
+      <section className="aw-card">
+        <div className="aw-section-heading">
+          <h2>물품 대시보드</h2>
+          <Link to="/admin/items">전체 물품 보기</Link>
+        </div>
+        <div className="aw-dashboard-items">
+          {data.catalog.items.slice(0, 12).map((item) => (
+            <Link key={item.id} to={'/admin/items?selected=' + item.id}>
+              <div className="aw-item-art">
+                <ItemPicture src={item.image} />
+              </div>
+              <strong>{item.label}</strong>
+              <span>#{item.id}</span>
+              <Badge value={item.status} />
+            </Link>
+          ))}
+        </div>
+      </section>
       <div className="aw-overview-grid">
         <section className="aw-card">
           <div className="aw-section-heading">
@@ -1032,7 +1079,7 @@ function ItemDetail({
     return () => {
       alive = false;
     };
-  }, [id, attempt]);
+  }, [id, attempt, data.loadedAt]);
   return (
     <aside className="aw-card aw-detail" aria-label="물품 상세">
       <DetailHeader title={tags ? '태그 연결' : '물품 상세'} close={close} />
@@ -1043,7 +1090,7 @@ function ItemDetail({
       ) : (
         <>
           <div className="aw-item-art">
-            <Box size={46} />
+            <ItemPicture src={item.image} alt={item.label} />
           </div>
           <Badge value={item.status} />
           <h3>{item.name}</h3>
@@ -1054,8 +1101,10 @@ function ItemDetail({
               ['태그 UID', item.tag || '태그 미등록'],
             ]}
           />
+          <ImageEditor item={item} saved={saved} />
+          <TagEditor item={item} saved={saved} />
           {tags ? (
-            <TagEditor item={item} saved={saved} />
+            <p>태그 등록은 위에서 진행해 주세요.</p>
           ) : (
             <div className="aw-detail-actions">
               <button className="aw-primary" onClick={() => edit('edit', item)}>

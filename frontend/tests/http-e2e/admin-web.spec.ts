@@ -99,6 +99,9 @@ async function server(page: Page) {
     const session = () => ({
       sessionId: state.userId,
       channel: 'WEB',
+      adminNumber: '000',
+      name: '대표 관리자',
+      mustChangePassword: false,
       expiresAt: '2030-01-01T00:00:00Z',
     });
     if (path === '/api/v1/admin/auth/session')
@@ -211,6 +214,7 @@ test('admin login preserves its requested destination and does not offer adminis
   await page.goto('/admin/tags?selected=102');
   await page.getByRole('link', { name: '로그인', exact: true }).click();
   await expect(page.getByRole('link', { name: '회원가입' })).toHaveCount(0);
+  await page.getByLabel('관리자 번호').fill('000');
   await page.getByLabel('관리자 비밀번호').fill('test-admin-password');
   await page.getByRole('button', { name: '관리자 로그인', exact: true }).click();
   await expect(page).toHaveURL(/\/admin\/tags\?selected=102$/);
@@ -340,7 +344,7 @@ test('session changes clear open drafts, logout returns to login and USER has no
   state.userId = '5';
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  await expect(page.locator('.aw-operator')).toContainText('공통 관리자');
+  await expect(page.locator('.aw-operator')).toContainText('대표 관리자');
   state.role = 'USER';
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await expect(page.getByRole('heading', { name: '관리자 권한이 필요해요' })).toBeVisible();

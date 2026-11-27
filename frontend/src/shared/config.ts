@@ -2,7 +2,7 @@
 export const KIOSK = {
   codeLength: 6,
   sessionSeconds: 180,
-  completionSeconds: 12,
+  completionSeconds: 5,
   warningSeconds: 20,
   stationId: 'engineering',
 } as const;

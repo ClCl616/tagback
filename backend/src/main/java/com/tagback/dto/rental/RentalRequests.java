@@ -27,7 +27,10 @@ public final class RentalRequests {
         @jakarta.validation.constraints.NotNull NfcScanProof proof,
         @jakarta.validation.constraints.NotNull ReturnCondition condition,
         @JsonDeserialize(using = StrictStringDeserializer.class)
-        @NotBlank @Pattern(regexp = "[0-9]{6}") String returnCode) {
+        @NotBlank @Pattern(regexp = "[0-9]{6}") String returnCode,
+        @Pattern(regexp="[A-Za-z0-9_-]{43}") String grantToken) {
+        public Return(String scanTicketId,NfcScanProof proof,ReturnCondition condition,String returnCode){this(scanTicketId,proof,condition,returnCode,null);}
+        @Override public String toString(){return "Return[redacted]";}
         @JsonAnySetter public void rejectUnknown(String name, Object value) {
             throw new IllegalArgumentException("Unknown return field");
         }

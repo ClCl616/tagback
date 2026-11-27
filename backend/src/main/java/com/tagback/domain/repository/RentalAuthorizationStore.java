@@ -20,6 +20,10 @@ public class RentalAuthorizationStore {
         jdbc.execute("select pg_advisory_xact_lock(20261014, 13)");
     }
 
+    public void releaseCode(UUID id) {
+        jdbc.update("update rental_codes set code_hash=null where rental_code_id=?",id);
+    }
+
     public void releaseExpiredCodes(Instant now) {
         jdbc.update("update rental_codes set code_hash = null where code_hash is not null and expires_at <= ?", ts(now));
     }
@@ -29,14 +33,18 @@ public class RentalAuthorizationStore {
                 (rs, n) -> code(rs), userId).stream().findFirst();
     }
 
+    public boolean currentRevision(UUID id) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("select c.completion_revision=coalesce(r.revision,0) from rental_codes c left join rental_code_revisions r on r.user_id=c.user_id where c.rental_code_id=?",Boolean.class,id));
+    }
     public long issuedSince(long userId, Instant since) {
         return jdbc.queryForObject("select count(*) from rental_codes where user_id = ? and created_at >= ?",
                 Long.class, userId, ts(since));
     }
 
     public boolean insertCode(UUID id, long userId, String hash, Instant now, Instant expires) {
-        return jdbc.update("insert into rental_codes (rental_code_id, user_id, code_hash, created_at, expires_at) "
-                + "values (?, ?, ?, ?, ?) on conflict do nothing", id, userId, hash, ts(now), ts(expires)) == 1;
+        if(Boolean.TRUE.equals(jdbc.queryForObject("select exists(select 1 from rental_codes where lookup_hash=? and expires_at>?)",Boolean.class,hash,ts(now))))return false;
+        return jdbc.update("insert into rental_codes (rental_code_id, user_id, code_hash, created_at, expires_at, completion_revision,lookup_hash) "
+                + "values (?, ?, ?, ?, ?, coalesce((select revision from rental_code_revisions where user_id=?),0),?) on conflict do nothing", id, userId, hash, ts(now), ts(expires),userId,hash) == 1;
     }
 
     public Optional<Code> lockCodeByHash(String hash) {
@@ -70,6 +78,7 @@ public class RentalAuthorizationStore {
         int changed = jdbc.update("update rental_codes set consumed_at = ?, code_hash = null "
                 + "where rental_code_id = ? and consumed_at is null", ts(now), id);
         if (changed != 1) throw new IllegalStateException("Rental code consumption lost its lock");
+        jdbc.update("insert into rental_code_revisions(user_id,revision) select user_id,1 from rental_codes where rental_code_id=? on conflict(user_id) do update set revision=rental_code_revisions.revision+1",id);
     }
 
     public Optional<CheckoutResult> operation(UUID grantId, UUID key) {

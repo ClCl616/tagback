@@ -20,6 +20,11 @@ public class RentalCodeController {
         this.codes = codes; this.origins = origins;
     }
 
+    @GetMapping("/rental-codes")
+    public ResponseEntity<RentalResponses.Code> current(@RequestAttribute(AuthenticatedUser.ATTRIBUTE) AuthenticatedUser user) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(codes.current(user.userId()));
+    }
+
     @PostMapping("/rental-codes")
     public ResponseEntity<RentalResponses.Code> issue(@Valid @RequestBody RentalRequests.IssueCode body,
             @RequestAttribute(AuthenticatedUser.ATTRIBUTE) AuthenticatedUser user, HttpServletRequest request) {

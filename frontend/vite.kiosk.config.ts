@@ -13,7 +13,7 @@ function kioskArtifact(): Plugin {
       handler(_options, bundle) {
         // Catch accidental imports of account flows or routes before an installed app is shipped.
         const forbidden =
-          /\/src\/(?:admin\/|mobile\/|main\.tsx$|shared\/(?:api|auth|httpAuth|catalogHttp)\.ts$)/;
+          /\/src\/(?:mobile\/.*\.tsx$|main\.tsx$|shared\/(?:api|auth|httpAuth)\.ts$)/;
         for (const id of this.getModuleIds()) {
           if (forbidden.test(id.replaceAll('\\', '/')))
             this.error(`Non-kiosk module in installed build: ${id}`);

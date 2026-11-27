@@ -1,6 +1,7 @@
 import { request, assertId } from '../shared/http';
 import { parseItem, catalogHttp } from '../shared/catalogHttp';
-import { notify, ServiceError } from '../shared/api';
+import { ServiceError } from '../shared/serviceError';
+const notify = () => window.dispatchEvent(new Event('tagback-change'));
 import type { Item, ItemStatus } from '../shared/types';
 
 export type ItemDraft = { label: string; kindId: string };

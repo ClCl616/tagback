@@ -587,3 +587,47 @@
 .kiosk-v2 .stepper .current {
   font-weight: 750;
 }
+
+.kiosk-brand-button {
+  border: 0;
+  background: none;
+  color: inherit;
+  padding: 0;
+}
+.kiosk-warning {
+  position: relative;
+  margin-left: auto;
+}
+.kiosk-warning > button {
+  background: #fff2d2;
+  border: 1px solid #ca8035;
+  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  font-size: 28px;
+}
+.kiosk-warning > div {
+  position: absolute;
+  right: 0;
+  top: 52px;
+  min-width: 300px;
+  background: #fff8e8;
+  padding: 20px;
+  border: 1px solid #ca8035;
+  border-radius: 14px;
+  z-index: 20;
+}
+.welcome-main .kiosk-actions {
+  flex: 1;
+  min-height: 48vh;
+}
+.welcome-main .kiosk-actions > button {
+  min-height: 40vh;
+}
+.kiosk-v2 .welcome-main {
+  padding: 24px 4vw;
+  gap: 20px;
+}
+.kiosk-v2 .welcome-heading {
+  margin: 0;
+}

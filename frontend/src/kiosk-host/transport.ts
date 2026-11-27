@@ -49,9 +49,23 @@ export async function kioskRequest(command: KioskCommand): Promise<KioskResponse
         };
       }
       if (command.action === 'admin-login' && response.status >= 200 && response.status < 300) {
-        const value = data as { adminHandle?: unknown; sessionId?: unknown; expiresAt?: unknown };
+        const value = data as {
+          adminHandle?: unknown;
+          sessionId?: unknown;
+          expiresAt?: unknown;
+          adminNumber?: string;
+          name?: string;
+          mustChangePassword?: boolean;
+        };
         if (typeof value?.adminHandle !== 'string') throw new Error('KIOSK_HOST_INVALID_ADMIN');
-        data = { token: value.adminHandle, sessionId: value.sessionId, expiresAt: value.expiresAt };
+        data = {
+          token: value.adminHandle,
+          sessionId: value.sessionId,
+          expiresAt: value.expiresAt,
+          adminNumber: value.adminNumber,
+          name: value.name,
+          mustChangePassword: value.mustChangePassword,
+        };
       }
       return {
         status: response.status,
@@ -66,21 +80,47 @@ export async function kioskRequest(command: KioskCommand): Promise<KioskResponse
   let body: unknown;
   let token: string | undefined;
   let key: string | undefined;
+  let method: string | undefined;
   switch (command.action) {
+    case 'admin-api':
+      path = command.path;
+      method = command.method;
+      body = command.body ?? undefined;
+      token = command.adminRef;
+      break;
     case 'admin-login':
-      path = '/api/v1/kiosk/admin/login'; body = { password: command.password }; break;
+      path = '/api/v1/kiosk/admin/login';
+      body = { adminNumber: command.adminNumber, password: command.password };
+      break;
     case 'admin-session':
-      path = '/api/v1/kiosk/admin/session'; token = command.adminRef; break;
+      path = '/api/v1/kiosk/admin/session';
+      token = command.adminRef;
+      break;
     case 'admin-logout':
-      path = '/api/v1/kiosk/admin/logout'; token = command.adminRef; body = {}; break;
+      path = '/api/v1/kiosk/admin/logout';
+      token = command.adminRef;
+      body = {};
+      break;
     case 'admin-items':
       path = `/api/v1/kiosk/admin/items?keyword=${encodeURIComponent(command.keyword)}&page=${command.page}&pending=${command.pending}`;
-      token = command.adminRef; break;
+      token = command.adminRef;
+      break;
     case 'admin-tag-current':
-      path = `/api/v1/kiosk/admin/items/${encodeURIComponent(command.itemId)}/tag`; token=command.adminRef; break;
+      path = `/api/v1/kiosk/admin/items/${encodeURIComponent(command.itemId)}/tag`;
+      token = command.adminRef;
+      break;
     case 'admin-tag':
-      path = '/api/v1/kiosk/admin/tags'; token=command.adminRef;
-      body = { operationId: command.operationId, itemId: command.itemId, expectedUid: command.expectedUid, proof: command.proof }; break;
+      path = '/api/v1/kiosk/admin/tags';
+      token = command.adminRef;
+      body = {
+        operationId: command.operationId,
+        itemId: command.itemId,
+        expectedUid: command.expectedUid,
+        proof: command.proof,
+      };
+      break;
+    case 'image':
+      throw new Error('IMAGE_HOST_ONLY');
     case 'health':
       path = '/api/v1/kiosk/health';
       break;
@@ -113,17 +153,19 @@ export async function kioskRequest(command: KioskCommand): Promise<KioskResponse
         proof: command.proof,
         condition: command.condition,
         returnCode: command.returnCode,
+        ...(command.grantRef ? { grantToken: command.grantRef } : {}),
       };
       break;
     default:
       throw new Error('KIOSK_COMMAND_UNSUPPORTED');
   }
   return fetch(path, {
-    method: body === undefined ? 'GET' : 'POST',
+    method: method ?? (body === undefined ? 'GET' : 'POST'),
     cache: 'no-store',
     credentials: 'omit',
     headers: {
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...('adminRef' in command ? { 'X-TagBack-Admin': '1' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(key ? { 'Idempotency-Key': key } : {}),
     },

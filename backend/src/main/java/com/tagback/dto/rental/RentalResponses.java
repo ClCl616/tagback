@@ -33,10 +33,10 @@ public final class RentalResponses {
     }
 
     public record ReturnScan(String scanTicketId, String rentalId, String itemId, String itemName,
-                             String itemTypeId, String itemTypeName) {
+                             String itemTypeId, String itemTypeName,String imageUrl) {
         public static ReturnScan from(ReturnScanResult result) {
             return new ReturnScan(result.scanTicketId().toString(), result.rentalId().toString(), result.itemId().toString(),
-                    result.itemName(), result.itemTypeId().toString(), result.itemTypeName());
+                    result.itemName(), result.itemTypeId().toString(), result.itemTypeName(),result.imageUrl());
         }
     }
 

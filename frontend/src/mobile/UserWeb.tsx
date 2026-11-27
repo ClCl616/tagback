@@ -204,103 +204,78 @@ type CodeState = { code?: Code; busy: boolean; error?: unknown; issue: () => Pro
 const CodeContext = createContext<CodeState>({ busy: false, issue: async () => {} });
 function CodeProvider({ children }: { children: ReactNode }) {
   const { token, epoch } = useAuth();
-  const [state, setState] = useState<{
-    epoch: number;
-    code?: Code;
-    busy: boolean;
-    error?: unknown;
-  }>({ epoch, busy: false });
-  const currentEpoch = useRef(epoch);
-  currentEpoch.current = epoch;
-  const visible = state.epoch === epoch ? state : { epoch, busy: false };
-  const running = useRef(false);
-  const alive = useRef(true);
+  const [state, setState] = useState<{ code?: Code; busy: boolean; error?: unknown }>({
+    busy: true,
+  });
+  const initial = useRef<{ epoch: number; promise: Promise<Code> } | undefined>(undefined);
+  const refresh = useRef<() => Promise<void>>(async () => {});
   useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-    };
-  }, []);
-  useEffect(() => {
-    running.current = false;
-  }, [epoch]);
-  async function issue() {
-    if (!token || running.current) return;
-    running.current = true;
-    setState({ epoch, busy: true });
-    try {
-      const code = await api.code(token, true);
-      if (alive.current && currentEpoch.current === epoch) setState({ epoch, code, busy: false });
-    } catch (error) {
-      if (alive.current && currentEpoch.current === epoch) setState({ epoch, error, busy: false });
-    } finally {
-      if (currentEpoch.current === epoch) running.current = false;
+    if (!token) {
+      setState({ busy: false });
+      return;
     }
-  }
-  return <CodeContext.Provider value={{ ...visible, issue }}>{children}</CodeContext.Provider>;
+    setState({ busy: true });
+    let alive = true,
+      running = false;
+    if (initial.current?.epoch !== epoch)
+      initial.current = { epoch, promise: api.code(token, true) };
+    let lastCode = '';
+    const update = async (first = false) => {
+      if (running) return;
+      running = true;
+      try {
+        const code = await (first ? initial.current!.promise : api.code(token, false));
+        if (alive) {
+          setState({ code, busy: false });
+          if (lastCode && lastCode !== code.value)
+            window.dispatchEvent(new Event('tagback-change'));
+          lastCode = code.value;
+        }
+      } catch (error) {
+        if (alive) setState({ busy: false, error });
+      } finally {
+        running = false;
+      }
+    };
+    refresh.current = () => update();
+    void update(true);
+    const timer = window.setInterval(() => void update(), 2000);
+    const focus = () => void update();
+    window.addEventListener('focus', focus);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      window.removeEventListener('focus', focus);
+    };
+  }, [token, epoch]);
+  return (
+    <CodeContext.Provider value={{ ...state, issue: () => refresh.current() }}>
+      {children}
+    </CodeContext.Provider>
+  );
 }
 function CodeCard({ compact = false }: { compact?: boolean }) {
   const { code, busy, error, issue } = useContext(CodeContext);
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-  const expired = !!code && code.expiresAt <= now;
-  const seconds = Math.max(0, Math.ceil(((code?.expiresAt || 0) - now) / 1000));
   return (
     <section className={`uw-card uw-code ${compact ? 'compact' : ''}`} aria-label="이용 코드">
       <h2>
-        이용 코드 <Info size={18} aria-hidden="true" />
+        나의 이용 코드 <Info size={18} />
       </h2>
       {error ? (
-        <Failure
-          error={error}
-          retry={() => void issue()}
-          title="이용 코드 발급을 확인하지 못했어요"
-        />
-      ) : busy ? (
-        <Loading text="이용 코드를 발급하고 있어요" />
+        <Failure error={error} retry={() => void issue()} title="이용 코드를 확인하지 못했어요" />
+      ) : busy || !code || code.expiresAt <= Date.now() ? (
+        <Loading text="이용 코드를 준비하고 있어요" />
       ) : (
         <>
-          <div className={`uw-code-value ${expired ? 'expired' : ''}`}>
-            <ScanLine size={32} aria-hidden="true" />
+          <div className="uw-code-value">
+            <ScanLine size={32} />
             <strong className="code-number" aria-label="이용 코드 숫자">
-              {code && !expired ? code.value : '— — —'}
+              {code.value}
             </strong>
           </div>
-          <p className="uw-code-status" role="status">
-            {expired
-              ? '유효시간이 지났어요'
-              : code
-                ? '키오스크에 입력해 주세요'
-                : '키오스크에서 사용할 코드를 발급해 주세요.'}
-          </p>
-          {code && !expired && (
-            <p className="uw-countdown">
-              <Clock3 size={16} aria-hidden="true" />
-              남은 시간{' '}
-              <strong>
-                {String(Math.floor(seconds / 60)).padStart(2, '0')}:
-                {String(seconds % 60).padStart(2, '0')}
-              </strong>
-            </p>
-          )}
-          <button
-            className={code && !expired ? 'secondary full' : 'primary full'}
-            onClick={() => void issue()}
-          >
-            {code && !expired ? '코드 다시 확인' : code ? '새 코드 발급' : '이용 코드 발급'}
-          </button>
-          {code && !expired && (
-            <p className="uw-caption">사용 여부는 키오스크에서 확인해 주세요.</p>
-          )}
+          <p className="uw-code-status">키오스크에 입력해 주세요</p>
+          <p className="uw-caption">대여·반납 후에는 새 코드로 자동 변경돼요.</p>
         </>
-      )}
-      {!compact && (
-        <p className="uw-caption">
-          코드는 본인만 사용해 주세요. 코드 발급만으로 대여·반납이 완료되지 않아요.
-        </p>
       )}
     </section>
   );
@@ -623,6 +598,13 @@ function CatalogDetails({ children, close }: { children: ReactNode; close: () =>
     </aside>
   );
 }
+const itemState: Record<string, string> = {
+  available: '대여 가능',
+  rented: '대여 중',
+  inspection: '점검 중',
+  repair: '수리 중',
+  pending: '태그 등록 대기',
+};
 function CatalogPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -632,14 +614,19 @@ function CatalogPage() {
   const category = params.get('category') || '전체';
   const selected = params.get('item');
   const categories = ['전체', ...new Set(r.data?.kinds.map((k) => k.category) || [])];
-  const kinds = r.data?.kinds.filter((k) => category === '전체' || k.category === category);
+  const kinds = r.data?.items.filter(
+    (i) =>
+      (category === '전체' ||
+        r.data?.kinds.find((k) => k.id === i.kindId)?.category === category) &&
+      (params.get('available') !== 'true' || i.status === 'available'),
+  );
   function update(key: string, value: string) {
     const next = new URLSearchParams(params);
     value ? next.set(key, value) : next.delete(key);
     next.delete('item');
     setParams(next, { replace: true });
   }
-  const selectedKind = r.data?.kinds.find((k) => k.id === selected);
+  const selectedKind = r.data?.items.find((k) => k.id === selected);
   function closeDetails() {
     if (location.state?.catalogOverlay) navigate(-1);
     else {
@@ -675,6 +662,14 @@ function CatalogPage() {
           <MapPin size={18} />
           {r.data?.stations[0]?.name || '대여소 확인 중'}
         </p>
+        <label className="uw-available-filter">
+          <input
+            type="checkbox"
+            checked={params.get('available') === 'true'}
+            onChange={(e) => update('available', e.target.checked ? 'true' : '')}
+          />{' '}
+          대여 가능만
+        </label>
         <div className="uw-filters" aria-label="물품 분류">
           {categories.map((c) => (
             <button
@@ -711,16 +706,13 @@ function CatalogPage() {
           className={`uw-master-detail uw-catalog-layout ${selectedKind ? 'has-selection' : ''}`}
         >
           <div
-            className="uw-products uw-lockers"
+            className="uw-products uw-individual-items"
             data-scroll-region
             tabIndex={0}
             aria-label="물품 목록"
           >
             {kinds.map((k) => {
-              const items = r.data!.items.filter((i) => i.kindId === k.id);
-              const available =
-                k.availableCount ??
-                items.filter((i) => i.active && i.status === 'available').length;
+              const available = k.status === 'available';
               const next = new URLSearchParams(params);
               next.set('item', k.id);
               return (
@@ -731,13 +723,15 @@ function CatalogPage() {
                   state={{ catalogOverlay: true }}
                 >
                   <div className="uw-product-art">
-                    <ItemIcon name={k.name} />
+                    {k.image ? (
+                      <img src={k.image} alt={k.name || k.label} />
+                    ) : (
+                      <ItemIcon name={k.name || k.label} />
+                    )}
                   </div>
-                  <span className="uw-caption">{k.category}</span>
+                  <span className="uw-caption">#{k.id}</span>
                   <h2>{k.name}</h2>
-                  <Pill tone={available ? 'green' : 'gray'}>
-                    {available ? `대여 가능 ${available}개` : '현재 대여 불가'}
-                  </Pill>
+                  <Pill tone={available ? 'green' : 'gray'}>{itemState[k.status]}</Pill>
                   <ChevronRight className="uw-product-arrow" size={20} />
                 </Link>
               );
@@ -765,46 +759,37 @@ function ItemDetails({
   kindId: string;
   catalog: Awaited<ReturnType<typeof api.catalog>>;
 }) {
-  const kind = catalog.kinds.find((k) => k.id === kindId)!;
-  const items = catalog.items.filter((i) => i.kindId === kindId);
-  const available =
-    kind.availableCount ?? items.filter((i) => i.active && i.status === 'available').length;
+  const item = catalog.items.find((i) => i.id === kindId)!;
+  const kind = catalog.kinds.find((k) => k.id === item.kindId);
   return (
     <div className="uw-item-detail">
       <div className="uw-product-art">
-        <ItemIcon name={kind.name} />
+        {item.image ? <img src={item.image} alt={item.label} /> : <ItemIcon name={item.label} />}
       </div>
-      <h2>{kind.name}</h2>
-      {kind.description && <p>{kind.description}</p>}
-      <Pill tone={available ? 'green' : 'gray'}>{available ? '대여 가능' : '현재 대여 불가'}</Pill>
+      <h2>{item.label}</h2>
+      <Pill tone={item.status === 'available' ? 'green' : 'gray'}>{itemState[item.status]}</Pill>
       <dl className="uw-facts">
+        <div>
+          <dt>식별번호</dt>
+          <dd>#{item.id}</dd>
+        </div>
+        <div>
+          <dt>종류</dt>
+          <dd>{kind?.name}</dd>
+        </div>
         <div>
           <dt>대여소</dt>
           <dd>{catalog.stations[0]?.name}</dd>
         </div>
-        <div>
-          <dt>대여 가능</dt>
-          <dd>
-            {available}개 / 전체 {kind.totalCount ?? items.length}개
-          </dd>
-        </div>
       </dl>
-      <Notice>대여와 반납은 키오스크에서 진행해요. 현재 재고는 예약을 의미하지 않아요.</Notice>
-      {available > 0 ? (
-        <Link className="primary full" to="/mobile/code">
-          이용 코드 발급 <ArrowRight size={18} />
-        </Link>
-      ) : (
-        <Link className="secondary full" to="/mobile/items">
-          다른 물품 찾아보기
-        </Link>
-      )}
+      <Notice>대여와 반납은 키오스크에서 진행해요.</Notice>
     </div>
   );
 }
+
 function LegacyItemDetail() {
   const { id } = useParams();
-  const r = useResource(() => publicCatalogHttp('', id), [id], true, true);
+  const r = useResource(() => publicCatalogHttp(), [id], true, true);
   return (
     <>
       <Back to="/mobile/items">물품 목록으로</Back>
@@ -814,7 +799,7 @@ function LegacyItemDetail() {
         <Loading />
       ) : r.error ? (
         <Failure error={r.error} retry={r.reload} />
-      ) : !r.data?.kinds.some((k) => k.id === id) ? (
+      ) : !r.data?.items.some((k) => k.id === id) ? (
         <State title="물품을 찾을 수 없어요">
           <Link to="/mobile/items">물품 목록으로</Link>
         </State>

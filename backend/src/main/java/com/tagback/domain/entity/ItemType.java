@@ -21,6 +21,10 @@ public class ItemType {
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private OffsetDateTime createdAt;
 
+    @Column(name="image_id")
+    private java.util.UUID imageId;
+    public String getImageUrl() { return imageId == null ? null : "/api/v1/catalog/images/" + imageId; }
+
     protected ItemType() {
     }
 

@@ -20,6 +20,7 @@ export type AdminData = {
   items: AdminRecord[];
   users: AdminRecord[];
   rentals: AdminRecord[];
+  adminNumber: string;
   operator: string;
   operatorId: string;
   catalog: Catalog;
@@ -60,7 +61,8 @@ export async function loadAdminData(signal: AbortSignal): Promise<AdminData> {
   ]);
   if (!Array.isArray(types.itemTypes)) throw invalid();
   return {
-    operator: '공통 관리자',
+    operator: session.name,
+    adminNumber: session.adminNumber,
     operatorId: session.sessionId,
     catalog: {
       items: items.map(parseItem),

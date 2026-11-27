@@ -47,7 +47,7 @@ public class RentalOperationService {
 
     private void requireUnexpired(Instant grantExpiry, Instant codeExpiry) {
         var now = clock.instant();
-        if (!grantExpiry.isAfter(now) || !codeExpiry.isAfter(now)) throw RentalException.grantExpired();
+        if (!grantExpiry.isAfter(now)) throw RentalException.grantExpired();
     }
     public record Outcome(boolean created, RentalResponses.Checkout response) {}
 }

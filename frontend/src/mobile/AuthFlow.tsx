@@ -35,9 +35,10 @@ export default function AuthFlow({
   const [error, setError] = useState<unknown>();
   const [uncertain, setUncertain] = useState(false);
   const locked = useRef(false);
+  const completedNext = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (token && !uncertain) {
-      nav(next, { replace: true });
+      nav(completedNext.current || next, { replace: true });
       return;
     }
   }, [token, uncertain, nav, next]);
@@ -84,6 +85,7 @@ export default function AuthFlow({
     setError(undefined);
     try {
       const result = await authApi.complete(name.trim(), occupation);
+      completedNext.current = safeNext(result.next);
       setUncertain(false);
       onLogin(COOKIE_SESSION);
       nav(safeNext(result.next), { replace: true });

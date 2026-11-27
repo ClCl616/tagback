@@ -54,7 +54,8 @@ class ItemCrudPostgresIntegrationTest {
         session("+821011111111", UserRole.ADMIN); // Legacy user retained for rental fixtures only.
         adminSessionId=UUID.randomUUID();
         String adminToken=secrets.generateToken();
-        jdbc.update("insert into admin_sessions(session_id,token_hash,password_version,channel,created_at,expires_at) values (?,?,?,'WEB',now(),now()+interval '30 minutes')",
+        jdbc.update("insert into administrators(admin_number,name,password_hash,must_change_password) values ('000','Test Owner','isolated-admin-session-fixture',false) on conflict do nothing");
+        jdbc.update("insert into admin_sessions(session_id,token_hash,password_version,channel,created_at,expires_at,admin_number,admin_name) values (?,?,?,'WEB',now(),now()+interval '30 minutes','000','Test Owner')",
                 adminSessionId,com.tagback.service.AdminPassword.digest(adminToken),com.tagback.service.AdminPassword.digest("isolated-admin-session-fixture"));
         admin = new Cookie(com.tagback.config.AdminCredentials.COOKIE,adminToken);
         member = session("+821022222222", UserRole.USER);

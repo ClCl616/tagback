@@ -10,8 +10,8 @@ import javax.crypto.spec.PBEKeySpec;
 public final class AdminPassword {
     private AdminPassword() {}
     public static String hash(String password) {
-        if (password == null || password.length() < 12 || password.length() > 128)
-            throw new IllegalArgumentException("Use a password of 12 to 128 characters");
+        if (password == null || password.length() < 8 || password.length() > 128)
+            throw new IllegalArgumentException("Use a password of 8 to 128 characters");
         byte[] salt = new byte[16]; new SecureRandom().nextBytes(salt);
         return "pbkdf2-sha256$600000$" + Base64.getEncoder().encodeToString(salt)
                 + "$" + Base64.getEncoder().encodeToString(derive(password, salt, 600000));

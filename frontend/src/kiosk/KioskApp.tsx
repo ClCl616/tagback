@@ -1,3 +1,4 @@
+import { ItemPicture } from '../shared/ItemPicture';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeft,
@@ -26,9 +27,9 @@ import { type ReaderStatus } from '../shared/nfc';
 import { Badge, Brand, date, ErrorBox, Loading, ProductArt, useResource } from '../shared/ui';
 import { getKioskPlatform } from './platform';
 import './kiosk-redesign.css';
-import KioskAdmin from './KioskAdmin';
+import KioskAdmin from './KioskAdminShell';
 import type { Catalog, Grant, Item, NfcScanProof, NfcRead, Receipt } from '../shared/types';
-type Stage = 'start' | 'select' | 'code' | 'scan' | 'condition' | 'confirm' | 'done';
+type Stage = 'start' | 'code' | 'scan' | 'condition' | 'confirm' | 'done';
 type Completion = {
   type: 'rent' | 'return';
   label: string;
@@ -45,6 +46,8 @@ export default function KioskApp() {
   );
 }
 function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
+  const taps = useRef<number[]>([]);
+  const [warning, setWarning] = useState(false);
   const platform = useMemo(getKioskPlatform, []);
   const pendingWrite = useRef<(() => Promise<Receipt>) | undefined>(undefined);
   const [now, setNow] = useState(Date.now());
@@ -86,14 +89,7 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
   const readerReady = readerStatus === 'connected';
   const serviceReady = serverStatus === 'connected';
   const readerDisconnected = readerStatus === 'disconnected';
-  const deviceUnavailable = !readerReady || !serviceReady;
-  const deviceError = useMemo(
-    () =>
-      deviceUnavailable
-        ? new Error('현재 기기를 이용할 수 없습니다. 연결 복구 후 다시 시작해 주세요.')
-        : undefined,
-    [deviceUnavailable],
-  );
+  const deviceUnavailable = readerDisconnected || serverStatus === 'disconnected';
   const readerError = useMemo(
     () =>
       readerDisconnected
@@ -207,6 +203,7 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
       () => api.scan(tag, mode, kindId, grant, read.proof),
       (result) => {
         setItem(result.item);
+        setKindId(result.item.kindId);
         setReturnRentalId(mode === 'return' ? result.rental?.id || '' : '');
         setScannedTagUid(tag);
         setReturnScanTicketId(mode === 'return' ? result.returnScanTicketId || '' : '');
@@ -303,41 +300,28 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
     reset();
     setMode(next);
     setRemaining(KIOSK.sessionSeconds);
-    setStage(next === 'rent' ? 'code' : 'scan');
+    setStage('code');
   }
   function back() {
     if (busy || unknown || pendingWrite.current) return;
     setError(undefined);
     if (stage === 'code') {
       setCode('');
-      if (mode === 'return') setStage('condition');
-      else {
-        setGrant(undefined);
-        setStage('start');
-      }
-    } else if (stage === 'select') {
       setGrant(undefined);
-      setStage('code');
+      setStage('start');
     } else if (stage === 'scan') {
-      setStage(mode === 'rent' ? 'select' : 'start');
+      setGrant(undefined);
+      setCode('');
+      setStage('code');
     } else if (stage === 'condition') {
       setItem(undefined);
-      setReturnRentalId('');
-      setScannedTagUid('');
-      setReturnScanTicketId('');
-      setReturnScanProof(undefined);
       setCondition(undefined);
       setStage('scan');
     } else if (stage === 'confirm') {
-      if (mode === 'return') {
-        setCode('');
-        setStage('code');
-      } else {
-        setItem(undefined);
-        setStage('scan');
-      }
+      setStage(mode === 'return' ? 'condition' : 'scan');
     }
   }
+
   function finish(receipt: Receipt, recovered = false) {
     setCompletion({
       type: receipt.type,
@@ -381,6 +365,7 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
               returnScanProof,
               condition!,
               code,
+              grant,
             );
     void run(pendingWrite.current, finish);
   }
@@ -389,12 +374,12 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
   }
   const names =
     mode === 'rent'
-      ? ['코드 입력', '물품 선택', 'NFC 인식', '최종 확인']
-      : ['NFC 인식', '상태 확인', '반납 코드', '최종 확인'];
+      ? ['코드 입력', 'NFC 인식', '최종 확인']
+      : ['코드 입력', 'NFC 인식', '상태 확인', '최종 확인'];
   const steps: Partial<Record<Stage, number>> =
     mode === 'return'
-      ? { scan: 0, condition: 1, code: 2, confirm: 3 }
-      : { code: 0, select: 1, scan: 2, confirm: 3 };
+      ? { code: 0, scan: 1, condition: 2, confirm: 3 }
+      : { code: 0, scan: 1, confirm: 2 };
   const step = steps[stage];
   const kind = catalog.data?.kinds.find((k) => k.id === (item?.kindId || kindId));
   const errorCode = error instanceof ServiceError ? error.code : '';
@@ -422,7 +407,21 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
       data-platform={platform.tablet ? 'tablet' : 'desktop'}
     >
       <header className="kiosk-header">
-        <Brand />
+        <button
+          className="kiosk-brand-button"
+          onClick={() => {
+            if (stage !== 'start' || busy || unknown) return;
+            const now = Date.now();
+            taps.current = taps.current.filter((t) => now - t <= 5000);
+            taps.current.push(now);
+            if (taps.current.length >= 5) {
+              taps.current = [];
+              openAdmin();
+            }
+          }}
+        >
+          <Brand />
+        </button>
         <div className="kiosk-station">
           <MapPin size={20} />
           <div>
@@ -430,24 +429,27 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
             <span>융합과학관 2층 학생 라운지</span>
           </div>
         </div>
-        <div className={`reader-health ${readerReady && serviceReady ? '' : 'offline'}`}>
-          <i />
-          <span>
-            {readerReady
-              ? '외장 리더기 연결됨'
-              : readerStatus === 'connecting'
-                ? '리더기 확인 중'
-                : '리더기 연결 끊김'}
-          </span>
-          <span aria-hidden="true">·</span>
-          <span>
-            {serviceReady
-              ? '서버 연결됨'
-              : serverStatus === 'unknown'
-                ? '서버 확인 중'
-                : '서버 연결 끊김'}
-          </span>
-        </div>
+        {deviceUnavailable && (
+          <div
+            className="kiosk-warning"
+            onMouseEnter={() => setWarning(true)}
+            onMouseLeave={() => setWarning(false)}
+          >
+            <button
+              aria-label="연결 문제 확인"
+              aria-expanded={warning}
+              onClick={() => setWarning((v) => !v)}
+            >
+              ⚠
+            </button>
+            {warning && (
+              <div role="status">
+                {!serviceReady && <p>서버에 연결할 수 없습니다.</p>}
+                {!readerReady && <p>NFC 리더기에 연결할 수 없습니다.</p>}
+              </div>
+            )}
+          </div>
+        )}
       </header>
       <main className={`kiosk-main ${stage === 'start' ? 'welcome-main' : ''}`}>
         {stage === 'start' ? (
@@ -461,14 +463,7 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
                 {banner}
               </div>
             )}
-            <InlineError error={deviceError} />
             <InlineError error={error} />
-            {serverStatus === 'disconnected' && (
-              <p className="notice" role="alert">
-                서버 연결이 복구되면 대여·반납 버튼을 사용할 수 있습니다. 연결이 계속 끊겨 있으면
-                관리자에게 문의해 주세요.
-              </p>
-            )}
             <div className="kiosk-actions">
               <button
                 className="rent-action"
@@ -501,17 +496,6 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
                 </span>
               </button>
             </div>
-            <button className="secondary" onClick={openAdmin} disabled={busy || unknown}>
-              관리자 태그 등록
-            </button>
-            {window.tagbackKioskHost?.openOperatorPanel && (
-              <button
-                className="secondary"
-                onClick={() => void window.tagbackKioskHost?.openOperatorPanel?.().catch(setError)}
-              >
-                연결·설정
-              </button>
-            )}
             <div className="welcome-tip">
               <ShieldCheck size={22} />
               <span>NFC 인식 후, 정보를 확인하고 직접 확정해 주세요.</span>
@@ -579,42 +563,6 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
                 </li>
               ))}
             </ol>
-            {stage === 'select' && (
-              <>
-                <div className="kiosk-title">
-                  <h1>어떤 물품이 필요하세요?</h1>
-                  <p>대여할 물품 종류를 선택해 주세요. 대여 가능 여부는 실물 인식 후 확인합니다.</p>
-                </div>
-                {catalog.loading ? (
-                  <Loading />
-                ) : catalog.error ? (
-                  <ErrorBox error={catalog.error} retry={catalog.reload} />
-                ) : (
-                  <div className="kiosk-product-grid">
-                    {!catalog.data?.kinds.length && (
-                      <p role="status">등록된 물품 종류가 없습니다. 관리자에게 문의해 주세요.</p>
-                    )}
-                    {catalog.data?.kinds.map((k) => {
-                      return (
-                        <button
-                          key={k.id}
-                          className="kiosk-product"
-                          disabled={grantExpired}
-                          onClick={() => {
-                            setKindId(k.id);
-                            setStage('scan');
-                          }}
-                        >
-                          <ProductArt kind={k.art} />
-                          <h2>{k.name}</h2>
-                          <Badge tone={'green'}>{'NFC 인식 후 확인'}</Badge>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
-            )}
             {stage === 'code' && (
               <div className="code-stage">
                 <div>
@@ -628,18 +576,7 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
                     모바일 웹에 로그인한 뒤<br />
                     <strong>‘이용 코드’</strong>에서 확인할 수 있어요.
                   </p>
-                  {mode === 'return' && <p>시간이 지나면 물품을 다시 인식해 주세요.</p>}
-                  {mode === 'return' && (
-                    <div className="selected-kind">
-                      <ProductArt kind={kind?.art || 'generic'} />
-                      <div>
-                        <span>반납할 물품 · {condition === 'damaged' ? '손상' : '정상'}</span>
-                        <strong>{item?.label}</strong>
-                      </div>
-                    </div>
-                  )}
-
-                  {mode === 'rent' && <p>코드를 확인한 뒤 물품 종류를 선택합니다.</p>}
+                  {mode === 'rent' && <p>코드를 확인한 뒤 물품의 NFC 태그를 인식해 주세요.</p>}
                   <div className="note">
                     <ShieldCheck size={20} />
                     <p>코드는 본인만 사용해 주세요.</p>
@@ -651,16 +588,13 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
                     e.preventDefault();
                     if (code.length !== KIOSK.codeLength || unknown) return;
                     if (busy || rateLimited) return;
-                    if (mode === 'return') setStage('confirm');
-                    else
-                      void run(
-                        () => api.verifyCode(code),
-                        (g) => {
-                          setGrant(g);
-                          setCode('');
-                          setStage('select');
-                        },
-                      );
+                    void run(
+                      () => api.verifyCode(code),
+                      (g) => {
+                        setGrant(g);
+                        setStage('scan');
+                      },
+                    );
                   }}
                 >
                   <label htmlFor="rental-code">
@@ -743,11 +677,6 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
                     </>
                   )}
                 </div>
-                {mode === 'rent' && (
-                  <p className="scan-selection">
-                    선택한 물품 <strong>{kind?.name}</strong>
-                  </p>
-                )}
                 <div className="scan-errors">
                   <InlineError error={error} />
                   <InlineError error={readerError} />
@@ -782,7 +711,9 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
                   <p>사용하신 물품의 상태를 직접 확인하고 선택해 주세요.</p>
                 </div>
                 <div className="condition-item">
-                  <ProductArt kind={kind?.art || 'generic'} />
+                  <div className="product-art">
+                    <ItemPicture src={item?.image} alt={item?.label} />
+                  </div>
                   <div>
                     <h2>{kind?.name}</h2>
                     <p>{item?.label} · 대전대 융합과학관</p>
@@ -816,7 +747,7 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
                 <button
                   className="primary centered"
                   disabled={!condition}
-                  onClick={() => setStage('code')}
+                  onClick={() => setStage('confirm')}
                 >
                   선택한 상태로 계속
                   <ArrowRight size={22} />
@@ -837,7 +768,9 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
                 </div>
                 <div className="confirm-panel">
                   <div className="confirm-product">
-                    <ProductArt kind={kind?.art || 'generic'} large />
+                    <div className="product-art large">
+                      <ItemPicture src={item?.image} alt={item?.label} />
+                    </div>
                     <h2>{kind?.name}</h2>
                     <span>{item?.label}</span>
                   </div>
@@ -953,20 +886,6 @@ function CustomerKiosk({ openAdmin }: { openAdmin: () => void }) {
         ) : (
           <>
             <span>TagBack · 함께 쓰고, 다시 연결하다.</span>
-            {stage === 'start' && platform.host?.openOperatorPanel && (
-              <button
-                className="footer-cancel"
-                disabled={busy}
-                onClick={() =>
-                  void run(
-                    () => platform.host!.openOperatorPanel!(),
-                    () => {},
-                  )
-                }
-              >
-                관리자 운영
-              </button>
-            )}
           </>
         )}
       </footer>

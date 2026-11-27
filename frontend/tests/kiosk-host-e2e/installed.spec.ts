@@ -182,16 +182,15 @@ for (const platform of ['windows', 'android'] as const)
     await page.goto('/kiosk-app.html');
     await page.getByRole('button', { name: /대여하기/ }).click();
     await enterCode(page, '일회성 대여 코드');
-    await page.getByRole('button', { name: /공용 우산/ }).click();
     await page.evaluate(() => (window as any).fixtureScan());
     await page.getByRole('button', { name: '대여 확정', exact: true }).click();
     await expect(page.getByRole('heading', { name: '대여가 완료되었습니다' })).toBeVisible();
     await page.getByRole('button', { name: '처음으로', exact: true }).click();
     await page.getByRole('button', { name: /반납하기/ }).click();
+    await enterCode(page, '일회성 반납 코드');
     await page.evaluate(() => (window as any).fixtureScan());
     await page.getByRole('button', { name: /손상이 있어요/ }).click();
     await page.getByRole('button', { name: '선택한 상태로 계속' }).click();
-    await enterCode(page, '일회성 반납 코드');
     expect(
       await page.evaluate(
         () => (window as any).fixtureCalls.filter((r: any) => r.command.action === 'return').length,
@@ -219,7 +218,6 @@ test('bundled host response loss replays the same operation and never uses brows
   await page.goto('/kiosk-app.html');
   await page.getByRole('button', { name: /대여하기/ }).click();
   await enterCode(page, '일회성 대여 코드');
-  await page.getByRole('button', { name: /공용 우산/ }).click();
   await page.evaluate(() => (window as any).fixtureScan());
   await page.getByRole('button', { name: '대여 확정', exact: true }).click();
   await expect(page.getByRole('button', { name: '이용 취소' })).toBeDisabled();
@@ -233,41 +231,53 @@ test('bundled host response loss replays the same operation and never uses brows
   expect(writes[0].requestId).not.toBe(writes[1].requestId);
 });
 
-for (const viewport of [{width:1280,height:720},{width:1366,height:768},{width:1920,height:1080}]) {
-  test(`installed layout fits ${viewport.width}x${viewport.height}`, async ({page}) => {
+for (const viewport of [
+  { width: 1280, height: 720 },
+  { width: 1366, height: 768 },
+  { width: 1920, height: 1080 },
+]) {
+  test(`installed layout fits ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await installHost(page, 'windows');
     await page.goto('/kiosk-app.html');
     const fits = async (stage: string) => {
-      await expect.poll(() => page.locator('.kiosk-main').evaluate(el => el.scrollHeight-el.clientHeight), {message:stage,timeout:1500}).toBeLessThanOrEqual(1);
-      expect(await page.evaluate(() => document.documentElement.scrollHeight-innerHeight)).toBeLessThanOrEqual(1);
-      const footer=await page.locator('.kiosk-footer').boundingBox();
-      expect(footer!.y+footer!.height).toBeLessThanOrEqual(viewport.height+1);
+      await expect
+        .poll(
+          () => page.locator('.kiosk-main').evaluate((el) => el.scrollHeight - el.clientHeight),
+          { message: stage, timeout: 1500 },
+        )
+        .toBeLessThanOrEqual(1);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollHeight - innerHeight),
+      ).toBeLessThanOrEqual(1);
+      const footer = await page.locator('.kiosk-footer').boundingBox();
+      expect(footer!.y + footer!.height).toBeLessThanOrEqual(viewport.height + 1);
     };
     await fits('start');
-    await page.getByRole('button',{name:/대여하기/}).click();
+    await page.getByRole('button', { name: /대여하기/ }).click();
     await fits('rental code');
-    await enterCode(page,'일회성 대여 코드');
+    await enterCode(page, '일회성 대여 코드');
     await fits('catalog');
-    await page.getByRole('button',{name:/공용 우산/}).click();
     await fits('scan');
     await page.evaluate(() => (window as any).fixtureScan());
-    await expect(page.getByRole('button',{name:'대여 확정',exact:true})).toBeVisible();
+    await expect(page.getByRole('button', { name: '대여 확정', exact: true })).toBeVisible();
     await fits('rental confirm');
-    await page.getByRole('button',{name:'대여 확정',exact:true}).click();
-    await expect(page.getByRole('heading',{name:'대여가 완료되었습니다'})).toBeVisible();
+    await page.getByRole('button', { name: '대여 확정', exact: true }).click();
+    await expect(page.getByRole('heading', { name: '대여가 완료되었습니다' })).toBeVisible();
     await fits('rental done');
-    await page.getByRole('button',{name:'처음으로',exact:true}).click();
-    await page.getByRole('button',{name:/반납하기/}).click();
+    await page.getByRole('button', { name: '처음으로', exact: true }).click();
+    await page.getByRole('button', { name: /반납하기/ }).click();
+    await enterCode(page, '일회성 반납 코드');
     await page.evaluate(() => (window as any).fixtureScan());
     await fits('condition');
-    await page.getByRole('button',{name:/손상이 있어요/}).click();
-    await page.getByRole('button',{name:'선택한 상태로 계속'}).click();
-    await fits('return code');
-    await enterCode(page,'일회성 반납 코드');
+    await page.getByRole('button', { name: /손상이 있어요/ }).click();
+    await page.getByRole('button', { name: '선택한 상태로 계속' }).click();
+
     await fits('return confirm');
-    await page.getByRole('button',{name:'반납 확정',exact:true}).click();
-    await expect(page.getByRole('heading',{name:'반납 · 점검 접수가 완료되었습니다'})).toBeVisible();
+    await page.getByRole('button', { name: '반납 확정', exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: '반납 · 점검 접수가 완료되었습니다' }),
+    ).toBeVisible();
     await fits('return done');
   });
 }

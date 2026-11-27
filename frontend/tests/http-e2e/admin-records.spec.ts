@@ -6,9 +6,25 @@ async function mockServer(page: Page, role = 'ADMIN') {
   );
   const requests: string[] = [];
   const date = '2026-11-06T03:00:00Z';
-  await page.route('**/api/v1/admin/auth/session', route => route.fulfill(role === 'ADMIN'
-    ? {json:{sessionId:'1',channel:'WEB',expiresAt:'2030-01-01T00:00:00Z'}}
-    : {status:403,json:{error:{code:'FORBIDDEN',message:'관리자 권한이 필요합니다.'}}}));
+  await page.route('**/api/v1/admin/auth/session', (route) =>
+    route.fulfill(
+      role === 'ADMIN'
+        ? {
+            json: {
+              sessionId: '1',
+              channel: 'WEB',
+              adminNumber: '000',
+              name: '대표 관리자',
+              mustChangePassword: false,
+              expiresAt: '2030-01-01T00:00:00Z',
+            },
+          }
+        : {
+            status: 403,
+            json: { error: { code: 'FORBIDDEN', message: '관리자 권한이 필요합니다.' } },
+          },
+    ),
+  );
   await page.route(/\/api\/v1\/(items|admin\/(items|users|rentals))\?/, async (route) => {
     const url = new URL(route.request().url());
     requests.push(url.pathname + url.search);

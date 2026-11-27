@@ -26,24 +26,30 @@ public class RentalCodeService {
 
     public RentalCodeService(RentalAuthorizationStore store, UserRepository users, AuthSecrets secrets,
             RentalVerificationLimiter limiter, Clock clock,
-            @Value("${tagback.rental.new-codes-per-user-per-hour:10}") int issueLimit) {
+            @Value("${tagback.rental.new-codes-per-user-per-hour:120}") int issueLimit) {
         if (issueLimit < 1) throw new IllegalArgumentException("Rental code issuance limit must be positive");
         this.store = store; this.users = users; this.secrets = secrets; this.limiter = limiter;
         this.clock = clock; this.issueLimit = issueLimit;
     }
 
     @Transactional
-    public RentalResponses.Code issue(long authenticatedUserId) {
+    public RentalResponses.Code issue(long authenticatedUserId) { return issue(authenticatedUserId, true); }
+
+    @Transactional
+    public RentalResponses.Code current(long authenticatedUserId) { return issue(authenticatedUserId, false); }
+
+    private RentalResponses.Code issue(long authenticatedUserId, boolean rotate) {
         // Issuance serializes code-space reuse before user/code locks; checkout never acquires this lock.
         store.lockIssuance();
         users.findByIdForUpdate(authenticatedUserId).orElseThrow(() -> new AuthException(AuthErrorCode.ACCOUNT_NOT_FOUND));
         var now = clock.instant().truncatedTo(ChronoUnit.MICROS);
         store.releaseExpiredCodes(now);
         var active = store.activeCode(authenticatedUserId);
-        if (active.isPresent()) return new RentalResponses.Code(displayCode(active.get().id()), active.get().expiresAt());
+        if (!rotate && active.isPresent() && store.currentRevision(active.get().id())) return new RentalResponses.Code(displayCode(active.get().id()), active.get().expiresAt());
         if (store.issuedSince(authenticatedUserId, now.minus(Duration.ofHours(1))) >= issueLimit) {
             throw RentalException.issuanceLimited();
         }
+        if (active.isPresent()) store.releaseCode(active.get().id());
         for (int attempt = 0; attempt < 32; attempt++) {
             UUID id = UUID.randomUUID();
             String code = displayCode(id);
@@ -63,9 +69,10 @@ public class RentalCodeService {
         if (!stored.expiresAt().isAfter(now) || stored.consumedAt() != null) throw RentalException.codeInvalid();
         var user = users.findById(stored.userId()).orElseThrow(RentalException::codeInvalid);
         String token = secrets.generateToken();
-        store.insertGrant(UUID.randomUUID(), stored.id(), secrets.tokenHash(token), now, stored.expiresAt());
+        var grantExpiry=now.plusSeconds(180);
+        store.insertGrant(UUID.randomUUID(), stored.id(), secrets.tokenHash(token), now, grantExpiry);
         String phone = user.getPhoneNumber();
-        return new RentalResponses.Grant(token, stored.expiresAt(), phone == null ? "카카오 이용자" : "010-****-" + phone.substring(phone.length() - 4));
+        return new RentalResponses.Grant(token, grantExpiry, phone == null ? "카카오 이용자" : "010-****-" + phone.substring(phone.length() - 4));
     }
 
     @Transactional(readOnly = true)

@@ -56,7 +56,7 @@ public class RentalReturnController {
         }
         limiter.check(request.getRemoteAddr());
         var result = returns.returnItem(java.util.UUID.fromString(body.scanTicketId()), body.proof(),
-                body.condition(), body.returnCode());
+                body.condition(), body.returnCode(), body.grantToken());
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(RentalResponses.Returned.from(result));
     }
