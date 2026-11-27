@@ -1133,74 +1133,6 @@
   }
 }
 
-/* Approved individual-item dashboard. */
-.aw-dashboard-items,
-.aw-item-cards tbody {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 16px;
-}
-.aw-dashboard-items > a,
-.aw-item-cards tbody tr {
-  border: 1px solid var(--aw-line);
-  border-radius: 18px;
-  overflow: hidden;
-  background: #fffdf7;
-  display: flex;
-  flex-direction: column;
-  text-decoration: none;
-  color: inherit;
-  padding: 14px;
-  gap: 8px;
-}
-.aw-item-cards table {
-  display: block;
-  width: 100%;
-}
-.aw-item-cards thead {
-  display: none;
-}
-.aw-item-cards td {
-  border: 0;
-  padding: 3px 0;
-}
-.aw-item-cards td::before {
-  display: none !important;
-}
-.aw-item-cards .aw-row-link {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  width: 100%;
-  font-size: 18px;
-  gap: 14px;
-}
-.aw-item-cards .aw-row-link > img,
-.aw-item-cards .aw-row-link > svg {
-  height: 125px;
-  width: 100%;
-  object-fit: contain;
-  background: #ddf2df;
-  border-radius: 12px;
-  padding: 16px;
-}
-.aw-dashboard-items .aw-item-art {
-  margin: 0;
-  height: 130px;
-  background: #ddf2df;
-  border-radius: 12px;
-}
-.aw-item-art img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-.aw-dashboard-items strong {
-  font-size: 18px;
-}
-.aw-dashboard-items .aw-badge {
-  align-self: flex-start;
-}
 .aw-account {
   display: flex;
   gap: 16px;
@@ -1223,12 +1155,38 @@
   margin: 8px 0;
 }
 
-@media (min-width: 900px) {
-  .aw-dialog {
-    margin: 0 0 0 auto;
-    height: 100dvh;
-    max-height: 100dvh;
-    max-width: 520px;
-    border-radius: 20px 0 0 20px;
-  }
+.aw-dashboard-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+}
+.aw-dashboard-items > a {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--aw-line);
+  border-radius: 12px;
+  background: var(--paper);
+  color: inherit;
+  text-decoration: none;
+}
+.aw-dashboard-items .aw-item-art {
+  margin: 0 0 8px;
+}
+.aw-item-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.aw-row-link > img,
+.aw-row-link > svg {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.aw-account {
+  flex-wrap: wrap;
 }

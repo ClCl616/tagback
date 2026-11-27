@@ -99,76 +99,46 @@
   }
 }
 
-.shared-kiosk-admin {
-  background: #123d31;
-  color: #fff9e9;
-  padding: 16px;
-  min-height: 100dvh;
+/* Shared administrator functions in the pre-redesign light layout. */
+.shared-kiosk-admin,
+.ka-auth {
+  max-width: none;
 }
-.shared-kiosk-admin > .admin-web {
-  min-height: calc(100dvh - 80px);
+.shared-kiosk-admin > header {
+  margin-bottom: 16px;
+}
+.shared-kiosk-admin > header strong {
+  margin-right: auto;
 }
 .shared-kiosk-admin .admin-web {
-  --aw-ink: #fff8e7;
-  --aw-muted: #d5e5d5;
-  --aw-line: #65816e;
-  --paper: #204e3f;
-  --aw-blue: #bcf1ce;
-  background: #123d31;
-  color: #fff8e7;
-  font-size: 16px;
+  min-height: calc(100dvh - 100px);
 }
-.shared-kiosk-admin .aw-sidebar,
-.shared-kiosk-admin .aw-card,
-.shared-kiosk-admin .aw-topbar {
-  background: #204e3f;
-}
-.shared-kiosk-admin .aw-item-art {
-  color: #143c30;
-}
-.shared-kiosk-admin .aw-dashboard-items > a,
-.shared-kiosk-admin .aw-item-cards tbody tr {
-  color: #143c30;
+.kiosk-installed .shared-kiosk-admin {
+  height: 100dvh;
+  overflow: auto;
 }
 .shared-kiosk-admin .aw-detail {
   position: fixed;
   inset: 72px 16px 16px;
   z-index: 40;
   overflow: auto;
-  background: #204e3f;
 }
 .shared-kiosk-admin .aw-dialog {
   width: calc(100vw - 32px);
   max-width: none;
+  height: calc(100dvh - 32px);
   max-height: calc(100dvh - 32px);
+  margin: 16px;
 }
 .shared-kiosk-admin button,
 .shared-kiosk-admin input,
 .shared-kiosk-admin select {
-  min-height: 52px;
+  min-height: 48px;
   font-size: 18px;
 }
-.shared-kiosk-admin > header {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  margin-bottom: 16px;
-}
-.shared-kiosk-admin > header strong {
-  margin-right: auto;
-}
-.ka-auth {
-  min-height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  background: #f6f3eb;
-}
 .ka-auth form {
-  width: min(600px, 90vw);
-  margin: auto;
-  padding: 36px;
-  background: white;
-  border-radius: 24px;
+  margin: 24px 0;
+  max-width: 600px;
 }
 .ka-auth label {
   display: block;
@@ -177,87 +147,18 @@
 .ka-auth input {
   display: block;
   width: 100%;
-  min-height: 60px;
-  font-size: 24px;
-}
-.ka-auth button {
-  min-height: 56px;
-}
-
-.shared-kiosk-admin .aw-dialog {
-  background: #204e3f;
-  color: #fff8e7;
-  border-color: #65816e;
-  padding: 32px;
-  margin: 16px;
-  width: calc(100vw - 32px);
-  height: calc(100dvh - 32px);
-  border-radius: 20px;
-}
-.shared-kiosk-admin .aw-dialog p,
-.shared-kiosk-admin .aw-dialog label,
-.shared-kiosk-admin .aw-dialog h2 {
-  color: #fff8e7;
-}
-.shared-kiosk-admin .aw-dialog button {
-  background: #e1f3dd;
-  color: #123d31;
-  border: 1px solid #b2d7b7;
-}
-.shared-kiosk-admin .aw-dialog button:disabled {
-  opacity: 0.55;
-}
-.shared-kiosk-admin .aw-tag-dialog {
-  text-align: center;
 }
 .aw-tag-scan {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 20px;
+  gap: 16px;
   margin: 24px auto;
-  min-height: 28vh;
-  border: 2px dashed #8fbea5;
-  border-radius: 24px;
-  background: #285947;
+  padding: 24px;
+  border: 1px solid #9aaec8;
+  border-radius: 12px;
+  background: #eef4ff;
+  color: #163055;
   max-width: 600px;
-}
-.kiosk-installed .shared-kiosk-admin {
-  height: 100dvh;
-  overflow: auto;
-}
-.shared-kiosk-admin .admin-web {
-  min-height: calc(100dvh - 100px);
-}
-.shared-kiosk-admin .admin-web button {
-  background: #e6f2dd;
-  color: #173c2d;
-}
-.shared-kiosk-admin .aw-sidebar a {
-  color: #edf6e6;
-}
-.shared-kiosk-admin .aw-sidebar a.active {
-  background: #d7edcf;
-  color: #173c2d;
-}
-.shared-kiosk-admin .aw-detail .aw-notice {
-  color: #173c2d;
-}
-.shared-kiosk-admin .aw-detail .aw-notice p {
-  color: inherit;
-}
-
-.shared-kiosk-admin,
-.ka-auth {
-  max-width: none;
-}
-.ka-auth button,
-.shared-kiosk-admin > header button {
-  background: #245542;
-  color: #fff8e7;
-  border: 1px solid #85ab91;
-}
-.ka-auth input {
-  color: #163f31;
 }

@@ -693,7 +693,7 @@ function Workspace({
                 ) : searchError ? (
                   <Failure error={searchError} retry={() => reload()} />
                 ) : rows.length ? (
-                  <div className={itemView ? 'aw-table-wrap aw-item-cards' : 'aw-table-wrap'}>
+                  <div className="aw-table-wrap">
                     <table>
                       <thead>
                         <tr>

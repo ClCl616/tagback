@@ -617,17 +617,3 @@
   border-radius: 14px;
   z-index: 20;
 }
-.welcome-main .kiosk-actions {
-  flex: 1;
-  min-height: 48vh;
-}
-.welcome-main .kiosk-actions > button {
-  min-height: 40vh;
-}
-.kiosk-v2 .welcome-main {
-  padding: 24px 4vw;
-  gap: 20px;
-}
-.kiosk-v2 .welcome-heading {
-  margin: 0;
-}

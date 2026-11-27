@@ -706,7 +706,7 @@ function CatalogPage() {
           className={`uw-master-detail uw-catalog-layout ${selectedKind ? 'has-selection' : ''}`}
         >
           <div
-            className="uw-products uw-individual-items"
+            className="uw-products uw-lockers"
             data-scroll-region
             tabIndex={0}
             aria-label="물품 목록"
