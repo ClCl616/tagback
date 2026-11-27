@@ -1,116 +1,225 @@
-# 7주차 키오스크–리더기–대여 API 수동 점검
+# 키오스크·NFC 리더기·대여 API 연동 점검
 
-> 이 문서는 7주차 대여 연동 당시 절차다. 이후 모바일 HTTP 코드 발급과 키오스크 반납 코드 인증이 구현되었다. 현재 반납 계약은 [물품 반납 API 계약](rental-return-api-contract.md), 실제 프런트·백엔드·임시 PostgreSQL 연결 검증은 `backend/scripts/test-return-live.ps1`을 따른다. 해당 자동 검증은 서명된 NFC 이벤트를 테스트에서 공급하며 실물 ACR1552U 검증은 아니다.
+이 문서는 TagBack 사용자 웹, 키오스크, NFC 리더기와 서버의 대여·반납 흐름을 점검하기 위한 안내입니다.
 
-기본값은 기존 브라우저 모의 모드다. `VITE_KIOSK_MODE=bridge`를 설정한 키오스크만 로컬 SSE와 실제 백엔드 API를 사용한다. 이 모드에서 순서는 **코드 검증 → 물품 종류 선택 → 태그 인식 → 대여 확정**이다. 종류 목록과 태그 조회에 코드 검증으로 발급된 반출 토큰이 필요하기 때문이다. 모바일 대여 코드 *발급* UI는 이번 연동에서 제외했다. 브리지 모드의 반납 버튼은 활성화되어 있으며, 서명된 태그 인식 → 물품 상태 선택 → 반납 코드 입력 → 반납 완료 순서로 동작한다. 반납 API는 현재 sms-mock 프로필에서만 제공된다.
+사용자는 카카오톡 로그인 후 모바일 웹에서 이용 코드를 발급받습니다. 키오스크는 이용자와 NFC 태그를 확인하고, 사용자의 최종 확인을 거쳐 대여 또는 반납을 서버에 저장합니다.
 
-## 준비
+---
 
-- PostgreSQL 전용 개발 DB를 준비하고 백엔드 폴더에서 `.\gradlew.bat bootRun --args="--spring.profiles.active=sms-mock"`으로 실행한다. 대여 코드 API는 이 프로필에서만 존재하며 `prod`/`production`에는 없다. DB 주소는 `SPRING_DATASOURCE_URL`, 비밀번호는 `TAGBACK_DB_PASSWORD` 환경변수로 전달한다. 이미 사용 중인 DB나 운영 DB에는 테스트 데이터를 넣지 않는다.
-- 브리지 폴더 `nfc/reader-bridge`에서 Java 21로 `..\..\backend\gradlew.bat run --args="--port=8765 --origin=http://127.0.0.1:5173"`을 실행한다. 실물 리더기를 쓰지 않는 시연에는 `--mock-uid=04C8AB82492490 --mock-hold-ms=2000 --mock-gap-ms=1000`을 인자에 추가한다. 실물 UID를 쓸 때는 `--mock-uid`를 빼고 실제 태그의 UID를 DB에 등록한다. 장비 검증은 별도로 해야 한다.
-- `frontend` 폴더에서 PowerShell로 `$env:VITE_KIOSK_MODE='bridge'`, `$env:TAGBACK_API_TARGET='http://127.0.0.1:8080'`을 설정한 뒤 `pnpm dev`를 실행한다. 키오스크는 `http://127.0.0.1:5173/kiosk`를 연다. 프록시는 `/api`를 백엔드로 전달한다. 브리지의 `--origin`은 이 주소와 정확히 같아야 한다. 포트를 바꾸려면 현재 고정된 `frontend/src/shared/nfc.ts`의 SSE 주소도 변경해야 한다.
-- 프론트에서 모바일 로그인을 시연할 때는 기존 모바일 모의 인증과 서버 인증을 혼동하지 않는다. 수동 코드 발급에는 **백엔드가 발급한** 로그인 세션 쿠키가 필요하다. 테스트 계정이나 쿠키·토큰을 문서·커밋·공개 로그에 남기지 않는다.
+## 점검 범위
 
-## 테스트 데이터와 코드 발급
+다음 항목을 확인합니다.
 
-전용 개발 DB에 물품 종류가 없다면 관리자 승인 후 `INSERT INTO item_types (name, description) VALUES ('7주차 테스트 우산', '개발 전용') RETURNING item_type_id;`로 종류 ID를 얻는다. 백엔드 관리자 세션으로 `POST /api/v1/items`에 `{ "itemName":"7주차 테스트 우산 1", "itemTypeId":"<위에서 반환한 숫자 문자열>" }`을 보내 물품 ID를 얻는다. 이어서 `POST /api/items/{itemId}/tag`에 `{ "uid":"<실물 또는 모의 리더기의 UID>" }`를 보낸다. 태그가 연결되면 물품이 `TAG_PENDING`이었다면 `AVAILABLE`로 전환된다. 두 관리자 API는 일반 사용자 세션이나 반출 토큰으로 호출할 수 없다. 이미 존재하는 물품·태그를 사용할 수도 있다. 이 절차는 테스트 전용 DB에서만 수행한다.
+- 사용자 웹 로그인과 이용 코드 발급
+- 키오스크와 서버 연결
+- NFC 리더기 연결과 태그 인식
+- 물품의 대여 가능 상태 확인
+- 대여 확정과 결과 표시
+- 반납 상태 선택과 반납 확정
+- 관리자 웹의 물품·대여 이력 확인
+- 응답 유실 또는 장치 연결 오류 발생 시 처리
 
-### 계정 만들기와 역할
+화면 fixture와 모의 리더기를 사용한 시험, 실제 서버·DB를 사용한 시험, 실물 NFC 장치를 사용한 시험은 각각 구분해 기록합니다.
 
-저장소에서 확인한 범위에는 자동 시드 계정, 관리자 계정용 환경변수, 가입 시 역할을 지정하는 API가 없다. `SignupService`가 새 가입자를 만들고 `User`의 기본 역할은 `USER`다. 따라서 일반 테스트 계정은 `sms-mock`에서 가입 API로 만들고, 관리자 테스트 계정은 같은 방법으로 만든 뒤 **폐기 가능한 개발 DB에서만** DB 관리 권한으로 역할을 `ADMIN`으로 바꾼다. 기존 계정의 역할을 바꾸기 전에는 반드시 테스트 DB와 대상 계정 ID를 확인한다.
+---
 
-직전 임시 스택에서 실제로 실행한 계정 준비 명령은 저장소에 기록되어 있지 않아 그대로 재현했는지는 확인할 수 없다. 아래는 현재 코드에서 확인되는 절차다.
+## 준비 사항
 
-아래 PowerShell 예시는 `sms-mock` 전용 SMS 요청 → 모의 문자 확인 → 인증 증명 발급 → 가입 흐름이다. 전화번호와 PIN은 실행할 때 입력하고, 응답의 인증 코드와 인증 증명은 변수에만 둔다. 가입 계정은 기본적으로 `USER`다.
+### 서버와 데이터베이스
 
-```powershell
-$backendBase = 'http://127.0.0.1:8080' # 실제 백엔드 주소로 바꾼다. Origin에도 같은 origin을 쓴다.
-$phone = Read-Host '테스트 계정 전화번호'
-$requestHeaders = @{ 'Idempotency-Key' = [guid]::NewGuid().ToString() }
-$smsRequest = Invoke-RestMethod -Method Post -Uri "$backendBase/api/v1/auth/sms/requests" `
-  -Headers $requestHeaders -ContentType 'application/json' `
-  -Body (@{ phoneNumber = $phone; purpose = 'SIGNUP' } | ConvertTo-Json)
+- 실행 중인 TagBack 백엔드
+- 프론트엔드 또는 설치형 Windows 키오스크
+- 테스트 전용 PostgreSQL 데이터베이스
+- 최종 카카오톡 로그인 구현에 필요한 설정
+- 공통 관리자 비밀번호
 
-# sms-mock이 전달한 일회용 코드는 이 개발 전용 조회 API에서 확인한다.
-$mockMessage = Invoke-RestMethod -Method Get `
-  -Uri "$backendBase/api/v1/dev/sms/requests/$($smsRequest.requestId)"
-$verification = Invoke-RestMethod -Method Post `
-  -Uri "$backendBase/api/v1/auth/sms/verifications" -ContentType 'application/json' `
-  -Body (@{ requestId = $smsRequest.requestId; code = $mockMessage.code } | ConvertTo-Json)
+실제 사용자의 계정이나 운영 DB를 시험 데이터로 사용하지 않습니다.
 
-$pinSecure = Read-Host '테스트 계정 PIN (숫자 6자리)' -AsSecureString
-$pin = [System.Net.NetworkCredential]::new('', $pinSecure).Password
-$signupHeaders = @{
-  'Idempotency-Key' = [guid]::NewGuid().ToString()
-  Origin = $backendBase
-}
-$signup = Invoke-RestMethod -Method Post -Uri "$backendBase/api/v1/auth/signup" `
-  -Headers $signupHeaders -ContentType 'application/json' `
-  -Body (@{
-    verificationToken = $verification.verificationToken
-    pin = $pin
-    profile = @{ name = '개발 테스트'; occupation = '학생' }
-  } | ConvertTo-Json -Depth 4)
-$userId = $signup.user.userId
+실행 환경은 다음 문서를 참고하세요.
+
+- [프론트엔드 안내](../frontend/README.md)
+- [PostgreSQL 개발환경 설정](database-setup.md)
+- [Docker Compose 실행 안내](../deploy/compose/README.md)
+
+### NFC 리더기
+
+실물 장치 시험에는 다음 항목이 필요합니다.
+
+- PC/SC를 지원하는 NFC 리더기
+- 시험용 NFC 태그
+- 서버와 리더기에 설정할 브리지 ID
+- 서버와 리더기가 공유할 NFC 서명 비밀값
+
+서명 비밀값은 신뢰된 장치와 서버에만 설정합니다. 실제 비밀값을 코드, 문서, 커밋 또는 공개 로그에 기록하지 않습니다.
+
+리더기 브리지의 실행 방법은 [NFC 리더기 브리지 안내](../nfc/reader-bridge/README.md)를 참고하세요.
+
+### Windows 설치형 키오스크
+
+Windows 설치형 앱을 사용할 때는 서버 주소, 리더기 ID와 서명 키를 키오스크 설정 화면에서 확인합니다.
+
+설치와 연결 방법은 [Windows 키오스크 안내](../kiosk/windows/README.md)를 참고하세요.
+
+---
+
+## 리더기 브리지 설정
+
+브라우저 키오스크에서 별도의 Java 리더기 브리지를 사용하는 경우, 백엔드와 브리지에 동일한 브리지 ID와 NFC 서명 비밀값을 설정합니다.
+
+- `NFC_BRIDGE_ID`: 서버가 신뢰할 리더기 브리지 식별자
+- `NFC_SCAN_SECRET`: 서버와 브리지가 공유하는 서명 비밀값
+
+비밀값은 32바이트 이상이어야 합니다. 서버와 브리지의 설정이 다르면 서버가 스캔 증명을 거부합니다.
+
+브리지의 기본 SSE 주소는 다음과 같습니다.
+
+```text
+http://127.0.0.1:8765/events
 ```
 
-`POST /api/v1/auth/sms/requests`는 `phoneNumber`, `purpose`를 받고 `requestId`를 돌려준다. `GET /api/v1/dev/sms/requests/{requestId}` 응답의 `code`가 `sms-mock` 인증 코드다. 이 조회 API는 개발 프로필 전용이므로 실제 운영 문자 발송 절차와 혼동하지 않는다. `POST /api/v1/auth/sms/verifications` 본문은 `requestId`, `code`이며, 응답의 `verificationToken`을 가입에 쓴다. 가입 요청은 `POST /api/v1/auth/signup`이고 본문은 `verificationToken`, 6자리 `pin`, `profile`의 `name`·`occupation`이다. 가입과 로그인 요청에는 각각 새 UUID `Idempotency-Key`를 넣는다.
+브리지는 로컬 loopback에 연결되며, 설정한 브라우저 Origin만 허용합니다. 브라우저 접근 제한은 장치 인증을 대신하지 않습니다.
 
-관리자 테스트 계정은 가입 후 `$userId`를 확인하고, 테스트 DB에 직접 연결해 다음과 같이 역할을 바꾼다. 이 저장소에는 이 역할 부여를 대신하는 시드·환경변수·관리자 생성 API가 확인되지 않았다.
+### 모의 UID 사용 시
 
-```powershell
-# $dbHost, $dbPort, $dbName, $dbUser는 폐기 가능한 테스트 DB의 접속 정보다.
-# psql 인증은 로컬의 안전한 방식으로 설정한다. 암호를 명령 인자에 넣지 않는다.
-$sql = "UPDATE users SET role = 'ADMIN' WHERE user_id = $userId RETURNING user_id, role;"
-psql -h $dbHost -p $dbPort -U $dbUser -d $dbName -c $sql
-```
+리더기 브리지의 `--mock-uid`는 리더기 이벤트 흐름을 시험하기 위한 기능입니다.
 
-### 관리자·모바일 로그인 세션과 코드 발급
+이 모드는 실제 리더기의 서명된 스캔 증명을 만들지 않으므로, 서명 증명이 필요한 반납이나 관리자 태그 작업의 성공을 검증할 수 없습니다.
 
-두 계정 모두 `POST /api/v1/auth/login/phone`에 `phoneNumber`, 6자리 `pin`을 보내 로그인한다. 응답에는 `Set-Cookie`로 `__Host-tagback-session`(인증에 쓰는 세션 쿠키)과 `__Host-tagback-browser`(브라우저 등록 쿠키)가 설정된다. 관리자 계정은 역할 변경 후 다시 로그인하고 응답의 사용자 `role`이 `ADMIN`인지 확인한다. 일반 계정은 `USER`인지 확인한다.
+모의 이벤트 시험 결과를 실물 리더기 검증 결과로 기록하지 않습니다.
 
-다음 예시는 로그인 응답에서 세션 쿠키만 꺼내 코드 발급 요청에 전달한다. 쿠키의 실제 값은 화면에 출력하지 않는다. 쿠키는 `Secure` 속성으로 발급되므로 브라우저가 자동 관리하는 환경은 HTTPS를 사용한다. 아래처럼 loopback 개발 주소에서 헤더를 직접 전달하는 방식은 로컬 테스트 전용이며, 원격·공용 네트워크에서 사용하지 않는다. `Origin`은 `AuthOriginGuard` 검사를 위해 백엔드와 같은 origin으로 설정한다.
+---
 
-```powershell
-$loginHeaders = @{
-  'Idempotency-Key' = [guid]::NewGuid().ToString()
-  Origin = $backendBase
-}
-$loginResponse = Invoke-WebRequest -Method Post `
-  -Uri "$backendBase/api/v1/auth/login/phone" -Headers $loginHeaders `
-  -ContentType 'application/json' `
-  -Body (@{ phoneNumber = $phone; pin = $pin } | ConvertTo-Json) `
-  -ResponseHeadersVariable responseHeaders
-$loginBody = $loginResponse.Content | ConvertFrom-Json
-# 관리자 시연은 ADMIN, 모바일 일반 계정은 USER인지 확인한다.
-$expectedRole = 'USER' # 관리자 로그인 검증 시에는 'ADMIN'으로 설정
-if ($loginBody.user.role -ne $expectedRole) { throw '계정 역할이 기대한 값과 다릅니다.' }
+## 테스트 물품과 태그 준비
 
-$setCookies = @($responseHeaders['Set-Cookie'])
-$sessionSetCookie = $setCookies | Where-Object { $_ -match '^__Host-tagback-session=' } | Select-Object -First 1
-if (-not $sessionSetCookie) { throw '로그인 응답에서 세션 쿠키를 찾지 못했습니다.' }
-$sessionCookie = ($sessionSetCookie -split ';', 2)[0]
+관리자 웹과 키오스크를 사용해 테스트 물품을 준비합니다.
 
-$rentalCode = Invoke-RestMethod -Method Post -Uri "$backendBase/api/v1/rental-codes" `
-  -Headers @{ Cookie = $sessionCookie; Origin = $backendBase } `
-  -ContentType 'application/json' -Body '{}'
-# 코드 값은 로컬 PowerShell 변수에만 보관한다. 기록·공유·로그 출력하지 않는다.
-$rentalCodeValue = $rentalCode.code
-```
+1. 관리자 웹에 공통 관리자 비밀번호로 로그인합니다.
+2. 테스트에 사용할 물품 종류가 있는지 확인합니다.
+3. 테스트 물품을 등록합니다.
+4. 물품이 `TAG_PENDING` 상태인지 확인합니다.
+5. 리더기가 연결된 키오스크에서 관리자 모드로 로그인합니다.
+6. 테스트 물품을 선택하고 실물 NFC 태그를 인식합니다.
+7. 물품과 태그 정보를 확인한 뒤 연결을 확정합니다.
+8. 물품이 대여 가능한 상태로 전환되었는지 확인합니다.
 
-모바일 앱에서 로그인할 일반 계정도 동일한 `/api/v1/auth/login/phone` 절차를 쓴다. 이미 가입된 계정이면 SMS 요청 없이 전화번호와 PIN으로 로그인할 수 있다. 신규 계정은 앞의 `SIGNUP` 절차를 먼저 수행한다. 대여 코드 발급 응답의 `code`를 키오스크에 입력하면 `POST /api/v1/kiosk/rental-grants`가 반출 토큰을 발급하고, 이후 종류 목록·태그 조회·대여 요청은 Bearer 토큰을 사용한다. 이 토큰은 키오스크 메모리에만 두고 취소·완료·시간 초과 때 버린다.
+태그 등록·교체는 관리자 키오스크 세션과 신뢰된 리더기의 서명된 스캔을 사용합니다. 예전 UID 직접 입력 API를 현재 태그 등록 절차로 사용하지 않습니다.
 
-시연 후에는 PowerShell에 남은 인증 자료를 정리한다. 코드 발급 결과를 화면에 출력하지 말고, 실제 쿠키·인증 코드·토큰을 문서나 로그에 복사하지 않는다.
+자세한 절차는 [공통 관리자와 키오스크 태그 등록](shared-admin-kiosk-tags.md)을 참고하세요.
 
-```powershell
-Remove-Variable backendBase,phone,requestHeaders,smsRequest,mockMessage,verification,pinSecure,pin,signupHeaders,signup,userId,sql,loginHeaders,loginResponse,loginBody,expectedRole,responseHeaders,setCookies,sessionSetCookie,sessionCookie,rentalCode,rentalCodeValue -ErrorAction SilentlyContinue
-```
+---
 
-## 확인 항목과 한계
+## 사용자 로그인과 이용 코드
 
-1. 코드 검증 후 종류 목록에 **물품이 하나도 없는 종류까지** 나오는지 확인한다.
-2. 해당 종류 선택 후 태그를 읽혀 물품명·대여 가능 상태가 맞는지 본다. 다른 종류, 미등록/비활성 태그, 대여 불가 물품은 안내를 보여야 한다.
-3. 대여 확정 후 201 또는 동일 요청의 200 응답으로 완료 화면이 나오는지 확인한다. 네트워크 응답이 끊겨 결과가 불명확하면 **같은** `Idempotency-Key`, 토큰, 물품·종류 ID로 다시 요청한다. 재시도 중 토큰 만료·무효 응답이 오면 성공·실패를 단정할 수 없으며, 이 계약에는 만료 후 결과 조회 API가 없다. 새 코드나 새 요청 키로 다시 반출하지 말고 관리자에게 결과를 문의한다.
-4. 브리지를 끊고 다시 실행할 때 연결 상태 표시가 바뀌는지 확인한다. 기존 `BroadcastChannel` 시뮬레이터는 기본 모드에서 그대로 작동한다.
+1. 사용자 웹에서 카카오톡으로 로그인합니다.
+2. 물품 검색과 재고 조회가 정상 동작하는지 확인합니다.
+3. 이용 코드 화면에서 코드를 발급합니다.
+4. 발급된 코드와 유효시간을 확인합니다.
+5. 키오스크에서 해당 코드를 이용합니다.
 
-브라우저·단위 테스트는 모의 SSE/HTTP 응답으로 실행했으며, 실물 ACR1552U, 태그, 실제 서버·DB 전체 흐름의 수동 검증 결과는 아직 없다. SSE 이벤트 형식은 v1 제안이며 로컬 CORS는 인증이 아니다. 브리지 모드에서 모바일 코드 발급 UI와 실서버 반납은 구현 범위 밖이다.
+이용 코드는 대여 또는 반납을 위한 일회성 코드입니다. 코드와 인증 정보는 시험 기록이나 공개 로그에 남기지 않습니다.
+
+카카오톡 로그인에 필요한 설정과 계정 준비 절차는 최종 인증 구현의 안내를 따릅니다.
+
+---
+
+## 대여 점검
+
+1. 사용자 웹에서 이용 코드를 발급합니다.
+2. 키오스크에서 **대여**를 선택합니다.
+3. 이용 코드를 입력해 이용자를 확인합니다.
+4. 물품 종류를 선택합니다.
+5. 선택한 종류에 속한 물품의 NFC 태그를 인식합니다.
+6. 물품명과 대여 가능 상태를 확인합니다.
+7. 대여 내용을 확인하고 대여를 확정합니다.
+8. 서버 저장이 성공하면 완료 화면을 확인합니다.
+9. 사용자 웹과 관리자 웹에서 대여 기록을 확인합니다.
+
+### 추가 확인
+
+- 등록되지 않았거나 비활성화된 태그가 거부되는지 확인합니다.
+- 선택한 종류와 다른 물품을 인식했을 때 안내가 표시되는지 확인합니다.
+- 대여할 수 없는 상태의 물품이 거부되는지 확인합니다.
+- 이미 대여 중인 물품의 중복 대여가 방지되는지 확인합니다.
+- 서버에 저장되기 전에 완료 화면을 표시하지 않는지 확인합니다.
+
+---
+
+## 반납 점검
+
+1. 대여한 사용자가 모바일 웹에서 반납에 사용할 이용 코드를 발급합니다.
+2. 키오스크에서 **반납**을 선택합니다.
+3. 반납할 물품의 NFC 태그를 인식합니다.
+4. 물품과 대여 정보를 확인합니다.
+5. 물품의 정상 또는 손상 상태를 선택합니다.
+6. 대여자 본인의 이용 코드를 입력합니다.
+7. 반납 내용을 확인하고 반납을 확정합니다.
+8. 서버 저장이 성공하면 완료 화면을 확인합니다.
+9. 사용자 웹과 관리자 웹에서 반납 이력과 물품 상태를 확인합니다.
+
+서버는 서명된 NFC 스캔을 확인한 뒤 반납에 사용할 티켓을 발급합니다. 최종 반납 요청에서는 해당 티켓과 스캔 증명, 물품 상태 및 대여자의 코드를 확인합니다.
+
+정상 반납은 물품을 대여 가능한 상태로 변경하고, 손상 반납은 점검이 필요한 상태로 변경합니다.
+
+상세 요청·응답 계약은 [물품 반납 API 계약](rental-return-api-contract.md)을 참고하세요.
+
+---
+
+## 응답 유실과 거래 복구
+
+대여 또는 반납 요청 후 네트워크 응답이 끊겼다면, 즉시 성공이나 실패로 단정하지 않습니다.
+
+- 같은 작업의 결과를 확인할 때는 기존 작업 식별자와 요청 내용을 유지합니다.
+- 결과가 확인되기 전에 새 코드나 새 작업으로 동일 거래를 반복하지 않습니다.
+- 서버 기록과 물품 상태를 확인하기 전까지 새로운 대여·반납을 진행하지 않습니다.
+
+Windows 설치형 키오스크는 거래 쓰기 전에 암호화된 복구 기록을 저장합니다. 응답 유실이나 앱 종료 후 동일 작업의 결과를 확인하도록 지원합니다.
+
+서버 인증 만료 등으로 자동 확인이 불가능하면 관리자가 서버 기록과 실제 물품을 대조하고, 재인증과 명시적 확인을 거쳐 운영을 재개합니다.
+
+자세한 내용은 [Windows 키오스크 안내](../kiosk/windows/README.md)를 참고하세요.
+
+---
+
+## 연결 오류 점검
+
+### 서버 연결 오류
+
+- API 서버와 데이터베이스가 실행 중인지 확인합니다.
+- 키오스크에 설정된 서버 HTTPS 주소를 확인합니다.
+- 서버 인증서와 신뢰 설정을 확인합니다.
+- 서버 연결이 복구된 뒤 키오스크의 상태 표시가 갱신되는지 확인합니다.
+
+### 리더기 연결 오류
+
+- NFC 리더기의 전원과 USB 연결을 확인합니다.
+- 키오스크 설정에서 연결된 리더기를 찾거나 다시 연결합니다.
+- 브리지 ID와 서명 비밀값이 서버 설정과 일치하는지 확인합니다.
+- 별도 SSE 브리지를 사용한다면 브리지 주소와 허용 Origin을 확인합니다.
+- 태그를 제거한 뒤 다시 인식할 때 이벤트가 정상적으로 발생하는지 확인합니다.
+
+---
+
+## 검증 결과 기록
+
+검증 결과를 공유할 때는 다음 항목을 함께 기록합니다.
+
+- 실행 날짜와 코드 버전
+- 브라우저 키오스크 또는 Windows 설치형 앱 사용 여부
+- 테스트 전용 DB와 서버 사용 여부
+- 실물 리더기·태그 또는 모의 이벤트 사용 여부
+- 대여·반납·태그 등록 중 검증한 범위
+- 성공·실패 결과와 남은 문제
+- 실행하지 못한 항목
+
+인증 코드, 비밀번호, 세션 쿠키, 토큰, NFC 서명 비밀값과 실제 사용자 개인정보는 결과 문서나 스크린샷에 포함하지 않습니다.
+
+---
+
+## 관련 문서
+
+- [NFC 리더기 브리지 안내](../nfc/reader-bridge/README.md)
+- [Windows 키오스크 안내](../kiosk/windows/README.md)
+- [키오스크 호스트 계약](kiosk-host-contract.md)
+- [공통 관리자와 키오스크 태그 등록](shared-admin-kiosk-tags.md)
+- [물품 반출 API 계약](item-checkout-api-contract.md)
+- [물품 반납 API 계약](rental-return-api-contract.md)

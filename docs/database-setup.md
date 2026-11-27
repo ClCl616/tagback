@@ -2,20 +2,21 @@
 
 TagBack 백엔드 프로젝트의 로컬 PostgreSQL 데이터베이스 설정 방법입니다.
 
-Spring Boot 실행 시 Flyway가 `db/migration` 폴더의 SQL 파일을 순서대로 실행하여 필요한 테이블을 자동으로 생성합니다.
+Spring Boot 실행 시 Flyway가 `backend/src/main/resources/db/migration/`의 미적용 SQL 파일을 버전 순서대로 실행합니다. 이 문서는 로컬 PostgreSQL 직접 실행 기준입니다. Docker Compose 환경은 [Compose 안내](../deploy/compose/README.md)를 참고하세요.
 
 ---
 
 ## 1. 개발 환경
 
 - PostgreSQL: 17.x
+- Java: 21
 - Database: `tagback`
 - Database User: `tagback_user`
 - Spring Boot
 - Spring Data JPA
 - Flyway
 
-> 각 개발자는 자신의 로컬 PostgreSQL에 `tagback` 데이터베이스를 생성해야 합니다.
+> 직접 실행하는 경우 로컬 PostgreSQL에 `tagback` 데이터베이스를 생성합니다. 이미 존재하는 사용자와 DB는 새로 만들지 말고 설정을 확인하세요.
 
 ---
 
@@ -71,7 +72,7 @@ OWNER tagback_user;
 다음 명령어로 생성한 데이터베이스에 접속합니다.
 
 ```powershell
-psql -U tagback_user -d tagback
+psql -h localhost -U tagback_user -d tagback
 ```
 
 비밀번호 입력 후 아래와 같은 프롬프트가 나타나면 정상적으로 접속된 상태입니다.
@@ -92,7 +93,7 @@ tagback=>
 
 보안을 위해 실제 PostgreSQL 비밀번호는 Git에 저장하지 않습니다.
 
-프로젝트의 `application.properties`는 다음과 같이 환경변수를 사용합니다.
+확인된 백엔드의 `application.properties`는 다음과 같이 환경변수를 사용합니다. 실제 실행 시에는 해당 코드의 설정도 확인하세요.
 
 ```properties
 spring.datasource.url=jdbc:postgresql://localhost:5432/tagback
@@ -117,7 +118,7 @@ $env:TAGBACK_DB_PASSWORD="본인의 DB 비밀번호"
 setx TAGBACK_DB_PASSWORD "본인의 DB 비밀번호"
 ```
 
-`setx`로 등록한 경우 현재 실행 중인 IntelliJ와 PowerShell에는 바로 반영되지 않을 수 있으므로 프로그램을 다시 실행합니다.
+`setx`는 Windows 사용자 환경변수에 값을 저장합니다. 현재 실행 중인 IntelliJ와 PowerShell에는 바로 반영되지 않을 수 있으므로 프로그램을 다시 실행합니다. IntelliJ를 별도로 실행한다면 실행 환경에도 변수가 설정되어 있는지 확인하세요.
 
 > 실제 비밀번호는 GitHub, README, `application.properties` 등에 작성하지 않습니다.
 
@@ -130,32 +131,18 @@ TagBack은 Flyway를 사용하여 데이터베이스 구조를 관리합니다.
 Migration 파일 위치:
 
 ```text
-src/main/resources/db/migration/
+backend/src/main/resources/db/migration/
 ```
 
-현재 파일 구성:
+마이그레이션에는 사용자·물품·태그·대여·점검 테이블과 인증·관리자·물품 상태·대여 및 반납 관련 스키마 변경이 포함됩니다. 실행하는 코드의 폴더에서 전체 파일과 최신 버전을 확인하세요.
 
-```text
-V1__create_users_table.sql
-V2__create_item_types_table.sql
-V3__create_items_table.sql
-V4__create_nfc_tags_table.sql
-V5__create_rentals_table.sql
-V6__create_inspections_table.sql
-V7__add_active_rental_unique_index.sql
+기존 DB를 다른 버전의 코드에 연결하기 전에는 파일 버전과 DB의 적용 이력을 비교하세요. 동일한 버전에 서로 다른 내용이 있으면 Flyway checksum 검증이 실패할 수 있습니다. 충돌은 적용 이력과 마이그레이션 파일을 확인해 해결하고, DB나 Flyway 이력을 임의로 초기화하거나 수정하지 마세요.
+
+저장소 루트에서 파일을 확인할 수 있습니다. 출력은 사전순일 수 있으며 Flyway는 숫자 버전 순서대로 적용합니다.
+
+```powershell
+Get-ChildItem backend/src/main/resources/db/migration -Filter 'V*.sql' | Sort-Object Name | Select-Object -ExpandProperty Name
 ```
-
-각 Migration의 역할:
-
-| Version | 내용 |
-|---|---|
-| V1 | 회원 `users` 테이블 생성 |
-| V2 | 물품 종류 `item_types` 테이블 생성 |
-| V3 | 개별 물품 `items` 테이블 생성 |
-| V4 | NFC 태그 `nfc_tags` 테이블 생성 |
-| V5 | 대여/반납 `rentals` 테이블 생성 |
-| V6 | 점검 `inspections` 테이블 생성 |
-| V7 | 동일 물품 중복 대여 방지 인덱스 생성 |
 
 ---
 
@@ -163,10 +150,10 @@ V7__add_active_rental_unique_index.sql
 
 환경변수와 PostgreSQL 설정이 완료되면 Spring Boot 애플리케이션을 실행합니다.
 
-IntelliJ에서 애플리케이션을 실행하거나 Windows PowerShell에서 다음 명령어를 사용할 수 있습니다.
+IntelliJ에서 애플리케이션을 실행하거나 저장소 루트에서 Windows PowerShell로 다음 명령어를 사용할 수 있습니다. 카카오톡 로그인, 관리자 인증과 NFC 연동에 필요한 설정은 실행하는 코드의 안내에 따라 별도로 준비합니다.
 
 ```powershell
-.\gradlew.bat bootRun
+.\backend\gradlew.bat -p backend bootRun
 ```
 
 Spring Boot가 실행되면 Flyway가 아직 적용되지 않은 Migration을 자동으로 실행합니다.
@@ -180,7 +167,7 @@ Spring Boot가 실행되면 Flyway가 아직 적용되지 않은 Migration을 �
 Spring Boot 실행 후 PostgreSQL에 접속합니다.
 
 ```powershell
-psql -U tagback_user -d tagback
+psql -h localhost -U tagback_user -d tagback
 ```
 
 전체 테이블 확인:
@@ -189,7 +176,7 @@ psql -U tagback_user -d tagback
 \dt
 ```
 
-정상적으로 설정되었다면 다음 테이블들이 존재해야 합니다.
+정상적으로 설정되었다면 다음 주요 테이블들이 존재해야 합니다. 전체 목록은 실행한 브랜치의 마이그레이션에 따라 달라집니다.
 
 ```text
 flyway_schema_history
@@ -213,25 +200,13 @@ FROM flyway_schema_history
 ORDER BY installed_rank;
 ```
 
-정상적인 경우 V1부터 V7까지 존재하며 모든 `success` 값이 `t`로 표시되어야 합니다.
-
-예시:
-
-```text
-1 | 1 | create users table             | t
-2 | 2 | create item types table        | t
-3 | 3 | create items table             | t
-4 | 4 | create nfc tags table          | t
-5 | 5 | create rentals table           | t
-6 | 6 | create inspections table       | t
-7 | 7 | add active rental unique index | t
-```
+실행 중인 코드의 마이그레이션 파일과 적용된 버전·설명을 비교하고 적용 행의 `success` 값이 `t`인지 확인합니다. 최신 마이그레이션까지 적용되었는지도 파일 목록과 비교하세요.
 
 ---
 
 ## 10. 주요 테이블 관계
 
-현재 TagBack MVP의 데이터베이스 관계는 다음과 같습니다.
+주요 물품·대여 테이블의 관계는 다음과 같습니다. 인증·관리자·상태 이력 등 모든 테이블을 나타낸 그림은 아닙니다.
 
 ```text
 item_types
@@ -249,7 +224,7 @@ item_types
 - `rentals`: 사용자와 물품의 대여 및 반납 기록
 - `inspections`: 물품 점검 및 손상 상태 기록
 
-현재 MVP는 대여소 1곳을 기준으로 개발하므로 별도의 대여소 테이블은 사용하지 않습니다.
+현재 구성은 대여소 1곳을 기준으로 하며 별도의 대여소 테이블은 사용하지 않습니다.
 
 ---
 
@@ -271,14 +246,9 @@ spring.datasource.password=${TAGBACK_DB_PASSWORD}
 
 ### 이미 적용된 Flyway 파일 수정하지 않기
 
-한 번 DB에 적용된 Migration 파일은 가급적 수정하지 않습니다.
+이미 공유되거나 DB에 적용된 Migration 파일은 수정하지 않고 새 버전을 추가합니다.
 
-예를 들어 V1~V7이 적용된 상태에서 DB 구조를 추가로 변경해야 한다면 기존 파일을 수정하지 않고 새로운 Migration을 추가합니다.
-
-```text
-V8__xxxxx.sql
-V9__xxxxx.sql
-```
+새 버전은 통합 대상 브랜치의 마이그레이션과 충돌하지 않도록 정합니다. 기존 파일을 변경하면 Flyway checksum 검증에 실패할 수 있습니다.
 
 ### 테이블을 직접 수정하지 않기
 
@@ -295,7 +265,7 @@ V9__xxxxx.sql
 - `tagback` 데이터베이스 생성
 - `TAGBACK_DB_PASSWORD` 환경변수 설정
 - Spring Boot 실행 성공
-- Flyway V1~V7 적용 성공
+- 현재 체크아웃의 Flyway Migration 전체 적용 성공
 - `users`, `item_types`, `items`, `nfc_tags`, `rentals`, `inspections` 테이블 생성 확인
 
-위 항목이 모두 정상이라면 TagBack 백엔드 DB 개발환경 설정이 완료된 것입니다.
+위 항목들은 기본 DB 연결과 스키마 적용을 확인합니다. 카카오 로그인, 관리자 인증, NFC 및 대여·반납 기능은 별도 설정과 검증이 필요합니다.

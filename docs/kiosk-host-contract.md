@@ -1,111 +1,320 @@
-# 키오스크 공통 빌드·호스트 연결 계약 P1
+# 키오스크 공통 빌드와 호스트 연결 계약
 
-기준일: 2026-11-13. 현재 구현 범위는 설치 앱용 UI 산출물과 웹/호스트 전송 경계다. Electron main/preload, Kotlin bridge, 실제 리더기 adapter, 영구 복구 저장소와 장치별 서버 인증은 후속 구현이다.
+TagBack 키오스크는 공통 UI를 사용하며, 실행 환경에 따라 브라우저 또는 설치형 호스트를 통해 리더기와 서버에 연결합니다.
 
-## 빌드와 실행
+설치형 키오스크 UI는 전용 빌드로 생성합니다. 호스트는 UI에 리더기 이벤트를 전달하고, 허용된 키오스크 명령을 서버 요청으로 처리합니다.
 
-`frontend`에서 실행한다.
+현재 Windows 키오스크는 Electron 호스트와 Java PC/SC 리더기 브리지를 사용합니다. Android 구현은 보류 중입니다.
+
+---
+
+## 구성
+
+| 구성 요소 | 역할 |
+|---|---|
+| 공통 키오스크 UI | 대여·반납 및 관리자 태그 작업 화면 |
+| 호스트 | 설치형 앱 환경, 서버 통신 및 장치 연동 |
+| NFC 리더기 | 물품에 연결된 NFC 태그 인식 |
+| TagBack 서버 | 인증, 물품 조회, 대여·반납 및 태그 작업 처리 |
+
+설치형 호스트는 UI가 실행되기 전에 `window.tagbackKioskHost`를 제공해야 합니다.
+
+설치형 UI는 호환되는 호스트가 없으면 업무 처리를 시작하지 않습니다. 호스트 연결에 오류가 발생했다고 해서 웹 HTTP 방식으로 임의 전환하지 않습니다.
+
+---
+
+## 빌드와 테스트
+
+`frontend/`에서 실행합니다.
 
 ```powershell
-pnpm build                # 기존 사용자/관리자/웹 키오스크: dist/
-pnpm build:kiosk          # 설치 앱 전용 공통 UI: dist-kiosk/
+# 사용자 웹·관리자 웹·브라우저 키오스크 빌드
+pnpm build
+
+# 설치형 키오스크 전용 UI 빌드
+pnpm build:kiosk
+
+# 키오스크 전용 빌드 미리보기
 pnpm preview:kiosk --port 5179
-pnpm test:kiosk-host      # build:kiosk 후 산출물에 가상 호스트를 주입해 검사
+
+# 설치형 UI와 가상 호스트를 이용한 테스트
+pnpm test:kiosk-host
 ```
 
-설치 진입 파일은 `dist-kiosk/kiosk-app.html`이다. 기존 웹 주소 `/kiosk`와 Vite의 확장자 없는 HTML 탐색이 충돌하지 않도록 `kiosk.html`을 사용하지 않는다. Windows/Android는 dist-kiosk 전체를 같은 구조로 동봉한다. HTML의 상대 assets 경로를 보존하고 호스트가 올바른 MIME type으로 제공해야 한다. 일반 브라우저에서 이 파일을 열면 호스트 없음 오류가 표시되는 것이 정상이다. 설치 호스트 없이 시험 데이터를 보여주거나 웹 API로 전환하지 않는다. 이 HTML은 빌드/preview로 확인하며 일반 Vite HMR 페이지로 사용하지 않는다.
+일반 웹 빌드의 산출물은 `dist/`에 생성됩니다.
 
-`kiosk-build.json`에는 artifact, appVersion, hostProtocolVersion=2, transportVersion=1, entry, uiBuildHash, files(path/sha256)가 들어간다. files는 HTML과 JS/CSS를 포함하고 path 순으로 정렬한다. uiBuildHash는 `JSON.stringify(files)`의 SHA-256이다. manifest 자체는 files에서 제외한다. 이 hash는 산출물 동일성 확인용이며 코드 서명이나 배포자 인증을 대체하지 않는다.
+설치형 키오스크 전용 빌드의 산출물은 `dist-kiosk/`에 생성되며, 진입 파일은 다음과 같습니다.
 
-`vite.kiosk.config.ts`는 사용자/관리자 모듈과 일반 인증/API 집합 모듈이 설치 빌드 그래프에 들어오면 실패시킨다. 공유 스타일은 재사용하되 외부 웹 폰트 import는 `web-fonts.css`로 분리해 기존 웹 진입점에만 적용했다. 설치 앱은 시스템 폰트를 사용하고 외부 폰트 연결에 의존하지 않는다. 전용 HTML의 CSP는 renderer의 직접 네트워크 연결을 막는다. 네이티브 호스트의 API 통신·인증서 검증은 별도 책임이다.
+```text
+dist-kiosk/kiosk-app.html
+```
 
-## 파일별 책임
+설치형 앱은 `dist-kiosk/` 전체를 포함하고, HTML과 에셋의 상대 경로를 유지해야 합니다.
 
-| 파일 | 책임 |
-|---|---|
-| `src/kiosk-main.tsx` | 설치 전용 시작, host 필수 선언, 키오스크만 렌더링 |
-| `src/kiosk/KioskEntry.tsx` | 호스트가 없거나 호환되지 않을 때 처리 시작 차단 |
-| `src/kiosk-host/contracts.ts` | v1/v2 호스트, 명령·응답 TypeScript 계약 |
-| `src/kiosk-host/runtime.ts` | 시작 시 한 번 연결 경로 선택; 실행 중 downgrade 금지 |
-| `src/kiosk-host/transport.ts` | 명령을 웹 fetch 또는 host.request로 전송 |
-| `src/shared/kioskHttp.ts` | 공통 응답 필드·오류·서버 연결 상태 검사 |
-| `src/shared/kioskApi.ts` | 키오스크 업무 API만 모아 사용자 인증 모듈 의존 제거 |
-| `src/kiosk/platform.ts` | 기존 platform import 및 v1 타입 호환 re-export |
+일반 브라우저에서 설치형 진입 파일을 열었을 때 호스트가 없다는 오류가 표시되는 것은 정상입니다. 설치형 호스트 없이 시험 데이터나 웹 API로 자동 전환하지 않습니다.
 
-웹 `/kiosk`는 호스트 없음→기존 Windows SSE/웹 HTTP, v1→기존 reader·웹 HTTP, v2→reader·호스트 통신을 사용한다. Android 브라우저에 호스트가 없으면 기존대로 리더기 연결 안 됨이다. 알려지지 않은 버전이나 잘못된 호스트 객체는 웹에서도 차단한다. 설치 진입점은 반드시 v2를 요구한다. 오류·타임아웃이 발생해도 호스트 경로에서 웹 HTTP로 전환하지 않는다.
+---
 
-## 주입 시점과 호환성
+## 빌드 매니페스트
 
-호스트는 `kiosk-main.tsx` 실행 전에 `window.tagbackKioskHost`를 제공해야 한다. UI가 선택한 연결은 실행 중 고정된다. 늦게 주입해 화면 오류가 난 상태에서는 정상적인 앱 재시작으로 초기화한다. 웹 조회가 먼저 실행된 후 설치 모드로 바꾸는 것은 허용하지 않는다.
+키오스크 전용 빌드는 `kiosk-build.json`을 생성합니다.
 
-필수 v2 형태:
+매니페스트에는 다음과 같은 정보가 포함됩니다.
+
+- 앱 버전
+- 호스트 프로토콜 버전
+- 전송 규격 버전
+- 진입 파일
+- UI 빌드 해시
+- HTML·JavaScript·CSS 파일 경로와 SHA-256 해시
+
+해시는 빌드 산출물의 동일성을 확인하기 위한 값입니다. 코드 서명이나 배포자 인증을 대신하지 않습니다.
+
+설치형 UI는 시스템 폰트를 사용하며 외부 웹 폰트 연결에 의존하지 않습니다.
+
+---
+
+## 실행 경로
+
+키오스크의 전송 경로는 시작 시 결정되며 실행 중 변경하지 않습니다.
+
+### 브라우저 키오스크
+
+브라우저에서 `/kiosk`를 실행합니다.
+
+- 호스트가 없는 환경에서는 웹 HTTP와 브라우저 리더기 연결을 사용합니다.
+- 호스트 v1이 있는 환경에서는 기존 리더기 계약과 웹 HTTP를 사용합니다.
+- 호환되는 호스트 v2가 있으면 호스트 전송을 사용합니다.
+- 지원하지 않는 버전이나 잘못된 호스트 객체가 있으면 처리를 차단합니다.
+
+### 설치형 키오스크
+
+설치형 진입점은 호스트 v2를 요구합니다.
+
+호스트가 없거나 버전·필수 기능이 맞지 않으면 앱에서 업무 처리를 시작하지 않습니다. 호스트가 늦게 주입된 경우에는 정상적인 앱 재시작으로 초기화해야 합니다.
+
+---
+
+## 호스트 v2 계약
+
+호스트는 키오스크 UI가 시작되기 전에 다음 형태의 객체를 제공합니다.
 
 ```ts
 {
   version: 2,
   platform: 'windows' | 'android',
   capabilities: { transport: 1 },
-  reader: { subscribe(listener, { onStatus, onRemoved }): () => void },
+  reader: {
+    subscribe(listener, { onStatus, onRemoved }): () => void
+  },
   request(envelope): Promise<response>,
-  // 선택 사항: subscribeBack, openOperatorPanel, requestExit
+
+  // 선택 기능
+  subscribeBack,
+  openOperatorPanel,
+  requestExit
 }
 ```
 
-reader 계약은 기존 NfcAdapter와 같다. v2는 transport 규격만 표시한다. `capabilities.transport=1`은 영구 복구·ADMIN 운영·실제 NFC 연동이 검증됐다는 의미가 아니다. host v1은 기존 웹 시험 환경에서만 호환한다. 누락/미지원 version, platform, reader, optional method 타입, transport capability, request 함수는 초기화 단계에서 차단한다.
+호스트 v2는 다음 항목을 검증한 뒤 사용합니다.
 
-## 요청·응답 envelope
+- 호스트 버전
+- 플랫폼 값
+- 리더기 구독 인터페이스
+- 전송 기능 버전
+- `request` 함수
+- 선택 기능이 제공된 경우 해당 함수의 형식
+
+`capabilities.transport = 1`은 전송 계약 버전을 의미합니다. 이 값만으로 실제 장치 연결이나 영구 거래 복구가 검증되었다는 뜻은 아닙니다.
+
+---
+
+## 요청과 응답
+
+호스트 요청과 응답은 다음 형태를 사용합니다.
 
 ```ts
-request = { version: 2, requestId: '<새 UUID>', command: { action: '...', ... } }
-response = { version: 2, requestId: '<동일 UUID>', status: 200, data: { ... } }
-```
+request = {
+  version: 2,
+  requestId: '<새 UUID>',
+  command: {
+    action: '...',
+    // action별 필드
+  }
+}
 
-requestId는 IPC 왕복 상관관계용이며 매번 새 값이다. operationId는 업무 쓰기 식별자로 같은 작업 재시도에서 유지한다. 호스트는 이 둘을 혼동하지 않는다. UI는 response version/requestId/HTTP status(정수 200~599)를 확인한다. data는 아래 기존 서버 응답 검사도 통과해야 한다. IPC 오류를 임의의 성공 status로 바꾸지 않는다.
-
-| action | 요청 필드 | host가 수행할 기존 서버 작업 |
-|---|---|---|
-| health | 없음 | GET `/api/v1/kiosk/health` |
-| verify | code | POST `/api/v1/kiosk/rental-grants` |
-| catalog | grantRef | GET `/api/v1/item-types` |
-| scan | uid, grantRef | GET `/api/tags/{uid}` |
-| rent | operationId, grantRef, itemId, itemTypeId | POST `/api/v1/rentals`, 기존 Idempotency-Key=operationId |
-| return-scan | proof | POST `/api/v1/rentals/return/scan` |
-| return | operationId, scanTicketId, proof, condition, returnCode | POST `/api/v1/rentals/return`, 기존 ticket/proof replay |
-
-renderer는 URL·Cookie·Authorization·임의 HTTP 헤더를 지정하지 않는다. 실제 host 구현에서는 **네이티브 경계에서도** action/필드/크기/호출 origin·frame을 검사하고 위 allowlist로만 요청해야 한다. TypeScript union과 renderer의 검사를 보안 경계로 간주하지 않는다. 개발용 가상 host 구현은 tests 안에만 있으며 제품 번들에 포함되지 않는다.
-
-health 외 data는 기존 서버 JSON 형태를 기본으로 한다. 단 verify 성공은 아래 형태로 치환한다.
-
-```json
-{
-  "grantHandle": "opaque-host-owned-reference",
-  "maskedPhoneNumber": "010****5678",
-  "expiresAt": "2026-11-13T03:03:00Z"
+response = {
+  version: 2,
+  requestId: '<요청과 같은 UUID>',
+  status: 200,
+  data: {
+    // 응답 데이터
+  }
 }
 ```
 
-실제 bearer token은 host가 보관하고 grantHandle로 찾아 사용한다. UI 모델 호환을 위해 현재 `Grant.token` 필드에 이 handle이 들어가지만 호스트 경로에서는 HTTP Authorization에 사용하지 않는다. host는 세션/만료/완료 시 보관한 grant를 정리해야 한다. 웹 adapter의 Grant.token은 기존 실제 bearer token이다. 경로 선택을 고정해 handle이 웹 HTTP로 유출되지 않도록 한다.
+- `requestId`: UI와 호스트 사이의 요청·응답을 연결하는 식별자입니다. 요청마다 새로 생성합니다.
+- `operationId`: 대여, 반납 또는 태그 변경 같은 업무 작업을 식별합니다. 같은 작업을 복구할 때 유지합니다.
 
-P1에서는 기존 reader event/proof와 반납 코드가 UI 메모리를 거친다. NFC 비밀 서명 키는 UI에 주입하지 않는다. proof/티켓까지 불투명 handle로 전환하고 native 세션 정리·저널 저장을 소유하게 하는 작업은 P4에서 계약 버전을 구분해 확장한다. 현재 모든 인증 문맥이 native에만 존재한다고 표현하지 않는다.
+UI는 응답의 버전, `requestId`, HTTP 상태 코드 형식을 확인합니다. 서버 데이터도 해당 업무 API의 응답 검사에 통과해야 합니다.
 
-return의 operationId는 기존 코드의 로컬 작업 식별자를 host에 전달하는 것이다. 웹 adapter는 이를 새 HTTP 헤더나 본문 필드로 추가하지 않으며, 기존 반납 API의 ticket/proof/condition/returnCode만 전송한다. 호스트도 서버 계약을 확장하기 전에는 같은 기존 형식을 유지한다.
+---
 
-## 오류·재시도·권한
+## 허용 명령
 
-- health 대기 상한 3초, 나머지 15초. host Promise가 끝나지 않아도 UI가 무한 대기하지 않는다.
-- 타임아웃은 전송 취소/서버 실패 판정이 아니다. 쓰기 중 IPC 거부·응답 상관관계 오류·타임아웃은 기존 UNKNOWN 경로로 들어가고 동일 operationId와 본문으로 복구한다.
-- 읽기 실패는 NETWORK/TIMEOUT, 서버의 명확한 거부는 기존 코드/태그/권한 오류로 분류한다. 서버 오류 JSON과 성공 응답 검사는 웹/호스트에서 공유한다.
-- UI의 미확인 요청 보존과 취소/이전/유휴 초기화 차단을 유지한다. 프로세스 종료 후 영구 복구는 아직 구현하지 않았다.
-- `openOperatorPanel`과 `requestExit`는 기존 선택적 계약이며 host가 실제 서버 ADMIN 확인과 작업 상태 검사를 수행해야 한다. 이번 P1은 관리자 세션·OS 종료 구현을 제공하지 않는다.
+UI는 임의의 URL, 쿠키 또는 HTTP 헤더를 호스트에 전달하지 않습니다. 사전에 정의된 명령만 요청합니다.
 
-## 검증 구분
+### 일반 키오스크 명령
 
-단위 검사는 v1 웹 호환·v2 필수 조건·호스트 grant handle·잘못된 응답·IPC 타임아웃·고정 operation replay를 검사한다. 산출물 브라우저 검사는 build:kiosk로 만든 HTML/CSS/JS와 manifest hash, 호스트 없음/버전 불일치, 가상 Windows/Android 호스트의 대여·손상 반납·응답 유실 복구를 확인한다. 가상 platform='android' 검사는 Android APK/WebView/실물 시험이 아니다.
+| action | 주요 필드 | 처리 내용 |
+|---|---|---|
+| `health` | 없음 | 키오스크 서버 연결 상태 확인 |
+| `verify` | `code` | 이용 코드 검증 및 대여 권한 발급 |
+| `catalog` | `grantRef` | 물품 종류 조회 |
+| `scan` | `uid`, `grantRef` | 태그에 연결된 물품 조회 |
+| `rent` | `operationId`, `grantRef`, `itemId`, `itemTypeId` | 물품 대여 요청 |
+| `return-scan` | `proof` | 반납할 태그의 스캔 정보 확인 |
+| `return` | `operationId`, `scanTicketId`, `proof`, `condition`, `returnCode` | 물품 반납 요청 |
 
-기존 웹 HTTP/브리지 회귀를 함께 수행한다. Electron exe, Android APK, 실제 서버·DB 재검증, SMS, 외장 리더기 실물 및 강제 종료 내구성 검사는 이번 P1 범위가 아니다.
+### 관리자 명령
 
-## P2 Windows 구현 추가 (2026-11-13)
+| action | 주요 필드 | 처리 내용 |
+|---|---|---|
+| `admin-login` | `password` | 키오스크 관리자 로그인 |
+| `admin-session` | `adminRef` | 관리자 세션 확인 |
+| `admin-logout` | `adminRef` | 관리자 로그아웃 |
+| `admin-items` | `adminRef`, `keyword`, `page`, `pending` | 관리자 물품 검색 |
+| `admin-tag-current` | `adminRef`, `itemId` | 물품에 연결된 현재 태그 조회 |
+| `admin-tag` | `adminRef`, `operationId`, `itemId`, `expectedUid`, `proof` | NFC 태그 연결 또는 교체 |
 
-`kiosk/windows`에 실제 Electron main/preload와 시험 패키징을 추가했다. [Windows README](../kiosk/windows/README.md)의 명령·프로필 설정·암호화 키 주입을 따른다. UI에는 version=2/platform=windows/capabilities.transport=1과 request/reader만 노출한다. ADMIN 운영 패널/종료 메서드는 아직 노출하지 않는다.
+서버 API 경로와 요청 형식은 키오스크 전송 구현과 백엔드 계약을 함께 확인해야 합니다.
 
-main은 요청 shape·고정 API·IPC main frame을 검증하고 실제 grant를 보관한다. UNKNOWN 잠금·동일 요청 replay 보호는 실행 중 메모리만 사용한다. HTTP 5xx/타임아웃/잘못된 영수증 이후 단순 인증 만료를 저장 실패로 바꾸지 않는다. 이 Windows 구현은 영구 operation manager·프로세스 재시작 복구·서버 장치 등록 완료를 의미하지 않는다.
+---
+
+## 인증 정보와 핸들
+
+설치형 호스트는 서버에서 받은 실제 대여 권한 토큰을 보관하고, UI에는 토큰 대신 불투명한 `grantHandle`을 전달합니다.
+
+관리자 로그인에서도 호스트는 관리자 인증 정보를 보관하고 UI에 `adminHandle`을 전달합니다.
+
+핸들은 호스트 내부에서 해당 인증 정보를 찾기 위한 참조입니다. UI가 호스트의 핸들을 실제 HTTP 인증 토큰처럼 직접 사용하지 않습니다.
+
+호스트는 세션 종료, 만료 또는 작업 완료 시 더 이상 필요하지 않은 인증 정보를 정리해야 합니다.
+
+NFC 서명에 사용하는 비밀 키는 UI에 전달하지 않습니다.
+
+---
+
+## NFC 리더기
+
+호스트는 리더기 이벤트를 구독하고 태그 인식 결과와 연결 상태를 키오스크 UI에 전달합니다.
+
+NFC 태그 등록·교체와 반납에서는 서버가 요구하는 스캔 증명 정보를 사용합니다. UI는 리더기 서명 키를 직접 생성하거나 보관하지 않습니다.
+
+Windows 키오스크는 Java PC/SC 리더기 브리지를 사용합니다. 실행과 장치 설정 방법은 [Windows 키오스크 안내](../kiosk/windows/README.md)를 참고하세요.
+
+---
+
+## 대여·반납 요청
+
+### 대여
+
+대여 요청은 `operationId`를 사용해 같은 작업의 재시도를 식별합니다.
+
+웹 전송에서는 대여 요청의 `Idempotency-Key`에 해당 값을 사용합니다.
+
+### 반납
+
+반납은 기존 서버 계약의 스캔 티켓, 증명 정보, 반납 상태와 반납 코드를 사용합니다.
+
+반납의 `operationId`는 호스트와 UI에서 사용하는 로컬 작업 식별자입니다. 서버 계약에 정의되지 않은 HTTP 헤더나 본문 필드로 임의 추가하지 않습니다.
+
+---
+
+## 오류와 거래 복구
+
+호스트 요청의 UI 대기 시간은 다음과 같습니다.
+
+- `health`: 최대 3초
+- 그 외 요청: 최대 15초
+
+시간 초과는 서버 요청이 취소되었거나 저장에 실패했다는 뜻이 아닙니다.
+
+쓰기 요청 중 시간 초과, IPC 오류 또는 응답 확인 실패가 발생하면 결과를 알 수 없는 상태로 처리합니다. 같은 작업의 결과를 확인할 때는 기존 `operationId`와 요청 내용을 유지합니다.
+
+거래 결과가 확인되기 전에는 중복 작업을 방지하기 위해 화면의 취소, 이전 또는 자동 초기화를 제한합니다.
+
+### Windows 설치형 앱의 복구
+
+확인된 Windows 0.1.4 구현은 대여·반납·태그 쓰기 전에 암호화된 거래 복구 기록을 저장합니다. 앱이 종료되거나 응답이 유실되면 재시작 후 동일 작업의 결과를 확인합니다.
+
+서버 인증 만료 등으로 자동 확인이 불가능하면 관리자가 서버 기록과 실제 물품을 대조하고, 재인증과 명시적 확인을 거쳐 운영을 재개합니다.
+
+이 기능은 Windows 구현의 동작입니다. 호스트 v2 전송 계약을 구현했다는 사실만으로 모든 플랫폼에서 영구 거래 복구가 제공된다고 볼 수는 없습니다.
+
+---
+
+## 호스트 구현 시 검증 항목
+
+호스트는 UI의 TypeScript 타입 검사만 신뢰하지 않고 네이티브 경계에서도 요청을 검증해야 합니다.
+
+- 허용된 명령과 필드인지 확인
+- 요청 데이터의 형식과 크기 확인
+- 호출한 화면과 프레임 확인
+- 허용된 서버 작업으로만 요청
+- 관리자 기능 수행 전 관리자 인증 및 권한 확인
+- 작업 중 종료·설정 변경 등의 제한 확인
+- 서버 응답과 거래 결과 검증
+- 비밀번호·토큰·NFC 서명 키 보호
+
+UI의 검사나 타입 선언만을 보안 경계로 간주하지 않습니다.
+
+---
+
+## 검증 범위
+
+키오스크 호스트 테스트는 다음을 확인합니다.
+
+- 호스트 버전과 필수 기능 검증
+- 호스트 부재 또는 호환성 오류 처리
+- 요청·응답 연결과 응답 형식 검사
+- 대여 권한 핸들 처리
+- 타임아웃과 동일 작업 재확인
+- 설치형 UI 산출물과 가상 호스트를 이용한 화면 흐름
+
+가상 호스트나 시험용 NFC 이벤트의 성공은 실제 Windows 장치, 실물 NFC 리더기 또는 운영 서버에서의 업무 성공을 보장하지 않습니다.
+
+다음은 별도 검증 범위입니다.
+
+- 실물 NFC 리더기를 이용한 태그 등록·교체
+- 실물 태그를 이용한 대여·반납
+- 다른 Windows PC에서의 설치와 운영 확인
+- 운영 DB를 사용하는 전체 업무 흐름
+- 최종 카카오톡 로그인 구현과 키오스크 간 연동
+- Android 앱과 실물 장치 연동
+
+Android 구현은 현재 보류 중입니다.
+
+---
+
+## 주요 파일
+
+| 파일 | 역할 |
+|---|---|
+| `frontend/src/kiosk-main.tsx` | 설치형 키오스크 UI 시작 |
+| `frontend/src/kiosk/KioskEntry.tsx` | 호스트 호환성 확인과 시작 처리 |
+| `frontend/src/kiosk-host/contracts.ts` | 호스트 버전과 명령·응답 타입 정의 |
+| `frontend/src/kiosk-host/runtime.ts` | 실행 시 연결 경로 선택 |
+| `frontend/src/kiosk-host/transport.ts` | 웹 또는 호스트로 명령 전송 |
+| `frontend/src/shared/kioskHttp.ts` | 공통 응답과 오류 검사 |
+| `frontend/src/shared/kioskApi.ts` | 키오스크 업무 API |
+| `kiosk/windows/` | Windows Electron 호스트와 설치형 앱 |
+
+---
+
+## 관련 문서
+
+- [Windows 키오스크 안내](../kiosk/windows/README.md)
+- [키오스크 리더기 연동](kiosk-reader-integration.md)
+- [공통 관리자와 키오스크 태그 등록](shared-admin-kiosk-tags.md)
+- [Docker Compose 실행 안내](../deploy/compose/README.md)

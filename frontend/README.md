@@ -4,190 +4,175 @@
 
 # TagBack 프론트엔드
 
-2026-11-13 develop 통합: 사용자 웹의 비회원 물품 탐색은 `GET /api/v1/catalog/item-types?keyword=...`, 직접 상세는 `/api/v1/catalog/item-types/{id}`로 연결한다. 개별 물품/태그를 노출하지 않고 서버의 종류별 전체·대여 가능 수량을 사용한다. 관리자 물품·태그 목록은 `/api/v1/admin/items`의 keyword/itemTypeId/status 검색을 사용한다. 전체 현황 및 검색 결과 수집은 10,000건 한도이며 초과 시 명시적으로 실패한다. Android 구현은 보류 중이다.
+TagBack 프론트엔드는 사용자 웹, 관리자 웹, 키오스크 화면을 제공합니다.
 
-최신 통합 검증 명령(Windows PowerShell 7, Docker Desktop, Java 21, Node/pnpm 및 Windows package 준비):
+사용자는 카카오톡 로그인으로 가입하고 로그인하며, 모바일 웹에서 물품 재고와 본인의 대여 현황을 확인할 수 있습니다. 관리자는 물품과 운영 현황을 관리하고, 키오스크에서는 NFC 리더기를 사용해 물품을 대여·반납합니다.
 
-```powershell
-pwsh -NoProfile -File backend/scripts/test-kiosk-live.ps1 -FullJourney -AllBackendTests
-```
+## 기술 구성
 
-저장소 루트에서 실행한다. 격리 PostgreSQL의 인증/물품 DB로 백엔드 전체 테스트 후 별도 live DB에서 사용자·관리자·Windows 여정을 검증한다. 포트 55439/55442/18082/5182가 비어 있어야 한다. SMS 수신함과 NFC 이벤트만 시험용이며 종료한 컨테이너와 로그는 진단용으로 보존한다.
+- React
+- TypeScript
+- Vite
+- HTTP API
+- Windows 키오스크 호스트: Electron
+- NFC 리더기 연동: Java PC/SC 및 SSE 브리지
 
-2026-11-13 최신 추가: 공통 kiosk 빌드를 사용하는 Windows 시험 exe·설치 파일 골격을 구현했다. 실행·설정·검증 한계는 [Windows 호스트 README](../kiosk/windows/README.md)를 참고한다. 아래 P1 시점의 미구현 표시는 해당 날짜/단계의 기록이며 Android APK·실물 검증은 계속 후속 작업이다.
+사용자 웹(`/mobile`), 관리자 웹(`/admin`), 브라우저 키오스크(`/kiosk`)는 서버 API와 연결됩니다. API 연결에 실패했을 때 임의의 데이터로 대체하지 않습니다.
 
-React + TypeScript + Vite. `/mobile`, `/kiosk`, `/admin`은 모두 실제 HTTP API를 사용한다. 실행용 mock DB, seed, 개발 시뮬레이터, 모드 전환 환경변수는 제거했다. API 연결 실패 시 임의 데이터로 대체하지 않는다.
+## 사용자 웹
+
+사용자는 물품 종류별 재고를 조회하고, 본인의 대여 현황과 이용 이력을 확인할 수 있습니다.
+
+| 경로 | 기능 |
+|---|---|
+| `/mobile` | 사용자 홈 |
+| `/mobile/login`, `/mobile/signup` | 카카오톡 로그인·회원가입 |
+| `/mobile/items` | 물품 검색, 종류별 재고 및 상세 조회 |
+| `/mobile/code` | 키오스크 이용 코드 발급 |
+| `/mobile/rentals` | 본인 대여 현황 및 연체 조회 |
+| `/mobile/history` | 이용 이력 조회 |
+| `/mobile/account` | 계정 정보 및 로그아웃 |
+
+키오스크 이용 코드는 사용자가 요청할 때 발급됩니다. 대여와 반납은 키오스크에서 내용을 확인한 뒤 확정합니다.
+
+모바일 화면은 작은 화면과 키보드 높이 변화에 대응합니다. 물품·대여·이력 목록은 내부 스크롤을 사용하며, 목록에서 상세 화면으로 이동한 뒤 돌아오면 이전 스크롤 위치를 복원합니다.
+
+## 관리자 웹
+
+관리자는 사용자 계정과 분리된 공통 관리자 비밀번호로 로그인합니다.
+
+관리자 웹에서 물품을 등록·수정하고 상태를 변경하며, 사용자·대여 현황과 이용 이력을 조회할 수 있습니다.
+
+| 경로 | 기능 |
+|---|---|
+| `/admin` | 관리자 현황 |
+| `/admin/login` | 관리자 로그인 |
+| `/admin/items` | 물품 검색·등록·수정·상태 변경·삭제 |
+| `/admin/rentals` | 대여 현황 조회 |
+| `/admin/overdue` | 연체 현황 조회 |
+| `/admin/history` | 반납 완료 이력 조회 |
+| `/admin/users` | 사용자 조회 |
+
+### 물품과 NFC 태그 등록
+
+1. 관리자 웹에서 물품을 등록합니다.
+2. 신규 물품은 `TAG_PENDING`(태그 등록 대기) 상태로 저장됩니다.
+3. NFC 리더기가 연결된 키오스크에서 관리자 모드에 로그인합니다.
+4. 등록할 물품을 선택하고 NFC 태그를 인식합니다.
+5. 물품과 태그 정보를 확인한 뒤 연결을 확정합니다.
+6. 연결에 성공하면 물품이 대여 가능한 상태로 전환됩니다.
+
+태그 연결과 교체는 키오스크 관리자 모드에서 처리합니다. 대여 중인 물품의 태그는 교체할 수 없으며, 점검·수리 상태의 물품은 태그를 교체해도 해당 상태를 유지합니다.
+
+관리자 비밀번호 설정과 태그 등록 절차는 [공통 관리자와 키오스크 태그 등록](../docs/shared-admin-kiosk-tags.md)을 참고하세요.
+
+## 키오스크
+
+키오스크는 대기 화면에서 대여 또는 반납을 선택한 뒤, 이용자 확인과 NFC 태그 인식을 거쳐 최종 확인을 받습니다.
+
+태그를 인식한 것만으로 거래를 확정하지 않습니다. 사용자가 내용을 확인하고 서버 저장에 성공하면 완료 결과를 표시합니다.
+
+키오스크는 다음 기능을 제공합니다.
+
+- 이용 코드 입력 및 이용자 확인
+- NFC 태그 인식과 물품 조회
+- 대여·반납 내용 확인 및 저장
+- 반납 물품의 정상·손상 상태 확인
+- 서버 응답 유실 시 거래 결과 확인과 복구
+- 관리자 모드에서 NFC 태그 연결·교체
+
+## Windows 키오스크
+
+Windows 키오스크는 공통 키오스크 화면을 사용하는 Electron 기반 설치형 시험 앱입니다.
+
+Windows 0.1.4 통합본은 다음 기능을 제공합니다.
+
+- 서버와 리더기 연결 상태 확인
+- 리더기 탐색 및 재연결
+- 관리자 인증을 통한 설정 잠금 해제
+- 서버 인증서 신뢰 설정
+- 비밀값을 제외한 진단 정보 내보내기
+- 선택형 Windows 로그인 시 자동 실행
+- 암호화된 거래 복구 기록 저장
+
+서버에 거래 쓰기를 요청하기 전에 복구 기록을 저장합니다. 앱이 강제로 종료되거나 응답이 유실되면 같은 요청을 기준으로 결과를 확인합니다.
+
+서버 토큰 만료 등으로 자동 확인이 불가능하면 관리자가 서버 기록과 실제 물품을 대조하고, 재인증과 명시적 확인을 거쳐 운영을 재개해야 합니다.
+
+설치·설정·빌드 방법과 검증 범위는 [Windows 키오스크 안내](../kiosk/windows/README.md)를 참고하세요.
 
 ## 로컬 실행
 
-Node.js 22.12 이상과 pnpm이 필요하다. 먼저 PostgreSQL과 백엔드를 실행한다. 인증 쿠키가 Secure이므로 신뢰할 수 있는 로컬 인증서를 사용하고, 백엔드 `TAGBACK_AUTH_ALLOWED_ORIGINS`에 프론트엔드 HTTPS origin을 등록한다.
+Node.js 22.12 이상과 pnpm이 필요합니다. 먼저 PostgreSQL과 백엔드를 실행합니다.
+
+인증 쿠키 사용을 위해 신뢰할 수 있는 로컬 HTTPS 인증서를 준비하고, 백엔드의 `TAGBACK_AUTH_ALLOWED_ORIGINS`에 프론트엔드 HTTPS origin을 등록합니다.
 
 ```powershell
 cd frontend
 pnpm install
+
 $env:TAGBACK_API_TARGET = 'http://127.0.0.1:8080'
 $env:TAGBACK_HTTPS_CERT = 'C:\certs\localhost.pem'
 $env:TAGBACK_HTTPS_KEY = 'C:\certs\localhost-key.pem'
+
 pnpm exec vite --host localhost --port 5173
 ```
 
-- 모바일: https://localhost:5173/mobile
-- 키오스크: https://localhost:5173/kiosk
-- 관리자 현황: https://localhost:5173/admin (물품 관리는 `/admin/items`)
+접속 경로:
 
-관리자 로그인(`/admin/login`) 또는 사용자 웹에서 실제 ADMIN 계정으로 로그인한 뒤 관리자 화면에 접속한다. 두 영역은 같은 인증 API와 계정 체계를 사용한다. 기본 계정이나 초기 물품을 FE에서 만들지 않는다. 배포 환경은 동일 origin의 `/api`를 백엔드로 전달해야 한다. 백엔드 개발용 `sms-mock` 프로필은 FE mock과 별개이며 실제 문자 발송 검증을 의미하지 않는다.
+- 사용자 웹: `https://localhost:5173/mobile`
+- 브라우저 키오스크: `https://localhost:5173/kiosk`
+- 관리자 웹: `https://localhost:5173/admin`
 
-## 실제 데이터 연결
+배포 환경에서는 동일 origin의 `/api` 요청을 백엔드로 전달해야 합니다.
 
-### 사용자 웹 리디자인 (2026-11-06)
+카카오톡 로그인에 필요한 설정값과 콜백 주소는 최종 인증 구현의 실행 환경에 맞게 설정합니다. 설정값과 실행 절차는 해당 구현을 기준으로 확인해야 합니다.
 
-사용자 웹은 휴대폰 하단 메뉴와 PC 사이드바를 사용한다. 구현은 `src/mobile/UserWeb.tsx`, 범위를 제한한 스타일은 `src/mobile/user-web.css`이며 기존 인증 흐름과 HTTP 어댑터를 유지한다.
+DB 설정은 [데이터베이스 설정 안내](../docs/database-setup.md)를 참고하세요.
 
-| 경로 | 화면 |
-|---|---|
-| `/mobile` | 비회원·회원 홈 |
-| `/mobile/login`, `/mobile/signup` | 로그인·가입·SMS 인증·PIN 설정 |
-| `/mobile/items` | 물품 검색·종류 필터·재고, `?item=종류ID` 상세 패널 |
-| `/mobile/items/:id` | 기존 물품 상세 주소 호환 |
-| `/mobile/code` | 이용 코드 명시적 발급·남은 시간·만료·재시도 |
-| `/mobile/rentals`, `/mobile/rentals/:id` | 본인 대여·연체·상세 |
-| `/mobile/history`, `/mobile/history/:id` | 이용 이력·검색·반납 월 필터·상세 |
-| `/mobile/account` | 본인 정보·로그아웃·PIN 재설정 진입 |
+## 테스트와 검증
 
-코드는 버튼을 누를 때만 요청하며 화면 전환·포커스 복귀·만료 시 자동 발급하지 않는다. 응답은 세션별 메모리에서 공유하고 로그아웃·계정 변경 시 초기화한다. 서버의 기존 유효 코드 재사용 계약을 유지한다. 사용 완료 상태 조회 API가 없으므로 키오스크 사용 여부를 추정해 표시하지 않는다. 대여·반납 확정은 키오스크에서 수행한다.
-
-사진 API가 없어 물품은 공통 아이콘으로 표시한다. 코드 QR·공지·알림·관리자 메뉴를 추가하지 않았다. 데이터 실패·빈 목록·재고 없음은 별도 상태로 표시한다. 테스트 fixture는 실행 앱의 데이터가 아니다.
-
-리디자인 검증은 기존 인증·관리자·키오스크 회귀와 사용자 웹 코드 수명·세션 변경·목록·상세·320~1440px 반응형 테스트를 포함한다. 실제 서버·DB·문자·NFC 장치와의 통합 검증 완료를 의미하지 않는다.
-
-- 물품·종류 조회, 물품 생성·수정·삭제, 상태와 변경 사유 저장
-- 현재 태그 조회 `GET /api/items/{itemId}/tag`, UID 연결 `POST /api/items/{itemId}/tag`
-- 관리자 사용자·대여 내역 조회 및 필터
-- 모바일 재고·본인 대여 현황과 이력, 인증과 일회성 코드
-- 키오스크 대여·반납 API와 로컬 PC/SC SSE 브리지 (`http://127.0.0.1:8765/events`)
-
-물품 생성 후 태그 연결에 실패하면 생성된 물품을 유지하고 태그 연결만 다시 시도한다. 생성 응답이 유실되어 성공 여부가 불명확하면 재등록을 막고 목록 확인을 안내한다. 서버가 지원하지 않는 사진 업로드·별도 관리번호·종류 생성 UI는 제공하지 않는다. 현재 대여소는 설정된 한 곳이며 물품과 재고 수량은 서버 값이다.
-
-## 검증
-
-### 관리자 웹 리디자인 (2026-11-06)
-
-`src/admin/AdminWeb.tsx`가 화면과 인증 경계, `AdminActions.tsx`가 물품/태그 작업과 복구, `admin-web.css`가 관리자 범위의 반응형 스타일을 담당한다. 사용자 웹과 키오스크의 진입점을 유지한다.
-
-| 경로 | 내용 |
-|---|---|
-| `/admin` | 실제 전체 조회 결과로 계산한 현황, 최근 대여·연체 |
-| `/admin/login`, `/admin/recover` | 공통 인증 흐름을 사용한 관리자 로그인·PIN 복구 |
-| `/admin/items` | 물품 검색·필터·등록·수정·상태 변경·삭제 |
-| `/admin/tags` | 태그 등록 대기 물품·연결된 물품 조회, UID 연결·복구 |
-| `/admin/rentals`, `/admin/overdue`, `/admin/history` | 대여 중·연체·반납 완료 조회와 상세 |
-| `/admin/users` | 사용자 조회·상세·ID 기준 관련 대여 연결 |
-
-목록의 `q`, `status`, `kind`, `page`, `selected`, `user` 쿼리는 검색·필터·페이지·선택 대상·사용자 조건을 보존한다. 태그 미등록 분류는 서버의 TAG_PENDING 상태를 기준으로 하며 선택 시 현재 태그를 별도 조회한다. 대여 중 전체는 연체를 포함한다. 사용자 상세와 대여 상세는 기존 조회 데이터로 구성하며 반납 당시 손상 상태 등 지원하지 않는 필드는 추정하지 않는다.
-
-ADMIN 확인 전 관리자 데이터를 요청하지 않고, 세션 만료·권한 상실·계정 변경 시 열린 상세와 초안을 제거한다. 서버 권한 검사도 그대로 필요하다. 저장 중 중복 요청을 막고 물품 생성 후 태그 연결 실패는 태그만 재시도한다. 결과가 불명확한 생성은 재전송하지 않으며 수정·상태·태그·삭제는 현재 정보를 확인하는 경로를 제공한다. 상태 조회만으로 변경 사유의 저장까지 확인했다고 표시하지 않는다.
-
-단위 테스트와 HTTP fixture 브라우저 테스트는 실제 서비스 검증과 구분한다. 실제 DB 테스트의 선택자를 새 UI에 맞췄지만 이번 리디자인에서는 해당 DB 테스트·실제 SMS·NFC 장치를 실행하지 않았다.
+프론트엔드 빌드와 테스트는 `frontend/`에서 실행합니다.
 
 ```powershell
 pnpm build
 pnpm test
-pnpm test:e2e
-pnpm exec playwright test -c playwright.bridge.config.ts
 ```
 
-단위·브라우저 회귀 테스트의 응답 fixture와 장애 주입은 테스트 전용이다. 앱 런타임에 포함되지 않는다. 실제 장치 검증은 별도로 수행해야 한다.
+카카오톡 로그인과 관리자 인증을 포함한 전체 통합 테스트는 최종 인증 구현에 맞는 테스트 환경과 명령을 확인한 뒤 실행합니다.
 
-실제 DB 관리자 검증은 **폐기 가능한 전용 PostgreSQL 컨테이너**의 `tagback_live_test` DB와 해당 DB를 사용하는 백엔드(18085)가 필요하다. 테스트는 사용자를 가입시키고 관리자 권한을 부여하며 물품·종류를 생성하므로 운영 DB에서 실행하지 않는다. 백엔드 origin에 `https://localhost:5185`를 허용한다.
+테스트 fixture, 가상 NFC 이벤트, 실제 서버·DB, 실물 리더기를 사용한 검증은 각각 범위가 다릅니다. fixture 기반 테스트의 통과를 실물 장치와 운영 환경의 전체 검증으로 해석하지 않습니다.
 
-```powershell
-$env:TAGBACK_TEST_CONTAINER = '<전용 테스트 컨테이너 이름>'
-# 위 HTTPS 인증서 환경변수도 설정
-pnpm exec playwright test -c playwright.admin-live.config.ts
-```
+실물 NFC 등록·교체·대여·반납, 다른 PC에서의 Windows 앱 설치, 실제 OS 로그인 자동 실행, 운영 DB 전체 거래는 별도 검증이 필요합니다. Android 구현은 보류 중입니다.
 
-실제 DB 검증 범위: USER 접근 차단, 등록·수정·삭제, 태그 조회·중복 연결, 상태 이력, 새로고침 후 유지, 생성 응답 유실 시 중복 등록 방지. backend의 개발용 SMS 수신 API를 사용한다.
+## 기존 통합 검증 기록
 
-### 키오스크 공통 UI 리디자인 (2026-11-06)
+### 2026-11-19 통합본
 
-`/kiosk`에서 대기 → 대여/반납 → 최종 확인 → 서버 응답 후 완료 흐름을 제공한다. `src/kiosk/KioskApp.tsx`, `kiosk-redesign.css`, `platform.ts`가 공통 화면·상태·호스트 경계를 담당한다.
+당시 통합 작업 기록에 따르면 다음 검증을 수행했습니다.
 
-- Windows 가로 배치와 Galaxy Tab용 큰 터치 입력, 좁은 화면의 세로 배치. `/kiosk?layout=tablet`은 데스크톱에서 태블릿 레이아웃을 확인하는 용도다.
-- 키패드 마지막 줄은 지우기(한 자리)·0·확인. 반납 코드는 최종 확인 화면으로 이동하며 이때 저장 요청을 전송하지 않는다. 정상/손상은 최초 미선택이다.
-- 대여 예정 시간은 성공 응답의 `dueAt`만 표시한다. 현행 종류 API가 재고를 제공하지 않아 수량을 추정하지 않고 실물 인식 후 대여 가능 여부를 확인한다.
-- 일반 유휴 180초, 만료 전 20초 경고, 완료 12초 후 초기화. 저장 중/결과 불명확 상태에서는 자동 초기화와 취소·이전이 차단된다.
-- 복구는 같은 대여 grant·Idempotency-Key·본문 또는 같은 반납 ticket·proof·상태·코드를 재전송한다. 기존 반납 API에는 멱등 헤더를 새로 추가하지 않는다. 서버의 명확한 코드 거부를 확인하면 코드 수정으로 돌아간다.
-- 외장 리더기를 한 번 구독하고 단계 외 입력은 무시한다. 브라우저 복귀 시 연결 상태와 현재 시각을 재평가하며 grant 만료를 차단한다. 반납 티켓의 최종 유효성은 서버가 판정하고 만료 시 재인식을 안내한다.
+- 웹·키오스크 TypeScript 및 Vite 빌드 통과
+- 프론트엔드 단위 테스트 43개 통과
+- HTTP 화면 테스트 42개 통과
+- 브라우저 NFC bridge 테스트 17개 통과
+- 설치형 UI fixture 테스트 13개 통과
+- Windows 단위 테스트 20개 및 Java reader bridge 테스트 17개 통과
+- 백엔드 테스트 255개 중 142개 통과, 환경 조건으로 113개 제외, 실패·오류 0개
 
-설치 호스트는 React 시작 전에 `window.tagbackKioskHost` v1을 제공할 수 있다. `platform`, `reader.subscribe`, 선택적인 `subscribeBack`, `openOperatorPanel`, `requestExit` 계약을 정의했다. Windows 기본값은 기존 localhost SSE 브리지다. Android에 호스트 리더기 어댑터가 없으면 연결 안 됨으로 표시한다. 서명 proof는 신뢰된 장치 계층이 제공하며 UI가 생성하지 않는다. 테스트의 가상 리더기는 테스트 전용이다.
+이 결과는 당시 통합본에 대한 기록입니다. 최종 카카오톡 로그인 구현의 검증 결과를 뜻하지 않습니다.
 
-관리자 운영 버튼은 `openOperatorPanel`이 제공된 호스트에서 대기 화면에만 노출한다. 호스트는 공통 서버의 ADMIN 인증·인가를 수행한 뒤 종료 등 권한 작업을 허용해야 한다. 현재 실제 운영 패널·네이티브 종료·자동 실행·업데이트·exe/APK 패키징은 구현하지 않았다. 이 인터페이스 선언을 설치 앱 완료로 해석하지 않는다.
+상세 범위는 [2026-11-19 통합 기록](../docs/post-release-integration-2026-11-19.md)을 참고하세요.
 
-미확인 요청 문맥은 실행 중 메모리에 보존한다. 브라우저 닫기 경고는 강제 종료를 막는 보장이 아니며, 프로세스 종료 후 복구에는 보안 저장과 서버 복구 계약의 후속 설계가 필요하다. 실제 Galaxy Tab S10+·외장 NFC 리더기·서비스 DB 검증은 별도다. 사용자 요청에 따라 리더기 지원 여부 조사는 생략했다.
+## 관련 문서
 
-### 키오스크 실제 서버·DB 검증 (2026-11-06)
+- [Windows 키오스크 안내](../kiosk/windows/README.md)
+- [공통 관리자와 키오스크 태그 등록](../docs/shared-admin-kiosk-tags.md)
+- [데이터베이스 설정 안내](../docs/database-setup.md)
+- [키오스크 호스트 계약](../docs/kiosk-host-contract.md)
+- [키오스크 리더기 연동](../docs/kiosk-reader-integration.md)
+- [물품 반출 API 계약](../docs/item-checkout-api-contract.md)
+- [본인 대여 현황 조회 API 계약](../docs/rental-status-api-contract.md)
 
-Windows PowerShell 7, 실행 중인 Docker와 로컬 `postgres:17` 이미지, Java 21, Gradle 캐시, 프런트 의존성/Playwright Chromium, Git 배포 OpenSSL이 있는 환경에서 저장소 루트 기준 실행한다.
+## 승인 UI 구현
 
-```powershell
-pwsh -NoProfile -File backend/scripts/test-kiosk-live.ps1
-```
-
-스크립트는 고유 이름 `tagback-kiosk-test-<UUID>`의 전용 컨테이너를 만들고 loopback 55442에만 DB를 노출한다. `tagback_items_test`는 서버 검증, `tagback_live_test`는 브라우저 흐름용이다. 기존 DB나 운영 계정은 사용하지 않는다. 백엔드는 18082, HTTPS 프런트는 localhost:5182를 사용하며 실행 중인 포트가 있으면 중단한다. 임시 자체 서명 인증서는 테스트 디렉터리에서만 생성하고 OS 신뢰 저장소에 설치하지 않는다. 브라우저는 테스트에서만 인증서 오류를 허용한다.
-
-서버·브라우저 테스트는 실제 API·Flyway·PostgreSQL 트랜잭션을 사용한다. SMS는 `sms-mock`, NFC는 테스트 코드의 서명 이벤트이며 실제 문자·리더기 검증이 아니다. 응답 유실은 실제 서버 요청을 완료한 뒤 브라우저 응답만 끊어 재현한다. 테스트용 비밀은 폐기 가능한 로컬 환경 전용이다.
-
-이번 결과: 서버 10개 클래스 65개 테스트(미실행 0, 실패 0), 실제 HTTPS 브라우저 2개 테스트 통과. 브리지 자체 테스트 15개도 통과했다. 동일 코드·키의 대여 재시도, 다른 대여자 코드 거부, 거부/성공 응답 유실 복구, 잘못된 NFC 서명 거부, 정상 반납 AVAILABLE·손상 반납 INSPECTION, DB 대여/반납·상태 이력 중복 없음 등을 확인했다. `playwright.live-return.config.ts`는 반납/키오스크 파일만 실행하도록 지정해 별도 관리자 테스트가 섞이지 않는다.
-
-소스를 바꾸지 않고 브라우저 테스트만 보강해 반복할 때는 `-SkipBackendTests`를 사용할 수 있다. 서버 변경 후에는 생략하지 않는다. 스크립트는 별도 `pwsh` 프로세스로 실행하며 환경 변수는 해당 프로세스에 한정한다. 실행 후 시작한 서버 프로세스와 DB 컨테이너를 중지하고 테스트 DB·로그는 진단용으로 보존한다. 로그 경로는 실행 끝에 출력된다. 자동 삭제하지 않는다.
-
-현재 실물 장치 사용 불가라는 사용자 답변에 따라 Windows/갤럭시 탭 S10+ 및 외장 리더기 검증은 보류했다. 설치 앱 패키징·Android 네이티브 리더기 어댑터·운영 종료/업데이트·프로세스 재시작 복구는 후속 구현 대상이다. 사용자·관리자 웹 전체 실물 통합 검증 보류를 해제한 것은 아니다.
-
-
-### Windows·Android 패키징 설계
-
-2026-11-13 [패키징 설계 v1](../docs/kiosk-packaging-design.md)에 공통 kiosk 빌드, Electron/Java Windows 호스트, Kotlin/WebView Android 호스트, 장치별 인증, 강제 종료 복구, 운영·서명·업데이트 및 인수 기준을 기록했다. 설치 앱은 아직 구현하지 않았으며 기술 조합은 설계 기본안이다. 다음 작업은 kiosk 전용 build/host 경계 분리와 Windows 시험 exe 골격이다.
-
-
-### 공통 키오스크 전용 빌드·호스트 연결 (P1, 2026-11-13)
-
-```powershell
-pnpm build:kiosk
-pnpm preview:kiosk --port 5179
-pnpm test:kiosk-host
-```
-
-산출물은 `dist-kiosk/kiosk-app.html`, assets, `kiosk-build.json`이다. 일반 웹 `pnpm build`의 dist와 분리한다. manifest에 HTML/JS/CSS SHA-256과 uiBuildHash, hostProtocolVersion=2/transportVersion=1을 기록한다. Windows·Android는 같은 산출물을 동봉할 수 있다. 실제 exe/APK는 아직 만들지 않았다.
-
-설치 HTML은 시작 전에 주입된 host v2를 요구하며 일반 브라우저 preview에서는 호스트 없음 안내가 정상이다. 앱 호스트가 없거나 버전/capability가 틀리면 기존 HTTP/SSE로 우회하지 않는다. 기존 웹 `/kiosk`는 v1 reader+웹 HTTP 동작을 유지한다. 새 HTML은 Vite의 확장자 없는 탐색과 충돌하지 않도록 `kiosk-app.html`로 명명했다.
-
-연결 타입은 `src/kiosk-host/contracts.ts`, 실행 경로 선택은 runtime.ts, 전송은 transport.ts, 키오스크 전용 업무 API는 `src/shared/kioskApi.ts`에 있다. native host는 grantHandle을 보관하고 URL·쿠키·헤더 allowlist, ADMIN 확인, 실제 장치 I/O를 자체 구현해야 한다. 메모리 기반 UNKNOWN 복구를 유지하지만 영구 저널·강제 종료 후 복구는 아직 제공하지 않는다. 상세는 [P1 호스트 계약](../docs/kiosk-host-contract.md)을 참고한다.
-
-2026-11-13 검증: 웹/키오스크 빌드, 단위 43개, HTTP fixture 36개, 기존 kiosk 17개, 전용 빌드+가상 호스트 7개 통과. 가상 windows/android host 검사는 실제 Electron/Kotlin 앱 또는 실물 검증이 아니다. 처음 테스트 실행에 필요한 Chromium이 없으면 `pnpm exec playwright install chromium --only-shell`로 테스트 실행 파일을 설치한다.
-
-### Windows 시험 호스트 (P2, 2026-11-13)
-
-`../kiosk/windows`에서 `npm ci`, `npm run make`, `npm run test:smoke`를 사용한다. 공통 `dist-kiosk`를 직접 사용하므로 별도 화면 복사본은 없다. Electron/Java 동봉 exe 및 서명하지 않은 시험 Setup.exe를 생성했다. 호스트 8개/Java 17개 및 실제 패키지 실행을 확인했고 프론트엔드 단위 43개·설치 번들 7개도 재통과했다. 설정·암호화 키 입력과 실제 검증 한계는 [Windows README](../kiosk/windows/README.md). 다른 PC 설치, 실물 리더기, 영구 거래 복구, ADMIN 운영 및 Android APK는 후속 작업이다.
-
-### 사용자 웹 → Windows exe → 관리자 웹 실제 통합 (2026-11-13)
-
-저장소 루트에서 `./backend/scripts/test-kiosk-live.ps1 -FullJourney`를 실행한다. Docker Desktop 및 빌드된 Windows 패키지가 필요하다. 실제 서버/격리 PostgreSQL/HTTPS 웹/실제 exe를 사용하며 SMS 수신과 NFC 장치 이벤트만 시험용으로 대체한다. `-SkipBackendTests`는 backend 변경 없는 반복에만 사용한다.
-
-최종 live 4개 통과. 가입·코드·대여·정상/손상 반납·사용자/관리자 조회와 저장 횟수를 확인했다. native health 빈 응답 처리 오류를 0.1.2에서 수정했다. 상세 범위와 로그는 [통합 검증 보고서](../docs/integration-validation-2026-11-13.md). Android 앱은 보류한다.
-
-## 모바일 화면 높이와 내부 스크롤 (2026-11-19)
-
-휴대폰 폭 767px 이하에서는 상단 헤더와 하단 메뉴를 화면 안에 배치하고, 물품·대여·이력 목록과 홈의 최근 대여 목록을 내부 스크롤로 표시한다. 기본 홈·이용 코드·내 정보·인증 화면은 여백과 중복 카드를 줄여 일반 휴대폰 높이에 맞췄다. 이용 코드 화면의 사용 방법은 모바일에서 펼침 안내이며 PC에서는 펼쳐 표시한다.
-
-작은 화면, 긴 오류/상세 내용, 글자 확대, 소프트웨어 키보드로 공간이 부족할 때는 본문 또는 상세 영역의 스크롤을 허용한다. 내용을 잘라내거나 주요 버튼을 숨기지 않는다. VisualViewport 크기 변경을 반영하고 목록에서 상세 진입 후 브라우저 뒤로 가기 시 내부 스크롤을 복원한다. 데스크톱 및 관리자/키오스크 레이아웃은 별도로 유지한다.
-
-구현: src/mobile/mobile-viewport.css, UserWeb.tsx. 브라우저 검증: tests/http-e2e/user-web.spec.ts. fixture 기반 검사이며 실제 기기의 OS 키보드·안전 영역·접근성 설정은 별도 실물 확인이 필요하다.
-
-## 2026-11-19 관리자 인증·태그 등록 변경
-
-관리자는 공통 비밀번호로 로그인하고, 웹의 신규 물품은 태그 등록 대기로 저장한다. 태그 등록·교체는 키오스크 관리자 모드에서만 수행한다. 이전 계정 ADMIN 및 웹 UID 등록 설명은 현재 흐름에 적용되지 않는다. 설정·사용·검증 범위는 [공통 관리자와 키오스크 태그 등록](../docs/shared-admin-kiosk-tags.md)을 참고한다.
-
-
-## 2026-11-27 확정 시안 반영
-
-개인 관리자 계정, 자동 이용 코드, 개별 물품 이미지, 공통 관리자/키오스크 화면의 변경과 검증은 [개발 기록](../docs/approved-ui-20261127.md)을 따른다. 과거 공통 관리자 비밀번호와 수동 코드 발급 설명은 이 기록으로 대체한다.
+개인 관리자 계정·자동 이용 코드·개별 물품 이미지는 [현재 승인 기록](../docs/approved-ui-20261127.md)과 [카카오 OAuth 계약](../docs/kakao-oauth.md)을 따른다.
