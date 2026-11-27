@@ -43,7 +43,6 @@ test('reader outage stays inline across countdown renders and updates after reco
   for (const digit of '123456')
     await page.getByRole('button', { name: digit, exact: true }).click();
   await page.getByRole('button', { name: '확인', exact: true }).click();
-  await page.getByRole('button', { name: /공용 우산/ }).click();
   await expect(
     page.getByRole('heading', { name: '물품의 NFC 태그를 인식해 주세요' }),
   ).toBeVisible();

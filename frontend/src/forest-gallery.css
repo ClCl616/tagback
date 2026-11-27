@@ -1232,8 +1232,8 @@
     font-size: 16px;
   }
   .kiosk-shell.kiosk-v2 .keypad button {
-    height: 52px;
-    min-height: 52px;
+    height: 64px;
+    min-height: 64px;
     padding: 4px;
     font-size: 26px;
   }
@@ -1391,5 +1391,11 @@
   }
   .kiosk-shell.kiosk-v2 .kw-condition-layout .condition-item p {
     font-size: 24px;
+  }
+}
+
+@media (max-height: 850px) {
+  .kiosk-shell.kiosk-v2 .code-stage {
+    gap: 8px;
   }
 }
